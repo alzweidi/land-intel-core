@@ -7,6 +7,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session, selectinload
 
 from landintel.domain.enums import (
+    AppRoleName,
     AssessmentRunState,
     OpportunityBand,
     PriceBasisType,
@@ -27,6 +28,8 @@ from landintel.domain.schemas import (
     OpportunitySummaryRead,
     ValuationResultRead,
 )
+from landintel.review.overrides import build_override_summary
+from landintel.review.visibility import evaluate_assessment_visibility
 from landintel.services.assessments_readback import serialize_assessment_detail
 from landintel.services.scenarios_readback import serialize_site_scenario_summary
 from landintel.services.sites_readback import serialize_site_summary
@@ -44,11 +47,18 @@ def list_opportunities(
     auction_deadline_days: int | None = None,
     min_price: int | None = None,
     max_price: int | None = None,
+    viewer_role: AppRoleName | str | None = AppRoleName.ANALYST,
+    include_hidden: bool = False,
 ) -> OpportunityListResponse:
     runs = _latest_runs_by_site(session)
     today = date.today()
     items = [
-        _serialize_opportunity_summary(session=session, run=run)
+        _serialize_opportunity_summary(
+            session=session,
+            run=run,
+            viewer_role=viewer_role,
+            include_hidden=include_hidden,
+        )
         for run in runs
     ]
     filtered: list[OpportunitySummaryRead] = []
@@ -97,17 +107,51 @@ def list_opportunities(
     return OpportunityListResponse(items=filtered, total=len(filtered))
 
 
-def get_opportunity(session: Session, *, site_id: UUID) -> OpportunityDetailRead | None:
+def get_opportunity(
+    session: Session,
+    *,
+    site_id: UUID,
+    viewer_role: AppRoleName | str | None = AppRoleName.ANALYST,
+    include_hidden: bool = False,
+) -> OpportunityDetailRead | None:
     runs = _latest_runs_by_site(session)
     run = next((item for item in runs if item.site_id == site_id), None)
     if run is None:
         return None
-    summary = _serialize_opportunity_summary(session=session, run=run)
+    summary = _serialize_opportunity_summary(
+        session=session,
+        run=run,
+        viewer_role=viewer_role,
+        include_hidden=include_hidden,
+    )
     valuation_run = latest_valuation_run(run)
+    override_summary = build_override_summary(session=session, assessment_run=run)
+    effective_valuation = (
+        override_summary.effective_valuation
+        if override_summary is not None and override_summary.effective_valuation is not None
+        else serialize_valuation_result(valuation_run)
+    )
+    if (
+        effective_valuation is not None
+        and not (
+            summary.visibility is not None
+            and not summary.visibility.blocked
+        )
+    ):
+        effective_valuation = effective_valuation.model_copy(update={"expected_uplift_mid": None})
     return OpportunityDetailRead(
         **summary.model_dump(),
-        assessment=serialize_assessment_detail(session=session, run=run, include_hidden=False),
-        valuation=serialize_valuation_result(valuation_run),
+        assessment=serialize_assessment_detail(
+            session=session,
+            run=run,
+            include_hidden=include_hidden,
+            viewer_role=viewer_role,
+        ),
+        valuation=(
+            effective_valuation
+            if effective_valuation is not None
+            else serialize_valuation_result(valuation_run)
+        ),
         ranking_factors=_ranking_factors(run, summary),
     )
 
@@ -134,34 +178,65 @@ def _serialize_opportunity_summary(
     *,
     session: Session,
     run: AssessmentRun,
+    viewer_role: AppRoleName | str | None,
+    include_hidden: bool,
 ) -> OpportunitySummaryRead:
     site = run.site
     scenario = run.scenario
     result = run.result
+    visibility = evaluate_assessment_visibility(
+        session=session,
+        assessment_run=run,
+        viewer_role=viewer_role,
+        include_hidden=include_hidden,
+    )
+    override_summary = build_override_summary(session=session, assessment_run=run)
     valuation_run = latest_valuation_run(run)
-    valuation_result = None if valuation_run is None else valuation_run.result
+    effective_valuation = (
+        override_summary.effective_valuation
+        if override_summary is not None and override_summary.effective_valuation is not None
+        else serialize_valuation_result(valuation_run)
+    )
+    if effective_valuation is not None and visibility.blocked:
+        effective_valuation = effective_valuation.model_copy(update={"expected_uplift_mid": None})
     score_execution_status = (
         None
         if result is None
         else str((result.result_json or {}).get("score_execution_status") or "")
     )
-    band = derive_opportunity_band(
-        eligibility_status=None if result is None else result.eligibility_status,
-        approval_probability_raw=(
-            None if result is None else result.approval_probability_raw
-        ),
-        estimate_quality=(
-            None
-            if result is None or result.estimate_quality is None
-            else result.estimate_quality.value
-        ),
-        manual_review_required=bool(result.manual_review_required) if result else True,
-        score_execution_status=score_execution_status or None,
+    ranking_suppressed = bool(
+        override_summary.ranking_suppressed if override_summary is not None else False
     )
+    if result is not None and visibility.blocked:
+        band = OpportunityBand.HOLD
+        hold_reason = visibility.blocked_reason_text or "Visible planning band is blocked."
+    elif ranking_suppressed:
+        band = OpportunityBand.HOLD
+        hold_reason = (
+            override_summary.display_block_reason
+            if override_summary is not None
+            else "Ranking is suppressed by an active override."
+        )
+    else:
+        derived = derive_opportunity_band(
+            eligibility_status=None if result is None else result.eligibility_status,
+            approval_probability_raw=(
+                None if result is None else result.approval_probability_raw
+            ),
+            estimate_quality=(
+                None
+                if result is None or result.estimate_quality is None
+                else result.estimate_quality.value
+            ),
+            manual_review_required=bool(result.manual_review_required) if result else True,
+            score_execution_status=score_execution_status or None,
+        )
+        band = derived.probability_band
+        hold_reason = derived.hold_reason
     same_borough_support_count = _same_borough_support_count(run)
     ranking_reason = (
-        f"{band.probability_band.value}: {band.hold_reason}"
-        if band.hold_reason
+        f"{band.value}: {hold_reason}"
+        if hold_reason
         else (
             "Planning band is set from hidden internal support. Within-band ordering uses "
             "expected uplift, valuation quality, urgency, asking-price presence, and "
@@ -175,23 +250,34 @@ def _serialize_opportunity_summary(
         borough_name=site.borough.name if site.borough else None,
         assessment_id=run.id,
         scenario_id=scenario.id,
-        probability_band=band.probability_band,
-        hold_reason=band.hold_reason,
+        probability_band=band,
+        hold_reason=hold_reason,
         ranking_reason=ranking_reason,
-        hidden_mode_only=True,
+        hidden_mode_only=not visibility.visible_probability_allowed,
+        visibility=visibility,
+        display_block_reason=(
+            None if override_summary is None else override_summary.display_block_reason
+        ),
         eligibility_status=None if result is None else result.eligibility_status,
         estimate_status=None if result is None else result.estimate_status,
         manual_review_required=(
-            bool(result.manual_review_required)
+            bool(
+                override_summary.effective_manual_review_required
+                if override_summary is not None
+                and override_summary.effective_manual_review_required is not None
+                else result.manual_review_required
+            )
             or (
-                valuation_result.manual_review_required
-                if valuation_result is not None
+                effective_valuation.manual_review_required
+                if effective_valuation is not None
                 else False
             )
         )
         if result is not None
         else True,
-        valuation_quality=None if valuation_result is None else valuation_result.valuation_quality,
+        valuation_quality=(
+            None if effective_valuation is None else effective_valuation.valuation_quality
+        ),
         asking_price_gbp=site.current_price_gbp,
         asking_price_basis_type=(
             None
@@ -200,11 +286,11 @@ def _serialize_opportunity_summary(
         ),
         auction_date=_current_auction_date(site.current_listing),
         post_permission_value_mid=(
-            None if valuation_result is None else valuation_result.post_permission_value_mid
+            None if effective_valuation is None else effective_valuation.post_permission_value_mid
         ),
-        uplift_mid=None if valuation_result is None else valuation_result.uplift_mid,
+        uplift_mid=None if effective_valuation is None else effective_valuation.uplift_mid,
         expected_uplift_mid=(
-            None if valuation_result is None else valuation_result.expected_uplift_mid
+            None if effective_valuation is None else effective_valuation.expected_uplift_mid
         ),
         same_borough_support_count=same_borough_support_count,
         site_summary=serialize_site_summary(site),

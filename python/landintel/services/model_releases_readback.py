@@ -9,10 +9,15 @@ from landintel.domain.schemas import (
     ModelReleaseListResponse,
     ModelReleaseSummaryRead,
 )
+from landintel.review.visibility import get_open_incident_for_scope
 from landintel.scoring.release import get_model_release, list_model_releases
 
 
-def serialize_active_release_scope(scope: ActiveReleaseScope) -> ActiveReleaseScopeRead:
+def serialize_active_release_scope(
+    session: Session,
+    scope: ActiveReleaseScope,
+) -> ActiveReleaseScopeRead:
+    incident = get_open_incident_for_scope(session, scope_id=scope.id, scope_key=scope.scope_key)
     return ActiveReleaseScopeRead(
         id=scope.id,
         scope_key=scope.scope_key,
@@ -22,6 +27,14 @@ def serialize_active_release_scope(scope: ActiveReleaseScope) -> ActiveReleaseSc
         model_release_id=scope.model_release_id,
         activated_by=scope.activated_by,
         activated_at=scope.activated_at,
+        visibility_mode=scope.visibility_mode,
+        visibility_reason=scope.visibility_reason,
+        visible_enabled_by=scope.visible_enabled_by,
+        visible_enabled_at=scope.visible_enabled_at,
+        visibility_updated_by=scope.visibility_updated_by,
+        visibility_updated_at=scope.visibility_updated_at,
+        open_incident_count=1 if incident is not None else 0,
+        active_incident_reason=None if incident is None else incident.reason,
     )
 
 
@@ -41,6 +54,10 @@ def serialize_model_release_summary(release: ModelRelease) -> ModelReleaseSummar
         positive_count=release.positive_count,
         negative_count=release.negative_count,
         reason_text=release.reason_text,
+        active_scope_count=len(release.active_scopes),
+        active_scope_visibility_modes=[
+            scope.visibility_mode for scope in release.active_scopes
+        ],
         activated_by=release.activated_by,
         activated_at=release.activated_at,
         retired_by=release.retired_by,
@@ -50,7 +67,10 @@ def serialize_model_release_summary(release: ModelRelease) -> ModelReleaseSummar
     )
 
 
-def serialize_model_release_detail(release: ModelRelease) -> ModelReleaseDetailRead:
+def serialize_model_release_detail(
+    session: Session,
+    release: ModelRelease,
+) -> ModelReleaseDetailRead:
     return ModelReleaseDetailRead(
         **serialize_model_release_summary(release).model_dump(),
         model_artifact_path=release.model_artifact_path,
@@ -66,7 +86,7 @@ def serialize_model_release_detail(release: ModelRelease) -> ModelReleaseDetailR
         metrics_json=dict(release.metrics_json or {}),
         manifest_json=dict(release.manifest_json or {}),
         active_scopes=[
-            serialize_active_release_scope(scope) for scope in release.active_scopes
+            serialize_active_release_scope(session, scope) for scope in release.active_scopes
         ],
     )
 
@@ -91,4 +111,4 @@ def get_model_release_read(
     row = get_model_release(session=session, release_id=release_id)
     if row is None:
         return None
-    return serialize_model_release_detail(row)
+    return serialize_model_release_detail(session, row)

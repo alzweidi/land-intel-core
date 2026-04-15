@@ -278,6 +278,12 @@ class ReleaseChannel(StrEnum):
     HIDDEN = "HIDDEN"
 
 
+class VisibilityMode(StrEnum):
+    DISABLED = "DISABLED"
+    HIDDEN_ONLY = "HIDDEN_ONLY"
+    VISIBLE_REVIEWER_ONLY = "VISIBLE_REVIEWER_ONLY"
+
+
 class ModelReleaseStatus(StrEnum):
     NOT_READY = "NOT_READY"
     VALIDATED = "VALIDATED"
@@ -294,6 +300,34 @@ class AppRoleName(StrEnum):
     ANALYST = "analyst"
     REVIEWER = "reviewer"
     ADMIN = "admin"
+
+
+class AssessmentOverrideType(StrEnum):
+    ACQUISITION_BASIS = "ACQUISITION_BASIS"
+    VALUATION_ASSUMPTION_SET = "VALUATION_ASSUMPTION_SET"
+    REVIEW_DISPOSITION = "REVIEW_DISPOSITION"
+    RANKING_SUPPRESSION = "RANKING_SUPPRESSION"
+
+
+class AssessmentOverrideStatus(StrEnum):
+    ACTIVE = "ACTIVE"
+    RESOLVED = "RESOLVED"
+    SUPERSEDED = "SUPERSEDED"
+
+
+class IncidentType(StrEnum):
+    VISIBILITY_KILL_SWITCH = "VISIBILITY_KILL_SWITCH"
+    VISIBILITY_BLOCK = "VISIBILITY_BLOCK"
+
+
+class IncidentStatus(StrEnum):
+    OPEN = "OPEN"
+    RESOLVED = "RESOLVED"
+
+
+class AuditExportStatus(StrEnum):
+    READY = "READY"
+    FAILED = "FAILED"
 
 
 class StorageBackend(StrEnum):

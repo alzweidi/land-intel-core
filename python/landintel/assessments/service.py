@@ -751,12 +751,25 @@ def _upsert_prediction_ledger(
         if response_mode != "HIDDEN_SCORE" or model_release is None
         else model_release.calibration_artifact_hash
     )
+    ledger.model_artifact_hash = (
+        None
+        if response_mode != "HIDDEN_SCORE" or model_release is None
+        else model_release.model_artifact_hash
+    )
+    ledger.validation_artifact_hash = (
+        None
+        if response_mode != "HIDDEN_SCORE" or model_release is None
+        else model_release.validation_artifact_hash
+    )
     ledger.valuation_run_id = None if valuation_run is None else valuation_run.id
     ledger.response_mode = response_mode
     ledger.source_snapshot_ids_json = sorted(source_snapshot_ids)
     ledger.raw_asset_ids_json = sorted(raw_asset_ids)
     ledger.result_payload_hash = canonical_json_hash(stable_payload)
     ledger.response_json = stable_payload
+    ledger.replay_verification_status = "VERIFIED"
+    ledger.replay_verified_at = datetime.now(UTC)
+    ledger.replay_verification_note = "Stable payload hash captured at frozen assessment build."
     session.add(ledger)
     session.flush()
     return ledger

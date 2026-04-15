@@ -484,6 +484,22 @@ export type AssessmentQuery = {
   scenario_id?: string;
 };
 
+export type AppRole = 'analyst' | 'reviewer' | 'admin';
+
+export type VisibilityMode = 'DISABLED' | 'HIDDEN_ONLY' | 'VISIBLE_REVIEWER_ONLY';
+
+export type AssessmentOverrideType =
+  | 'ACQUISITION_BASIS'
+  | 'VALUATION_ASSUMPTION_SET'
+  | 'REVIEW_DISPOSITION'
+  | 'RANKING_SUPPRESSION';
+
+export type AssessmentOverrideStatus = 'ACTIVE' | 'RESOLVED' | 'SUPERSEDED';
+
+export type IncidentStatus = 'OPEN' | 'RESOLVED';
+
+export type AuditExportStatus = 'READY' | 'FAILED';
+
 export type OpportunitiesQuery = {
   borough?: string;
   probability_band?: 'Band A' | 'Band B' | 'Band C' | 'Band D' | 'Hold' | '';
@@ -649,11 +665,88 @@ export type PredictionLedger = {
   model_release_id: string | null;
   release_scope_key: string | null;
   calibration_hash: string | null;
+  model_artifact_hash: string | null;
+  validation_artifact_hash: string | null;
   response_mode: string;
   source_snapshot_ids_json: string[];
   raw_asset_ids_json: string[];
   result_payload_hash: string;
   response_json: Record<string, unknown>;
+  replay_verification_status: string;
+  replay_verified_at: string | null;
+  replay_verification_note: string | null;
+  created_at: string;
+};
+
+export type AssessmentOverride = {
+  id: string;
+  override_type: AssessmentOverrideType;
+  status: AssessmentOverrideStatus;
+  actor_name: string;
+  actor_role: AppRole;
+  reason: string;
+  override_json: Record<string, unknown>;
+  supersedes_id: string | null;
+  resolved_by: string | null;
+  resolved_at: string | null;
+  created_at: string;
+};
+
+export type VisibilityGate = {
+  scope_key: string | null;
+  visibility_mode: VisibilityMode;
+  exposure_mode: string;
+  viewer_role: AppRole;
+  visible_probability_allowed: boolean;
+  hidden_probability_allowed: boolean;
+  blocked: boolean;
+  blocked_reason_codes: string[];
+  blocked_reason_text: string | null;
+  active_incident_id: string | null;
+  active_incident_reason: string | null;
+  replay_verified: boolean;
+  payload_hash_matches: boolean;
+  artifact_hashes_match: boolean;
+  scope_release_matches_result: boolean;
+};
+
+export type AssessmentOverrideSummary = {
+  active_overrides: AssessmentOverride[];
+  effective_review_status: string | null;
+  effective_manual_review_required: boolean | null;
+  ranking_suppressed: boolean;
+  display_block_reason: string | null;
+  effective_valuation: ValuationResult | null;
+};
+
+export type IncidentRecord = {
+  id: string;
+  scope_key: string;
+  template_key: string;
+  borough_id: string | null;
+  incident_type: string;
+  status: IncidentStatus;
+  reason: string;
+  previous_visibility_mode: VisibilityMode | null;
+  applied_visibility_mode: VisibilityMode;
+  created_by: string;
+  resolved_by: string | null;
+  created_at: string;
+  resolved_at: string | null;
+};
+
+export type AuditExport = {
+  id: string;
+  assessment_run_id: string;
+  assessment_result_id: string | null;
+  valuation_run_id: string | null;
+  prediction_ledger_id: string | null;
+  model_release_id: string | null;
+  status: AuditExportStatus;
+  manifest_path: string | null;
+  manifest_hash: string | null;
+  manifest_json: Record<string, unknown>;
+  requested_by: string;
   created_at: string;
 };
 
@@ -682,6 +775,8 @@ export type AssessmentDetail = AssessmentSummary & {
   feature_snapshot: AssessmentFeatureSnapshot | null;
   result: AssessmentResult | null;
   valuation: ValuationResult | null;
+  override_summary: AssessmentOverrideSummary | null;
+  visibility: VisibilityGate | null;
   evidence: EvidencePack | null;
   comparable_case_set: ComparableCaseSet | null;
   prediction_ledger: PredictionLedger | null;
@@ -699,6 +794,8 @@ export type OpportunitySummary = {
   hold_reason: string | null;
   ranking_reason: string;
   hidden_mode_only: boolean;
+  visibility: VisibilityGate | null;
+  display_block_reason: string | null;
   eligibility_status: string | null;
   estimate_status: string | null;
   manual_review_required: boolean;
@@ -726,6 +823,7 @@ export type AssessmentCreateInput = {
   as_of_date: string;
   requested_by?: string;
   hidden_mode?: boolean;
+  viewer_role?: AppRole;
 };
 
 export type ActiveReleaseScope = {
@@ -737,6 +835,14 @@ export type ActiveReleaseScope = {
   model_release_id: string;
   activated_by: string | null;
   activated_at: string;
+  visibility_mode: VisibilityMode;
+  visibility_reason: string | null;
+  visible_enabled_by: string | null;
+  visible_enabled_at: string | null;
+  visibility_updated_by: string | null;
+  visibility_updated_at: string | null;
+  open_incident_count: number;
+  active_incident_reason: string | null;
 };
 
 export type ModelReleaseSummary = {
@@ -754,6 +860,8 @@ export type ModelReleaseSummary = {
   positive_count: number;
   negative_count: number;
   reason_text: string | null;
+  active_scope_count: number;
+  active_scope_visibility_modes: VisibilityMode[];
   activated_by: string | null;
   activated_at: string | null;
   retired_by: string | null;
@@ -785,6 +893,93 @@ export type HistoricalLabelReviewInput = {
   extant_permission_outcome?: string;
   site_geometry_confidence?: GeometryConfidence;
   reviewed_by?: string;
+};
+
+export type AssessmentOverrideInput = {
+  requested_by?: string;
+  actor_role: AppRole;
+  override_type: AssessmentOverrideType;
+  reason: string;
+  acquisition_basis_gbp?: number;
+  acquisition_basis_type?: string;
+  valuation_assumption_set_id?: string;
+  review_resolution_note?: string;
+  resolve_manual_review?: boolean;
+  ranking_suppressed?: boolean;
+  display_block_reason?: string;
+};
+
+export type ReleaseScopeVisibilityInput = {
+  requested_by?: string;
+  actor_role: AppRole;
+  visibility_mode: VisibilityMode;
+  reason: string;
+};
+
+export type IncidentActionInput = {
+  requested_by?: string;
+  actor_role: AppRole;
+  action: 'OPEN' | 'RESOLVE' | 'ROLLBACK';
+  reason: string;
+};
+
+export type ReviewQueueResponse = {
+  manual_review_cases: Array<{
+    assessment_id: string;
+    site_id: string;
+    display_name: string;
+    review_status: string;
+    manual_review_required: boolean;
+    visibility_mode: VisibilityMode | null;
+  }>;
+  blocked_cases: Array<{
+    assessment_id: string;
+    site_id: string;
+    display_name: string;
+    blocked_reason: string | null;
+    visibility_mode: VisibilityMode | null;
+    display_block_reason: string | null;
+  }>;
+  recent_cases: Array<{
+    assessment_id: string;
+    display_name: string;
+    updated_at: string;
+    estimate_status: string;
+    manual_review_required: boolean;
+  }>;
+  failing_boroughs: Array<Record<string, unknown>>;
+};
+
+export type DataHealthResponse = {
+  status: string;
+  connector_failure_rate: number | null;
+  listing_parse_success_rate: number | null;
+  geometry_confidence_distribution: Record<string, number>;
+  extant_permission_unresolved_rate: number | null;
+  borough_baseline_coverage: Record<string, unknown>;
+  coverage: Array<Record<string, unknown>>;
+  baseline_packs: Array<Record<string, unknown>>;
+  valuation_metrics: {
+    total: number;
+    uplift_null_rate: number | null;
+    asking_price_missing_rate: number | null;
+    valuation_quality_distribution: Record<string, number>;
+  };
+};
+
+export type ModelHealthResponse = {
+  status: string;
+  calibration_by_probability_band: Array<Record<string, unknown>>;
+  brier_score: number | null;
+  log_loss: number | null;
+  manual_review_agreement_by_band: Array<Record<string, unknown>>;
+  false_positive_reviewer_rate: number | null;
+  abstain_rate: number | null;
+  ood_rate: number | null;
+  template_level_performance: Array<Record<string, unknown>>;
+  economic_health: Record<string, unknown>;
+  releases: Array<Record<string, unknown>>;
+  active_scopes: Array<Record<string, unknown>>;
 };
 
 type ApiCollectionResponse<T> =
@@ -1985,6 +2180,185 @@ function mapValuationResult(value: unknown): ValuationResult | null {
   };
 }
 
+function mapAssessmentOverride(value: unknown): AssessmentOverride {
+  if (!isRecord(value)) {
+    throw new Error('Invalid assessment override');
+  }
+
+  return {
+    id: toStringValue(value.id),
+    override_type: toStringValue(value.override_type ?? value.overrideType) as AssessmentOverrideType,
+    status: toStringValue(value.status, 'ACTIVE') as AssessmentOverrideStatus,
+    actor_name: toStringValue(value.actor_name ?? value.actorName),
+    actor_role: toStringValue(value.actor_role ?? value.actorRole, 'analyst') as AppRole,
+    reason: toStringValue(value.reason),
+    override_json: isRecord(value.override_json) ? value.override_json : {},
+    supersedes_id:
+      value.supersedes_id === null || value.supersedes_id === undefined
+        ? null
+        : toStringValue(value.supersedes_id),
+    resolved_by:
+      value.resolved_by === null || value.resolved_by === undefined
+        ? null
+        : toStringValue(value.resolved_by),
+    resolved_at:
+      value.resolved_at === null || value.resolved_at === undefined
+        ? null
+        : toStringValue(value.resolved_at),
+    created_at: toStringValue(value.created_at ?? value.createdAt)
+  };
+}
+
+function mapVisibilityGate(value: unknown): VisibilityGate | null {
+  if (!isRecord(value)) {
+    return null;
+  }
+
+  return {
+    scope_key:
+      value.scope_key === null || value.scope_key === undefined ? null : toStringValue(value.scope_key),
+    visibility_mode: toStringValue(
+      value.visibility_mode ?? value.visibilityMode,
+      'HIDDEN_ONLY'
+    ) as VisibilityMode,
+    exposure_mode: toStringValue(value.exposure_mode ?? value.exposureMode),
+    viewer_role: toStringValue(value.viewer_role ?? value.viewerRole, 'analyst') as AppRole,
+    visible_probability_allowed: Boolean(
+      value.visible_probability_allowed ?? value.visibleProbabilityAllowed ?? false
+    ),
+    hidden_probability_allowed: Boolean(
+      value.hidden_probability_allowed ?? value.hiddenProbabilityAllowed ?? false
+    ),
+    blocked: Boolean(value.blocked ?? false),
+    blocked_reason_codes: pickCollection(
+      value.blocked_reason_codes as ApiCollectionResponse<unknown>
+    ).map((item) => toStringValue(item)),
+    blocked_reason_text:
+      value.blocked_reason_text === null || value.blocked_reason_text === undefined
+        ? null
+        : toStringValue(value.blocked_reason_text),
+    active_incident_id:
+      value.active_incident_id === null || value.active_incident_id === undefined
+        ? null
+        : toStringValue(value.active_incident_id),
+    active_incident_reason:
+      value.active_incident_reason === null || value.active_incident_reason === undefined
+        ? null
+        : toStringValue(value.active_incident_reason),
+    replay_verified: Boolean(value.replay_verified ?? false),
+    payload_hash_matches: Boolean(value.payload_hash_matches ?? value.payloadHashMatches ?? false),
+    artifact_hashes_match: Boolean(
+      value.artifact_hashes_match ?? value.artifactHashesMatch ?? false
+    ),
+    scope_release_matches_result: Boolean(
+      value.scope_release_matches_result ?? value.scopeReleaseMatchesResult ?? false
+    )
+  };
+}
+
+function mapAssessmentOverrideSummary(value: unknown): AssessmentOverrideSummary | null {
+  if (!isRecord(value)) {
+    return null;
+  }
+
+  return {
+    active_overrides: pickCollection(value.active_overrides as ApiCollectionResponse<unknown>).map(
+      mapAssessmentOverride
+    ),
+    effective_review_status:
+      value.effective_review_status === null || value.effective_review_status === undefined
+        ? null
+        : toStringValue(value.effective_review_status),
+    effective_manual_review_required:
+      value.effective_manual_review_required === null ||
+      value.effective_manual_review_required === undefined
+        ? null
+        : Boolean(value.effective_manual_review_required),
+    ranking_suppressed: Boolean(value.ranking_suppressed ?? false),
+    display_block_reason:
+      value.display_block_reason === null || value.display_block_reason === undefined
+        ? null
+        : toStringValue(value.display_block_reason),
+    effective_valuation: mapValuationResult(value.effective_valuation)
+  };
+}
+
+function mapIncidentRecord(value: unknown): IncidentRecord | null {
+  if (!isRecord(value)) {
+    return null;
+  }
+
+  return {
+    id: toStringValue(value.id),
+    scope_key: toStringValue(value.scope_key ?? value.scopeKey),
+    template_key: toStringValue(value.template_key ?? value.templateKey),
+    borough_id:
+      value.borough_id === null || value.borough_id === undefined
+        ? null
+        : toStringValue(value.borough_id),
+    incident_type: toStringValue(value.incident_type ?? value.incidentType),
+    status: toStringValue(value.status, 'OPEN') as IncidentStatus,
+    reason: toStringValue(value.reason),
+    previous_visibility_mode:
+      value.previous_visibility_mode === null || value.previous_visibility_mode === undefined
+        ? null
+        : (toStringValue(value.previous_visibility_mode) as VisibilityMode),
+    applied_visibility_mode: toStringValue(
+      value.applied_visibility_mode ?? value.appliedVisibilityMode,
+      'DISABLED'
+    ) as VisibilityMode,
+    created_by: toStringValue(value.created_by ?? value.createdBy),
+    resolved_by:
+      value.resolved_by === null || value.resolved_by === undefined
+        ? null
+        : toStringValue(value.resolved_by),
+    created_at: toStringValue(value.created_at ?? value.createdAt),
+    resolved_at:
+      value.resolved_at === null || value.resolved_at === undefined
+        ? null
+        : toStringValue(value.resolved_at)
+  };
+}
+
+function mapAuditExport(value: unknown): AuditExport | null {
+  if (!isRecord(value)) {
+    return null;
+  }
+
+  return {
+    id: toStringValue(value.id),
+    assessment_run_id: toStringValue(value.assessment_run_id ?? value.assessmentRunId),
+    assessment_result_id:
+      value.assessment_result_id === null || value.assessment_result_id === undefined
+        ? null
+        : toStringValue(value.assessment_result_id),
+    valuation_run_id:
+      value.valuation_run_id === null || value.valuation_run_id === undefined
+        ? null
+        : toStringValue(value.valuation_run_id),
+    prediction_ledger_id:
+      value.prediction_ledger_id === null || value.prediction_ledger_id === undefined
+        ? null
+        : toStringValue(value.prediction_ledger_id),
+    model_release_id:
+      value.model_release_id === null || value.model_release_id === undefined
+        ? null
+        : toStringValue(value.model_release_id),
+    status: toStringValue(value.status, 'READY') as AuditExportStatus,
+    manifest_path:
+      value.manifest_path === null || value.manifest_path === undefined
+        ? null
+        : toStringValue(value.manifest_path),
+    manifest_hash:
+      value.manifest_hash === null || value.manifest_hash === undefined
+        ? null
+        : toStringValue(value.manifest_hash),
+    manifest_json: isRecord(value.manifest_json) ? value.manifest_json : {},
+    requested_by: toStringValue(value.requested_by ?? value.requestedBy),
+    created_at: toStringValue(value.created_at ?? value.createdAt)
+  };
+}
+
 function mapComparablePlanningApplication(value: unknown): ComparablePlanningApplication {
   if (!isRecord(value)) {
     throw new Error('Invalid comparable planning application');
@@ -2281,6 +2655,14 @@ function mapPredictionLedger(value: unknown): PredictionLedger | null {
       value.calibration_hash === null || value.calibration_hash === undefined
         ? null
         : toStringValue(value.calibration_hash),
+    model_artifact_hash:
+      value.model_artifact_hash === null || value.model_artifact_hash === undefined
+        ? null
+        : toStringValue(value.model_artifact_hash),
+    validation_artifact_hash:
+      value.validation_artifact_hash === null || value.validation_artifact_hash === undefined
+        ? null
+        : toStringValue(value.validation_artifact_hash),
     response_mode: toStringValue(value.response_mode ?? value.responseMode),
     source_snapshot_ids_json: pickCollection(
       value.source_snapshot_ids_json as ApiCollectionResponse<unknown>
@@ -2290,6 +2672,18 @@ function mapPredictionLedger(value: unknown): PredictionLedger | null {
     ),
     result_payload_hash: toStringValue(value.result_payload_hash ?? value.resultPayloadHash),
     response_json: isRecord(value.response_json) ? value.response_json : {},
+    replay_verification_status: toStringValue(
+      value.replay_verification_status ?? value.replayVerificationStatus,
+      'UNKNOWN'
+    ),
+    replay_verified_at:
+      value.replay_verified_at === null || value.replay_verified_at === undefined
+        ? null
+        : toStringValue(value.replay_verified_at),
+    replay_verification_note:
+      value.replay_verification_note === null || value.replay_verification_note === undefined
+        ? null
+        : toStringValue(value.replay_verification_note),
     created_at: toStringValue(value.created_at ?? value.createdAt)
   };
 }
@@ -2346,6 +2740,8 @@ function mapAssessmentDetail(value: unknown): AssessmentDetail | null {
     feature_snapshot: mapAssessmentFeatureSnapshot(value.feature_snapshot ?? value.featureSnapshot),
     result: mapAssessmentResult(value.result),
     valuation: mapValuationResult(value.valuation),
+    override_summary: mapAssessmentOverrideSummary(value.override_summary ?? value.overrideSummary),
+    visibility: mapVisibilityGate(value.visibility),
     evidence: mapEvidencePack(value.evidence),
     comparable_case_set: mapComparableCaseSet(value.comparable_case_set ?? value.comparableCaseSet),
     prediction_ledger: mapPredictionLedger(value.prediction_ledger ?? value.predictionLedger),
@@ -2390,6 +2786,11 @@ function mapOpportunitySummary(value: unknown): OpportunitySummary {
         : toStringValue(value.hold_reason),
     ranking_reason: toStringValue(value.ranking_reason ?? value.rankingReason),
     hidden_mode_only: Boolean(value.hidden_mode_only ?? value.hiddenModeOnly ?? true),
+    visibility: mapVisibilityGate(value.visibility),
+    display_block_reason:
+      value.display_block_reason === null || value.display_block_reason === undefined
+        ? null
+        : toStringValue(value.display_block_reason),
     eligibility_status:
       value.eligibility_status === null || value.eligibility_status === undefined
         ? null
@@ -2468,7 +2869,36 @@ function mapActiveReleaseScope(value: unknown): ActiveReleaseScope {
       value.activated_by === null || value.activated_by === undefined
         ? null
         : toStringValue(value.activated_by),
-    activated_at: toStringValue(value.activated_at ?? value.activatedAt)
+    activated_at: toStringValue(value.activated_at ?? value.activatedAt),
+    visibility_mode: toStringValue(
+      value.visibility_mode ?? value.visibilityMode,
+      'HIDDEN_ONLY'
+    ) as VisibilityMode,
+    visibility_reason:
+      value.visibility_reason === null || value.visibility_reason === undefined
+        ? null
+        : toStringValue(value.visibility_reason),
+    visible_enabled_by:
+      value.visible_enabled_by === null || value.visible_enabled_by === undefined
+        ? null
+        : toStringValue(value.visible_enabled_by),
+    visible_enabled_at:
+      value.visible_enabled_at === null || value.visible_enabled_at === undefined
+        ? null
+        : toStringValue(value.visible_enabled_at),
+    visibility_updated_by:
+      value.visibility_updated_by === null || value.visibility_updated_by === undefined
+        ? null
+        : toStringValue(value.visibility_updated_by),
+    visibility_updated_at:
+      value.visibility_updated_at === null || value.visibility_updated_at === undefined
+        ? null
+        : toStringValue(value.visibility_updated_at),
+    open_incident_count: toNumberValue(value.open_incident_count ?? value.openIncidentCount) ?? 0,
+    active_incident_reason:
+      value.active_incident_reason === null || value.active_incident_reason === undefined
+        ? null
+        : toStringValue(value.active_incident_reason)
   };
 }
 
@@ -2498,6 +2928,10 @@ function mapModelReleaseSummary(value: unknown): ModelReleaseSummary {
       value.reason_text === null || value.reason_text === undefined
         ? null
         : toStringValue(value.reason_text),
+    active_scope_count: toNumberValue(value.active_scope_count ?? value.activeScopeCount) ?? 0,
+    active_scope_visibility_modes: pickCollection(
+      value.active_scope_visibility_modes as ApiCollectionResponse<unknown>
+    ).map((item) => toStringValue(item) as VisibilityMode),
     activated_by:
       value.activated_by === null || value.activated_by === undefined
         ? null
@@ -3177,11 +3611,12 @@ export async function getAssessments(
 
 export async function getAssessment(
   assessmentId: string,
-  options: { hidden_mode?: boolean } = {}
+  options: { hidden_mode?: boolean; viewer_role?: AppRole } = {}
 ): Promise<{ item: AssessmentDetail | null; apiAvailable: boolean }> {
   const payload = await requestJson(
     `/api/assessments/${encodeURIComponent(assessmentId)}${buildQueryString({
-      hidden_mode: options.hidden_mode ? true : undefined
+      hidden_mode: options.hidden_mode ? true : undefined,
+      viewer_role: options.viewer_role
     })}`
   );
   return {
@@ -3199,7 +3634,9 @@ export async function createAssessment(
       scenario_id: input.scenario_id,
       as_of_date: input.as_of_date,
       requested_by: input.requested_by ?? 'web-ui',
-      hidden_mode: input.hidden_mode ?? false
+      hidden_mode: input.hidden_mode ?? false,
+      viewer_role:
+        input.viewer_role ?? (input.hidden_mode ? 'reviewer' : 'analyst')
     }),
     headers: {
       'Content-Type': 'application/json'
@@ -3214,7 +3651,7 @@ export async function createAssessment(
 }
 
 export async function getOpportunities(
-  query: OpportunitiesQuery = {}
+  query: OpportunitiesQuery & { hidden_mode?: boolean; viewer_role?: AppRole } = {}
 ): Promise<{ items: OpportunitySummary[]; total: number; apiAvailable: boolean }> {
   const payload = await requestJson(`/api/opportunities/${buildQueryString(query)}`);
   if (payload && isRecord(payload)) {
@@ -3236,9 +3673,15 @@ export async function getOpportunities(
 }
 
 export async function getOpportunity(
-  siteId: string
+  siteId: string,
+  options: { hidden_mode?: boolean; viewer_role?: AppRole } = {}
 ): Promise<{ item: OpportunityDetail | null; apiAvailable: boolean }> {
-  const payload = await requestJson(`/api/opportunities/${encodeURIComponent(siteId)}`);
+  const payload = await requestJson(
+    `/api/opportunities/${encodeURIComponent(siteId)}${buildQueryString({
+      hidden_mode: options.hidden_mode ? true : undefined,
+      viewer_role: options.viewer_role
+    })}`
+  );
   return {
     apiAvailable: payload !== null,
     item: payload ? mapOpportunityDetail(payload) : null
@@ -3314,5 +3757,290 @@ export async function reviewGoldSetCase(
   return {
     apiAvailable: payload !== null,
     item: payload ? mapHistoricalLabelCase(payload) : null
+  };
+}
+
+export async function overrideAssessment(
+  assessmentId: string,
+  input: AssessmentOverrideInput
+): Promise<{ item: AssessmentDetail | null; apiAvailable: boolean }> {
+  const payload = await requestJson(`/api/assessments/${encodeURIComponent(assessmentId)}/override`, {
+    body: JSON.stringify({
+      requested_by: input.requested_by ?? 'web-ui',
+      actor_role: input.actor_role,
+      override_type: input.override_type,
+      reason: input.reason,
+      acquisition_basis_gbp: input.acquisition_basis_gbp,
+      acquisition_basis_type: input.acquisition_basis_type,
+      valuation_assumption_set_id: input.valuation_assumption_set_id,
+      review_resolution_note: input.review_resolution_note,
+      resolve_manual_review: input.resolve_manual_review,
+      ranking_suppressed: input.ranking_suppressed,
+      display_block_reason: input.display_block_reason
+    }),
+    headers: {
+      'Content-Type': 'application/json'
+    },
+    method: 'POST'
+  });
+
+  return {
+    apiAvailable: payload !== null,
+    item: payload ? mapAssessmentDetail(payload) : null
+  };
+}
+
+export async function getAssessmentAuditExport(
+  assessmentId: string,
+  options: { requested_by?: string; actor_role?: AppRole } = {}
+): Promise<{ item: AuditExport | null; apiAvailable: boolean }> {
+  const payload = await requestJson(
+    `/api/assessments/${encodeURIComponent(assessmentId)}/audit-export${buildQueryString({
+      requested_by: options.requested_by ?? 'web-ui',
+      actor_role: options.actor_role ?? 'reviewer'
+    })}`
+  );
+  return {
+    apiAvailable: payload !== null,
+    item: payload ? mapAuditExport(payload) : null
+  };
+}
+
+export async function getReviewQueue(): Promise<{ item: ReviewQueueResponse | null; apiAvailable: boolean }> {
+  const payload = await requestJson('/api/admin/review-queue');
+  if (!payload || !isRecord(payload)) {
+    return { item: null, apiAvailable: false };
+  }
+  return {
+    apiAvailable: true,
+    item: {
+      manual_review_cases: pickCollection(payload.manual_review_cases as ApiCollectionResponse<unknown>).map(
+        (item) => ({
+          assessment_id: isRecord(item) ? toStringValue(item.assessment_id) : '',
+          site_id: isRecord(item) ? toStringValue(item.site_id) : '',
+          display_name: isRecord(item) ? toStringValue(item.display_name) : '',
+          review_status: isRecord(item) ? toStringValue(item.review_status) : '',
+          manual_review_required: isRecord(item) ? Boolean(item.manual_review_required) : false,
+          visibility_mode:
+            isRecord(item) && item.visibility_mode !== null && item.visibility_mode !== undefined
+              ? (toStringValue(item.visibility_mode) as VisibilityMode)
+              : null
+        })
+      ),
+      blocked_cases: pickCollection(payload.blocked_cases as ApiCollectionResponse<unknown>).map(
+        (item) => ({
+          assessment_id: isRecord(item) ? toStringValue(item.assessment_id) : '',
+          site_id: isRecord(item) ? toStringValue(item.site_id) : '',
+          display_name: isRecord(item) ? toStringValue(item.display_name) : '',
+          blocked_reason:
+            isRecord(item) && item.blocked_reason !== null && item.blocked_reason !== undefined
+              ? toStringValue(item.blocked_reason)
+              : null,
+          visibility_mode:
+            isRecord(item) && item.visibility_mode !== null && item.visibility_mode !== undefined
+              ? (toStringValue(item.visibility_mode) as VisibilityMode)
+              : null,
+          display_block_reason:
+            isRecord(item) &&
+            item.display_block_reason !== null &&
+            item.display_block_reason !== undefined
+              ? toStringValue(item.display_block_reason)
+              : null
+        })
+      ),
+      recent_cases: pickCollection(payload.recent_cases as ApiCollectionResponse<unknown>).map((item) => ({
+        assessment_id: isRecord(item) ? toStringValue(item.assessment_id) : '',
+        display_name: isRecord(item) ? toStringValue(item.display_name) : '',
+        updated_at: isRecord(item) ? toStringValue(item.updated_at) : '',
+        estimate_status: isRecord(item) ? toStringValue(item.estimate_status) : '',
+        manual_review_required: isRecord(item) ? Boolean(item.manual_review_required) : false
+      })),
+      failing_boroughs: pickCollection(payload.failing_boroughs as ApiCollectionResponse<unknown>).map(
+        (item) => (isRecord(item) ? item : {})
+      )
+    }
+  };
+}
+
+export async function getDataHealth(): Promise<{ item: DataHealthResponse | null; apiAvailable: boolean }> {
+  const payload = await requestJson('/api/health/data');
+  if (!payload || !isRecord(payload)) {
+    return { item: null, apiAvailable: false };
+  }
+  return {
+    item: {
+      status: toStringValue(payload.status, 'unknown'),
+      connector_failure_rate: toNumberValue(payload.connector_failure_rate),
+      listing_parse_success_rate: toNumberValue(payload.listing_parse_success_rate),
+      geometry_confidence_distribution: isRecord(payload.geometry_confidence_distribution)
+        ? Object.fromEntries(
+            Object.entries(payload.geometry_confidence_distribution).map(([key, value]) => [
+              key,
+              toNumberValue(value) ?? 0
+            ])
+          )
+        : {},
+      extant_permission_unresolved_rate: toNumberValue(payload.extant_permission_unresolved_rate),
+      borough_baseline_coverage: isRecord(payload.borough_baseline_coverage)
+        ? payload.borough_baseline_coverage
+        : {},
+      coverage: pickCollection(payload.coverage as ApiCollectionResponse<unknown>).map((item) =>
+        isRecord(item) ? item : {}
+      ),
+      baseline_packs: pickCollection(payload.baseline_packs as ApiCollectionResponse<unknown>).map(
+        (item) => (isRecord(item) ? item : {})
+      ),
+      valuation_metrics: {
+        total: toNumberValue(
+          isRecord(payload.valuation_metrics) ? payload.valuation_metrics.total : null
+        ) ?? 0,
+        uplift_null_rate: toNumberValue(
+          isRecord(payload.valuation_metrics) ? payload.valuation_metrics.uplift_null_rate : null
+        ),
+        asking_price_missing_rate: toNumberValue(
+          isRecord(payload.valuation_metrics)
+            ? payload.valuation_metrics.asking_price_missing_rate
+            : null
+        ),
+        valuation_quality_distribution:
+          isRecord(payload.valuation_metrics) &&
+          isRecord(payload.valuation_metrics.valuation_quality_distribution)
+            ? Object.fromEntries(
+                Object.entries(payload.valuation_metrics.valuation_quality_distribution).map(
+                  ([key, value]) => [key, toNumberValue(value) ?? 0]
+                )
+              )
+            : {}
+      }
+    },
+    apiAvailable: true
+  };
+}
+
+export async function getModelHealth(): Promise<{ item: ModelHealthResponse | null; apiAvailable: boolean }> {
+  const payload = await requestJson('/api/health/model');
+  if (!payload || !isRecord(payload)) {
+    return { item: null, apiAvailable: false };
+  }
+  return {
+    item: {
+      status: toStringValue(payload.status, 'unknown'),
+      calibration_by_probability_band: pickCollection(
+        payload.calibration_by_probability_band as ApiCollectionResponse<unknown>
+      ).map((item) => (isRecord(item) ? item : {})),
+      brier_score: toNumberValue(payload.brier_score),
+      log_loss: toNumberValue(payload.log_loss),
+      manual_review_agreement_by_band: pickCollection(
+        payload.manual_review_agreement_by_band as ApiCollectionResponse<unknown>
+      ).map((item) => (isRecord(item) ? item : {})),
+      false_positive_reviewer_rate: toNumberValue(payload.false_positive_reviewer_rate),
+      abstain_rate: toNumberValue(payload.abstain_rate),
+      ood_rate: toNumberValue(payload.ood_rate),
+      template_level_performance: pickCollection(
+        payload.template_level_performance as ApiCollectionResponse<unknown>
+      ).map((item) => (isRecord(item) ? item : {})),
+      economic_health: isRecord(payload.economic_health) ? payload.economic_health : {},
+      releases: pickCollection(payload.releases as ApiCollectionResponse<unknown>).map((item) =>
+        isRecord(item) ? item : {}
+      ),
+      active_scopes: pickCollection(payload.active_scopes as ApiCollectionResponse<unknown>).map(
+        (item) => (isRecord(item) ? item : {})
+      )
+    },
+    apiAvailable: true
+  };
+}
+
+export async function setReleaseScopeVisibility(
+  scopeKey: string,
+  input: ReleaseScopeVisibilityInput
+): Promise<{ items: ModelReleaseSummary[]; apiAvailable: boolean }> {
+  const payload = await requestJson(
+    `/api/admin/release-scopes/${encodeURIComponent(scopeKey)}/visibility`,
+    {
+      body: JSON.stringify({
+        requested_by: input.requested_by ?? 'web-ui',
+        actor_role: input.actor_role,
+        visibility_mode: input.visibility_mode,
+        reason: input.reason
+      }),
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      method: 'POST'
+    }
+  );
+
+  const items = payload && isRecord(payload)
+    ? pickCollection(payload.items as ApiCollectionResponse<unknown>).map(mapModelReleaseSummary)
+    : [];
+  return {
+    items,
+    apiAvailable: payload !== null
+  };
+}
+
+export async function manageReleaseScopeIncident(
+  scopeKey: string,
+  input: IncidentActionInput
+): Promise<{ item: IncidentRecord | null; apiAvailable: boolean }> {
+  const payload = await requestJson(
+    `/api/admin/release-scopes/${encodeURIComponent(scopeKey)}/incident`,
+    {
+      body: JSON.stringify({
+        requested_by: input.requested_by ?? 'web-ui',
+        actor_role: input.actor_role,
+        action: input.action,
+        reason: input.reason
+      }),
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      method: 'POST'
+    }
+  );
+  return {
+    item: payload ? mapIncidentRecord(payload) : null,
+    apiAvailable: payload !== null
+  };
+}
+
+export async function activateModelRelease(
+  releaseId: string,
+  options: { requested_by?: string; actor_role?: AppRole } = {}
+): Promise<{ item: ModelReleaseDetail | null; apiAvailable: boolean }> {
+  const payload = await requestJson(`/api/admin/model-releases/${encodeURIComponent(releaseId)}/activate`, {
+    body: JSON.stringify({
+      requested_by: options.requested_by ?? 'web-ui',
+      actor_role: options.actor_role ?? 'admin'
+    }),
+    headers: {
+      'Content-Type': 'application/json'
+    },
+    method: 'POST'
+  });
+  return {
+    item: payload ? mapModelReleaseDetail(payload) : null,
+    apiAvailable: payload !== null
+  };
+}
+
+export async function retireModelRelease(
+  releaseId: string,
+  options: { requested_by?: string; actor_role?: AppRole } = {}
+): Promise<{ item: ModelReleaseDetail | null; apiAvailable: boolean }> {
+  const payload = await requestJson(`/api/admin/model-releases/${encodeURIComponent(releaseId)}/retire`, {
+    body: JSON.stringify({
+      requested_by: options.requested_by ?? 'web-ui',
+      actor_role: options.actor_role ?? 'admin'
+    }),
+    headers: {
+      'Content-Type': 'application/json'
+    },
+    method: 'POST'
+  });
+  return {
+    item: payload ? mapModelReleaseDetail(payload) : null,
+    apiAvailable: payload !== null
   };
 }

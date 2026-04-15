@@ -7,9 +7,9 @@ export default function HomePage() {
   return (
     <div className="page-stack">
       <PageHeader
-        eyebrow="Phase 7A"
+        eyebrow="Phase 8A"
         title="London land intelligence control room"
-        summary="Listings, sites, planning context, scenarios, frozen assessments, hidden-only scoring, and planning-first valuation/ranking are now live for internal use. The shell stays explicit about what is operational versus what remains deferred."
+        summary="Listings, sites, planning context, scenarios, frozen assessments, hidden-only scoring, planning-first valuation/ranking, and the Phase 8A control plane are now live for internal use. The shell stays explicit about what is operational versus what remains deferred."
         actions={
           <div className="page-actions__group">
             <Link className="button button--solid" href="/listings">
@@ -49,12 +49,12 @@ export default function HomePage() {
 
       <Panel
         eyebrow="Spec guardrails"
-        title="What Phase 7A deliberately does not do"
-        note="Hidden logistic scoring, valuation, and ranking are live internally, but visible rollout, overrides, kill switches, and broader dashboards remain deferred."
+        title="What Phase 8A deliberately does not do"
+        note="The control plane now exists, but broader visible rollout, real pilot signoff, and production incident operations still remain operational decisions rather than a code claim."
       >
         <ul className="checklist">
           <li>No standard-analyst visible probability rollout.</li>
-          <li>No Phase 8 overrides control plane, kill switches, or dashboard rollout.</li>
+          <li>No claim that current fixture-scale local/dev data is honestly visible-pilot ready.</li>
           <li>No parcel-only scoring or valuation path.</li>
           <li>No future-leaking feature construction or forbidden label shortcuts.</li>
           <li>No unapproved public-page connector execution.</li>

@@ -2,16 +2,16 @@ import Link from 'next/link';
 
 import { GoldSetReviewPanel } from '@/components/gold-set-review-panel';
 import { Badge, PageHeader, Panel, StatCard } from '@/components/ui';
-import { getGoldSetCase, getGoldSetCases } from '@/lib/landintel-api';
+import { getGoldSetCase, getGoldSetCases, getReviewQueue } from '@/lib/landintel-api';
 
 export const dynamic = 'force-dynamic';
 
 function toneForStatus(value: string): 'neutral' | 'accent' | 'success' | 'warning' | 'danger' {
-  if (value === 'CONFIRMED') {
+  if (value === 'CONFIRMED' || value === 'COMPLETED') {
     return 'success';
   }
 
-  if (value === 'EXCLUDED') {
+  if (value === 'EXCLUDED' || value === 'DISABLED') {
     return 'danger';
   }
 
@@ -24,6 +24,7 @@ export default async function ReviewQueuePage({
   searchParams?: Record<string, string | string[] | undefined>;
 }) {
   const selectedCaseId = typeof searchParams?.caseId === 'string' ? searchParams.caseId : '';
+  const queue = await getReviewQueue();
   const result = await getGoldSetCases();
   const items = result.items;
   const selectedSummary =
@@ -33,15 +34,16 @@ export default async function ReviewQueuePage({
     : { item: null, apiAvailable: result.apiAvailable };
 
   const pendingCount = items.filter((item) => item.review_status === 'PENDING').length;
-  const confirmedCount = items.filter((item) => item.review_status === 'CONFIRMED').length;
-  const excludedCount = items.filter((item) => item.review_status === 'EXCLUDED').length;
+  const manualReviewCount = queue.item?.manual_review_cases.length ?? 0;
+  const blockedCount = queue.item?.blocked_cases.length ?? 0;
+  const failingBoroughCount = queue.item?.failing_boroughs.length ?? 0;
 
   return (
     <div className="page-stack">
       <PageHeader
-        eyebrow="Phase 5A"
-        title="Gold-set review queue"
-        summary="Historical label adjudication stays lightweight here: inspect the normalized label inputs, confirm or exclude cases, and record policy and geometry notes with provenance."
+        eyebrow="Phase 8A"
+        title="Review and control queue"
+        summary="Phase 8A brings the operational review queue together: manual-review cases, blocked/incident-affected assessments, failing borough/source coverage, and the existing gold-set review workflow."
         actions={
           <div className="page-actions__group">
             <Link className="button button--ghost" href="/assessments">
@@ -55,14 +57,91 @@ export default async function ReviewQueuePage({
       />
 
       <section className="stat-grid">
-        <StatCard tone="warning" label="Pending" value={String(pendingCount)} detail="Cases needing reviewer attention" />
-        <StatCard tone="success" label="Confirmed" value={String(confirmedCount)} detail="Historical labels signed off by a reviewer" />
-        <StatCard tone="danger" label="Excluded" value={String(excludedCount)} detail="Censored or excluded cases kept with explicit reasons" />
-        <StatCard tone="accent" label="API" value={result.apiAvailable ? 'Live' : 'Offline'} detail="Queue reads from the live admin endpoints when available" />
+        <StatCard tone="warning" label="Manual review" value={String(manualReviewCount)} detail="Assessment cases that still need reviewer attention" />
+        <StatCard tone="danger" label="Blocked" value={String(blockedCount)} detail="Cases affected by incidents, replay failures, or visibility blocking" />
+        <StatCard tone="accent" label="Failing boroughs" value={String(failingBoroughCount)} detail="Coverage or freshness gaps that need operational attention" />
+        <StatCard tone="warning" label="Gold-set pending" value={String(pendingCount)} detail="Historical label cases still waiting for adjudication" />
       </section>
 
       <div className="split-grid">
-        <Panel eyebrow="Queue" title="Historical cases">
+        <Panel eyebrow="Operational queue" title="Manual-review and blocked assessments">
+          {queue.item ? (
+            <div className="card-stack">
+              {queue.item.manual_review_cases.map((item) => (
+                <article className="mini-card" key={`manual-${item.assessment_id}`}>
+                  <div className="mini-card__top">
+                    <div>
+                      <div className="table-primary">
+                        <Link href={`/assessments/${item.assessment_id}?mode=hidden&role=reviewer`}>
+                          {item.display_name}
+                        </Link>
+                      </div>
+                      <div className="table-secondary">{item.review_status}</div>
+                    </div>
+                    <Badge tone={toneForStatus(item.review_status)}>{item.visibility_mode ?? 'HIDDEN_ONLY'}</Badge>
+                  </div>
+                  <div className="table-secondary">
+                    {item.manual_review_required ? 'Manual review required.' : 'Display-block override or visibility control is active.'}
+                  </div>
+                </article>
+              ))}
+              {queue.item.blocked_cases.map((item) => (
+                <article className="mini-card" key={`blocked-${item.assessment_id}`}>
+                  <div className="mini-card__top">
+                    <div>
+                      <div className="table-primary">
+                        <Link href={`/assessments/${item.assessment_id}?mode=hidden&role=reviewer`}>
+                          {item.display_name}
+                        </Link>
+                      </div>
+                      <div className="table-secondary">{item.visibility_mode ?? 'Unknown visibility state'}</div>
+                    </div>
+                    <Badge tone="danger">Blocked</Badge>
+                  </div>
+                  <div className="table-secondary">
+                    {item.blocked_reason ?? item.display_block_reason ?? 'Blocked by safety controls.'}
+                  </div>
+                </article>
+              ))}
+              {(queue.item.manual_review_cases.length === 0 && queue.item.blocked_cases.length === 0) ? (
+                <p className="empty-note">No assessment cases are currently queued for manual review or blocking follow-up.</p>
+              ) : null}
+            </div>
+          ) : (
+            <p className="empty-note">Review queue API is unavailable.</p>
+          )}
+        </Panel>
+
+        <Panel eyebrow="Operational queue" title="Coverage and freshness failures">
+          {queue.item && queue.item.failing_boroughs.length > 0 ? (
+            <div className="card-stack">
+              {queue.item.failing_boroughs.map((item, index) => (
+                <article className="mini-card" key={`borough-${index}`}>
+                  <div className="mini-card__top">
+                    <div>
+                      <div className="table-primary">
+                        {String(item.borough_id ?? 'unknown')} · {String(item.source_family ?? 'unknown')}
+                      </div>
+                      <div className="table-secondary">
+                        {String(item.coverage_status ?? 'UNKNOWN')} · {String(item.freshness_status ?? 'UNKNOWN')}
+                      </div>
+                    </div>
+                    <Badge tone="warning">Gap</Badge>
+                  </div>
+                  <div className="table-secondary">
+                    {String(item.gap_reason ?? item.coverage_note ?? 'No recorded gap note')}
+                  </div>
+                </article>
+              ))}
+            </div>
+          ) : (
+            <p className="empty-note">No failing borough/source coverage rows are currently flagged.</p>
+          )}
+        </Panel>
+      </div>
+
+      <div className="split-grid">
+        <Panel eyebrow="Gold-set queue" title="Historical cases">
           {items.length === 0 ? (
             <p className="empty-note">No historical label cases are available yet.</p>
           ) : (

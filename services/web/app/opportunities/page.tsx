@@ -98,9 +98,9 @@ export default async function OpportunitiesPage({
   return (
     <div className="page-stack">
       <PageHeader
-        eyebrow="Phase 7A"
+        eyebrow="Phase 8A"
         title="Internal opportunity ranking"
-        summary="Ranking stays planning-first: hidden planning band first, then expected uplift, valuation quality, urgency, asking-price presence, and same-borough support. Hidden probability remains internal-only."
+        summary="Ranking stays planning-first: hidden planning band first, then expected uplift, valuation quality, urgency, asking-price presence, and same-borough support. Phase 8A visibility controls can block publication without mutating the frozen result."
         actions={
           <div className="page-actions__group">
             <Link className="button button--ghost" href="/assessments">

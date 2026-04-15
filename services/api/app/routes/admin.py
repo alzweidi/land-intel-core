@@ -1,11 +1,14 @@
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
-from landintel.domain.enums import GoldSetReviewStatus
+from landintel.domain.enums import AppRoleName, GoldSetReviewStatus
+from landintel.domain.models import AssessmentRun
 from landintel.domain.schemas import (
     HistoricalLabelCaseRead,
     HistoricalLabelListResponse,
     HistoricalLabelReviewRequest,
+    IncidentActionRequest,
+    IncidentRecordRead,
     JobRunRead,
     ListingSourceRead,
     ModelReleaseActivateRequest,
@@ -14,6 +17,7 @@ from landintel.domain.schemas import (
     ModelReleaseRebuildRequest,
     ModelReleaseRetireRequest,
     PlaceholderResponse,
+    ReleaseScopeVisibilityRequest,
     SourceSnapshotRead,
 )
 from landintel.jobs.service import enqueue_gold_set_refresh_job, list_jobs
@@ -23,12 +27,19 @@ from landintel.planning.historical_labels import (
     rebuild_historical_case_labels,
     review_historical_label_case,
 )
+from landintel.review.visibility import (
+    ReviewAccessError,
+    open_scope_incident,
+    resolve_scope_incident,
+    set_scope_visibility,
+)
 from landintel.scoring.release import (
     activate_model_release,
     build_hidden_model_releases,
     retire_model_release,
 )
 from landintel.services.assessments_readback import (
+    get_assessment,
     get_gold_set_case_read,
     list_gold_set_cases_read,
 )
@@ -42,6 +53,7 @@ from landintel.services.model_releases_readback import (
     list_model_releases_read,
 )
 from landintel.storage.base import StorageAdapter
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from ..dependencies import get_db_session, get_storage_adapter
@@ -65,6 +77,99 @@ def get_jobs(
     session: Session = Depends(get_db_session),
 ) -> list[JobRunRead]:
     return [JobRunRead.model_validate(job) for job in list_jobs(session=session, limit=limit)]
+
+
+@router.get("/admin/review-queue")
+def get_review_queue(
+    limit: int = Query(default=25, ge=1, le=100),
+    session: Session = Depends(get_db_session),
+) -> dict[str, object]:
+    run_ids = session.execute(
+        select(AssessmentRun.id).order_by(AssessmentRun.updated_at.desc()).limit(limit)
+    ).scalars().all()
+    items = [
+        get_assessment(
+            session=session,
+            assessment_id=run_id,
+            include_hidden=False,
+            viewer_role=AppRoleName.REVIEWER,
+        )
+        for run_id in run_ids
+    ]
+    details = [item for item in items if item is not None]
+    data_health = build_data_health(session)
+    failing_boroughs = [
+        row
+        for row in list(data_health.get("coverage") or [])
+        if row.get("coverage_status") != "COMPLETE" or row.get("freshness_status") != "FRESH"
+    ]
+    manual_review_cases = [
+        {
+            "assessment_id": str(item.id),
+            "site_id": str(item.site_id),
+            "display_name": (
+                item.site_summary.display_name if item.site_summary else str(item.site_id)
+            ),
+            "review_status": item.review_status.value,
+            "manual_review_required": item.manual_review_required,
+            "visibility_mode": (
+                None if item.visibility is None else item.visibility.visibility_mode.value
+            ),
+        }
+        for item in details
+        if item.manual_review_required
+        or (
+            item.override_summary is not None
+            and item.override_summary.display_block_reason is not None
+        )
+    ]
+    blocked_cases = [
+        {
+            "assessment_id": str(item.id),
+            "site_id": str(item.site_id),
+            "display_name": (
+                item.site_summary.display_name if item.site_summary else str(item.site_id)
+            ),
+            "blocked_reason": (
+                None if item.visibility is None else item.visibility.blocked_reason_text
+            ),
+            "visibility_mode": (
+                None if item.visibility is None else item.visibility.visibility_mode.value
+            ),
+            "display_block_reason": (
+                None
+                if item.override_summary is None
+                else item.override_summary.display_block_reason
+            ),
+        }
+        for item in details
+        if (
+            item.visibility is not None
+            and (item.visibility.blocked or item.visibility.blocked_reason_codes)
+        )
+        or (
+            item.override_summary is not None
+            and item.override_summary.display_block_reason is not None
+        )
+    ]
+    recent_cases = [
+        {
+            "assessment_id": str(item.id),
+            "display_name": (
+                item.site_summary.display_name if item.site_summary else str(item.site_id)
+            ),
+            "updated_at": item.updated_at.isoformat(),
+            "estimate_status": item.estimate_status.value,
+            "manual_review_required": item.manual_review_required,
+        }
+        for item in details
+    ]
+    return {
+        "manual_review_cases": manual_review_cases,
+        "blocked_cases": blocked_cases,
+        "recent_cases": recent_cases,
+        "failing_boroughs": failing_boroughs,
+    }
 
 
 @router.get("/admin/source-snapshots", response_model=list[SourceSnapshotRead])
@@ -100,14 +205,12 @@ def get_listing_sources(
 def get_phase_status() -> PlaceholderResponse:
     return PlaceholderResponse(
         detail=(
-            "Phase 7A hidden scoring, valuation, and planning-first ranking are active for "
-            "internal use. Historical labels, frozen assessments, release registry, hidden-only "
-            "probabilities, immutable valuation runs, and replay-safe ledger rows are in scope. "
-            "Visible rollout, overrides control plane, kill switches, and broader dashboards "
-            "remain deferred."
+            "Phase 8A safety controls are active. Hidden scoring remains the default, visible "
+            "probability stays off unless a scope is explicitly enabled, and override, incident, "
+            "audit-export, and health-control surfaces are now in scope for internal operations."
         ),
         surface="admin.phase-status",
-        spec_phase="Phase 7A",
+        spec_phase="Phase 8A",
     )
 
 
@@ -232,13 +335,15 @@ def activate_hidden_release(
     session: Session = Depends(get_db_session),
 ) -> ModelReleaseDetailRead:
     try:
+        if request.actor_role is not None and request.actor_role != AppRoleName.ADMIN:
+            raise ReviewAccessError("Only admins can activate model releases.")
         activate_model_release(
             session=session,
             release_id=release_id,
             requested_by=request.requested_by or "api-admin",
         )
         session.commit()
-    except ValueError as exc:
+    except (ReviewAccessError, ValueError) as exc:
         session.rollback()
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
@@ -263,13 +368,15 @@ def retire_hidden_release(
     session: Session = Depends(get_db_session),
 ) -> ModelReleaseDetailRead:
     try:
+        if request.actor_role is not None and request.actor_role != AppRoleName.ADMIN:
+            raise ReviewAccessError("Only admins can retire model releases.")
         retire_model_release(
             session=session,
             release_id=release_id,
             requested_by=request.requested_by or "api-admin",
         )
         session.commit()
-    except ValueError as exc:
+    except (ReviewAccessError, ValueError) as exc:
         session.rollback()
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
@@ -282,6 +389,89 @@ def retire_hidden_release(
             detail={"message": "Model release not found.", "release_id": str(release_id)},
         )
     return detail
+
+
+@router.post(
+    "/admin/release-scopes/{scope_key}/visibility",
+    response_model=ModelReleaseListResponse,
+)
+def update_release_scope_visibility(
+    scope_key: str,
+    request: ReleaseScopeVisibilityRequest,
+    session: Session = Depends(get_db_session),
+) -> ModelReleaseListResponse:
+    try:
+        set_scope_visibility(
+            session=session,
+            scope_key=scope_key,
+            visibility_mode=request.visibility_mode,
+            requested_by=request.requested_by or "api-admin",
+            actor_role=request.actor_role,
+            reason=request.reason,
+        )
+        session.commit()
+    except ReviewAccessError as exc:
+        session.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=str(exc),
+        ) from exc
+    return list_model_releases_read(session=session)
+
+
+@router.post(
+    "/admin/release-scopes/{scope_key}/incident",
+    response_model=IncidentRecordRead,
+)
+def manage_release_scope_incident(
+    scope_key: str,
+    request: IncidentActionRequest,
+    session: Session = Depends(get_db_session),
+) -> IncidentRecordRead:
+    try:
+        normalized = request.action.strip().upper()
+        if normalized == "OPEN":
+            incident = open_scope_incident(
+                session=session,
+                scope_key=scope_key,
+                requested_by=request.requested_by or "api-admin",
+                actor_role=request.actor_role,
+                reason=request.reason,
+            )
+        elif normalized in {"RESOLVE", "ROLLBACK"}:
+            incident = resolve_scope_incident(
+                session=session,
+                scope_key=scope_key,
+                requested_by=request.requested_by or "api-admin",
+                actor_role=request.actor_role,
+                reason=request.reason,
+                rollback_visibility=normalized == "ROLLBACK",
+            )
+        else:
+            raise ReviewAccessError(f"Unsupported incident action '{request.action}'.")
+        session.commit()
+    except ReviewAccessError as exc:
+        session.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=str(exc),
+        ) from exc
+
+    return IncidentRecordRead(
+        id=incident.id,
+        scope_key=incident.scope_key,
+        template_key=incident.template_key,
+        borough_id=incident.borough_id,
+        incident_type=incident.incident_type,
+        status=incident.status,
+        reason=incident.reason,
+        previous_visibility_mode=incident.previous_visibility_mode,
+        applied_visibility_mode=incident.applied_visibility_mode,
+        created_by=incident.created_by,
+        resolved_by=incident.resolved_by,
+        created_at=incident.created_at,
+        resolved_at=incident.resolved_at,
+    )
 
 
 def _ensure_historical_labels(*, session: Session) -> None:

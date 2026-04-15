@@ -23,7 +23,10 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from landintel.db.base import Base
 from landintel.domain.enums import (
     AppRoleName,
+    AssessmentOverrideStatus,
+    AssessmentOverrideType,
     AssessmentRunState,
+    AuditExportStatus,
     BaselinePackStatus,
     CalibrationMethod,
     ComparableOutcome,
@@ -41,6 +44,8 @@ from landintel.domain.enums import (
     GoldSetReviewStatus,
     HistoricalLabelClass,
     HistoricalLabelDecision,
+    IncidentStatus,
+    IncidentType,
     JobStatus,
     JobType,
     ListingClusterStatus,
@@ -63,6 +68,7 @@ from landintel.domain.enums import (
     ValuationQuality,
     ValuationRunState,
     VerifiedStatus,
+    VisibilityMode,
 )
 
 
@@ -1458,6 +1464,8 @@ class ModelRelease(Base):
     prediction_ledgers: Mapped[list["PredictionLedger"]] = relationship(
         back_populates="model_release"
     )
+    incidents: Mapped[list["IncidentRecord"]] = relationship(back_populates="model_release")
+    audit_exports: Mapped[list["AuditExport"]] = relationship(back_populates="model_release")
 
 
 class ActiveReleaseScope(Base):
@@ -1485,6 +1493,16 @@ class ActiveReleaseScope(Base):
         default=utc_now,
         server_default=func.now(),
     )
+    visibility_mode: Mapped[VisibilityMode] = mapped_column(
+        Enum(VisibilityMode, name="visibility_mode"),
+        nullable=False,
+        default=VisibilityMode.HIDDEN_ONLY,
+    )
+    visibility_reason: Mapped[str | None] = mapped_column(Text)
+    visible_enabled_by: Mapped[str | None] = mapped_column(String(255))
+    visible_enabled_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    visibility_updated_by: Mapped[str | None] = mapped_column(String(255))
+    visibility_updated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         nullable=False,
@@ -1500,6 +1518,11 @@ class ActiveReleaseScope(Base):
     )
 
     model_release: Mapped[ModelRelease] = relationship(back_populates="active_scopes")
+    incidents: Mapped[list["IncidentRecord"]] = relationship(
+        back_populates="active_release_scope",
+        cascade="all, delete-orphan",
+        order_by="IncidentRecord.created_at.desc()",
+    )
 
 
 class AssessmentRun(Base):
@@ -1568,6 +1591,16 @@ class AssessmentRun(Base):
         back_populates="assessment_run",
         cascade="all, delete-orphan",
         uselist=False,
+    )
+    overrides: Mapped[list["AssessmentOverride"]] = relationship(
+        back_populates="assessment_run",
+        cascade="all, delete-orphan",
+        order_by="AssessmentOverride.created_at.desc()",
+    )
+    audit_exports: Mapped[list["AuditExport"]] = relationship(
+        back_populates="assessment_run",
+        cascade="all, delete-orphan",
+        order_by="AuditExport.created_at.desc()",
     )
     valuation_runs: Mapped[list["ValuationRun"]] = relationship(
         back_populates="assessment_run",
@@ -1663,6 +1696,10 @@ class AssessmentResult(Base):
 
     assessment_run: Mapped[AssessmentRun] = relationship(back_populates="result")
     model_release: Mapped[ModelRelease | None] = relationship(back_populates="assessment_results")
+    overrides: Mapped[list["AssessmentOverride"]] = relationship(
+        back_populates="assessment_result",
+        order_by="AssessmentOverride.created_at.desc()",
+    )
 
 
 class ComparableCaseSet(Base):
@@ -1791,6 +1828,8 @@ class PredictionLedger(Base):
     )
     release_scope_key: Mapped[str | None] = mapped_column(String(255))
     calibration_hash: Mapped[str | None] = mapped_column(String(64))
+    model_artifact_hash: Mapped[str | None] = mapped_column(String(64))
+    validation_artifact_hash: Mapped[str | None] = mapped_column(String(64))
     valuation_run_id: Mapped[uuid.UUID | None] = mapped_column(
         Uuid,
         ForeignKey("valuation_run.id", ondelete="SET NULL"),
@@ -1808,6 +1847,13 @@ class PredictionLedger(Base):
     )
     result_payload_hash: Mapped[str] = mapped_column(String(64), nullable=False)
     response_json: Mapped[dict[str, object]] = mapped_column(JSON, nullable=False, default=dict)
+    replay_verification_status: Mapped[str] = mapped_column(
+        String(32),
+        nullable=False,
+        default="VERIFIED",
+    )
+    replay_verified_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    replay_verification_note: Mapped[str | None] = mapped_column(Text)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         nullable=False,
@@ -1818,6 +1864,174 @@ class PredictionLedger(Base):
     assessment_run: Mapped[AssessmentRun] = relationship(back_populates="prediction_ledger")
     model_release: Mapped[ModelRelease | None] = relationship(back_populates="prediction_ledgers")
     valuation_run: Mapped["ValuationRun | None"] = relationship()
+    audit_exports: Mapped[list["AuditExport"]] = relationship(
+        back_populates="prediction_ledger",
+        order_by="AuditExport.created_at.desc()",
+    )
+
+
+class AssessmentOverride(Base):
+    __tablename__ = "assessment_override"
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
+    assessment_run_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid,
+        ForeignKey("assessment_run.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    assessment_result_id: Mapped[uuid.UUID | None] = mapped_column(
+        Uuid,
+        ForeignKey("assessment_result.id", ondelete="SET NULL"),
+    )
+    valuation_run_id: Mapped[uuid.UUID | None] = mapped_column(
+        Uuid,
+        ForeignKey("valuation_run.id", ondelete="SET NULL"),
+    )
+    override_type: Mapped[AssessmentOverrideType] = mapped_column(
+        Enum(AssessmentOverrideType, name="assessment_override_type"),
+        nullable=False,
+    )
+    status: Mapped[AssessmentOverrideStatus] = mapped_column(
+        Enum(AssessmentOverrideStatus, name="assessment_override_status"),
+        nullable=False,
+        default=AssessmentOverrideStatus.ACTIVE,
+    )
+    actor_name: Mapped[str] = mapped_column(String(255), nullable=False)
+    actor_role: Mapped[AppRoleName] = mapped_column(
+        Enum(AppRoleName, name="app_role_name", create_type=False),
+        nullable=False,
+    )
+    reason: Mapped[str] = mapped_column(Text, nullable=False)
+    override_json: Mapped[dict[str, object]] = mapped_column(JSON, nullable=False, default=dict)
+    supersedes_id: Mapped[uuid.UUID | None] = mapped_column(
+        Uuid,
+        ForeignKey("assessment_override.id", ondelete="SET NULL"),
+    )
+    resolved_by: Mapped[str | None] = mapped_column(String(255))
+    resolved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        default=utc_now,
+        server_default=func.now(),
+    )
+
+    assessment_run: Mapped[AssessmentRun] = relationship(back_populates="overrides")
+    assessment_result: Mapped[AssessmentResult | None] = relationship(back_populates="overrides")
+    valuation_run: Mapped["ValuationRun | None"] = relationship(back_populates="overrides")
+    supersedes: Mapped["AssessmentOverride | None"] = relationship(
+        remote_side="AssessmentOverride.id",
+        back_populates="superseded_by",
+    )
+    superseded_by: Mapped[list["AssessmentOverride"]] = relationship(
+        back_populates="supersedes"
+    )
+
+
+class IncidentRecord(Base):
+    __tablename__ = "incident_record"
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
+    active_release_scope_id: Mapped[uuid.UUID | None] = mapped_column(
+        Uuid,
+        ForeignKey("active_release_scope.id", ondelete="SET NULL"),
+    )
+    model_release_id: Mapped[uuid.UUID | None] = mapped_column(
+        Uuid,
+        ForeignKey("model_release.id", ondelete="SET NULL"),
+    )
+    scope_key: Mapped[str] = mapped_column(String(255), nullable=False)
+    template_key: Mapped[str] = mapped_column(String(100), nullable=False)
+    borough_id: Mapped[str | None] = mapped_column(String(100))
+    incident_type: Mapped[IncidentType] = mapped_column(
+        Enum(IncidentType, name="incident_type"),
+        nullable=False,
+    )
+    status: Mapped[IncidentStatus] = mapped_column(
+        Enum(IncidentStatus, name="incident_status"),
+        nullable=False,
+        default=IncidentStatus.OPEN,
+    )
+    reason: Mapped[str] = mapped_column(Text, nullable=False)
+    previous_visibility_mode: Mapped[VisibilityMode | None] = mapped_column(
+        Enum(VisibilityMode, name="visibility_mode", create_type=False),
+    )
+    applied_visibility_mode: Mapped[VisibilityMode] = mapped_column(
+        Enum(VisibilityMode, name="visibility_mode", create_type=False),
+        nullable=False,
+    )
+    supersedes_id: Mapped[uuid.UUID | None] = mapped_column(
+        Uuid,
+        ForeignKey("incident_record.id", ondelete="SET NULL"),
+    )
+    created_by: Mapped[str] = mapped_column(String(255), nullable=False)
+    resolved_by: Mapped[str | None] = mapped_column(String(255))
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        default=utc_now,
+        server_default=func.now(),
+    )
+    resolved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+    active_release_scope: Mapped[ActiveReleaseScope | None] = relationship(
+        back_populates="incidents"
+    )
+    model_release: Mapped[ModelRelease | None] = relationship(back_populates="incidents")
+    supersedes: Mapped["IncidentRecord | None"] = relationship(
+        remote_side="IncidentRecord.id",
+        back_populates="superseded_by",
+    )
+    superseded_by: Mapped[list["IncidentRecord"]] = relationship(back_populates="supersedes")
+
+
+class AuditExport(Base):
+    __tablename__ = "audit_export"
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
+    assessment_run_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid,
+        ForeignKey("assessment_run.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    assessment_result_id: Mapped[uuid.UUID | None] = mapped_column(
+        Uuid,
+        ForeignKey("assessment_result.id", ondelete="SET NULL"),
+    )
+    valuation_run_id: Mapped[uuid.UUID | None] = mapped_column(
+        Uuid,
+        ForeignKey("valuation_run.id", ondelete="SET NULL"),
+    )
+    prediction_ledger_id: Mapped[uuid.UUID | None] = mapped_column(
+        Uuid,
+        ForeignKey("prediction_ledger.id", ondelete="SET NULL"),
+    )
+    model_release_id: Mapped[uuid.UUID | None] = mapped_column(
+        Uuid,
+        ForeignKey("model_release.id", ondelete="SET NULL"),
+    )
+    status: Mapped[AuditExportStatus] = mapped_column(
+        Enum(AuditExportStatus, name="audit_export_status"),
+        nullable=False,
+        default=AuditExportStatus.READY,
+    )
+    manifest_path: Mapped[str | None] = mapped_column(Text)
+    manifest_hash: Mapped[str | None] = mapped_column(String(64))
+    manifest_json: Mapped[dict[str, object]] = mapped_column(JSON, nullable=False, default=dict)
+    requested_by: Mapped[str] = mapped_column(String(255), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        default=utc_now,
+        server_default=func.now(),
+    )
+
+    assessment_run: Mapped[AssessmentRun] = relationship(back_populates="audit_exports")
+    valuation_run: Mapped["ValuationRun | None"] = relationship(back_populates="audit_exports")
+    prediction_ledger: Mapped[PredictionLedger | None] = relationship(
+        back_populates="audit_exports"
+    )
+    model_release: Mapped[ModelRelease | None] = relationship(back_populates="audit_exports")
 
 
 class MarketSaleComp(Base):
@@ -2005,6 +2219,14 @@ class ValuationRun(Base):
         back_populates="valuation_run",
         cascade="all, delete-orphan",
         uselist=False,
+    )
+    overrides: Mapped[list["AssessmentOverride"]] = relationship(
+        back_populates="valuation_run",
+        order_by="AssessmentOverride.created_at.desc()",
+    )
+    audit_exports: Mapped[list["AuditExport"]] = relationship(
+        back_populates="valuation_run",
+        order_by="AuditExport.created_at.desc()",
     )
 
 
@@ -2270,6 +2492,25 @@ Index(
     EvidenceItem.polarity,
 )
 Index("ix_prediction_ledger_run_id", PredictionLedger.assessment_run_id)
+Index(
+    "ix_prediction_ledger_scope_created",
+    PredictionLedger.release_scope_key,
+    PredictionLedger.created_at,
+)
+Index(
+    "ix_assessment_override_run_type_status",
+    AssessmentOverride.assessment_run_id,
+    AssessmentOverride.override_type,
+    AssessmentOverride.status,
+)
+Index(
+    "ix_assessment_override_actor_created",
+    AssessmentOverride.actor_name,
+    AssessmentOverride.created_at,
+)
+Index("ix_incident_record_scope_status", IncidentRecord.scope_key, IncidentRecord.status)
+Index("ix_incident_record_created_at", IncidentRecord.created_at)
+Index("ix_audit_export_run_created", AuditExport.assessment_run_id, AuditExport.created_at)
 Index("ix_market_sale_comp_borough_sale_date", MarketSaleComp.borough_id, MarketSaleComp.sale_date)
 Index("ix_market_sale_comp_postcode_district", MarketSaleComp.postcode_district)
 Index(

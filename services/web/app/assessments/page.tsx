@@ -37,9 +37,9 @@ export default async function AssessmentsPage({
   return (
     <div className="page-stack">
       <PageHeader
-        eyebrow="Phase 7A"
+        eyebrow="Phase 8A"
         title="Frozen hidden-score assessments"
-        summary="Assessment runs now freeze point-in-time features, provenance, evidence, comparables, replay metadata, hidden-only scoring when a valid release exists, and immutable valuation results tied to a versioned assumption set. Standard analyst reads remain non-speaking."
+        summary="Assessment runs now freeze point-in-time features, provenance, evidence, comparables, replay metadata, hidden-only scoring when a valid release exists, immutable valuation results, and the Phase 8A override/visibility state. Standard analyst reads remain non-speaking."
         actions={
           <div className="page-actions__group">
             <Link className="button button--ghost" href="/sites">

@@ -6,7 +6,7 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session, selectinload
 
 from landintel.assessments.service import HIDDEN_SCORE_NOTE, PRE_SCORE_NOTE
-from landintel.domain.enums import EligibilityStatus, EstimateStatus, ReviewStatus
+from landintel.domain.enums import AppRoleName, EligibilityStatus, EstimateStatus, ReviewStatus
 from landintel.domain.models import (
     AssessmentResult,
     AssessmentRun,
@@ -47,6 +47,8 @@ from landintel.planning.historical_labels import (
     get_historical_label_case,
     list_historical_label_cases,
 )
+from landintel.review.overrides import build_override_summary
+from landintel.review.visibility import evaluate_assessment_visibility
 from landintel.services.listings_readback import serialize_raw_asset
 from landintel.services.scenarios_readback import serialize_site_scenario_summary
 from landintel.services.sites_readback import serialize_site_summary
@@ -93,6 +95,7 @@ def get_assessment(
     *,
     assessment_id: UUID,
     include_hidden: bool = False,
+    viewer_role: AppRoleName | str | None = AppRoleName.ANALYST,
 ) -> AssessmentDetailRead | None:
     row = session.execute(
         select(AssessmentRun)
@@ -101,7 +104,12 @@ def get_assessment(
     ).scalar_one_or_none()
     if row is None:
         return None
-    return serialize_assessment_detail(session=session, run=row, include_hidden=include_hidden)
+    return serialize_assessment_detail(
+        session=session,
+        run=row,
+        include_hidden=include_hidden,
+        viewer_role=viewer_role,
+    )
 
 
 def serialize_assessment_summary(
@@ -149,6 +157,7 @@ def serialize_assessment_detail(
     session: Session,
     run: AssessmentRun,
     include_hidden: bool = False,
+    viewer_role: AppRoleName | str | None = AppRoleName.ANALYST,
 ) -> AssessmentDetailRead:
     summary = serialize_assessment_summary(session=session, run=run)
     labels_by_application_id = _labels_by_application_id(
@@ -159,6 +168,27 @@ def serialize_assessment_detail(
         ],
     )
     evidence = _pack_from_rows(run.evidence_items)
+    visibility = evaluate_assessment_visibility(
+        session=session,
+        assessment_run=run,
+        viewer_role=viewer_role,
+        include_hidden=include_hidden,
+    )
+    override_summary = build_override_summary(session=session, assessment_run=run)
+    if (
+        override_summary is not None
+        and override_summary.effective_valuation is not None
+        and not (
+            visibility.hidden_probability_allowed or visibility.visible_probability_allowed
+        )
+    ):
+        override_summary = override_summary.model_copy(
+            update={
+                "effective_valuation": override_summary.effective_valuation.model_copy(
+                    update={"expected_uplift_mid": None}
+                )
+            }
+        )
     return AssessmentDetailRead(
         **summary.model_dump(),
         feature_snapshot=(
@@ -174,9 +204,18 @@ def serialize_assessment_detail(
             )
         ),
         result=(
-            _serialize_assessment_result(run.result, include_hidden=include_hidden)
+            _serialize_assessment_result(
+                run.result,
+                include_hidden=include_hidden,
+                visibility=visibility,
+            )
         ),
-        valuation=_serialize_valuation_result(latest_valuation_run(run)),
+        valuation=_serialize_valuation_result(
+            latest_valuation_run(run),
+            visibility=visibility,
+        ),
+        override_summary=override_summary,
+        visibility=visibility,
         evidence=evidence,
         comparable_case_set=_serialize_comparable_case_set(
             run.comparable_case_set,
@@ -185,8 +224,9 @@ def serialize_assessment_detail(
         prediction_ledger=_serialize_prediction_ledger(
             run.prediction_ledger,
             include_hidden=include_hidden,
+            visibility=visibility,
         ),
-        note=_detail_note(run=run, include_hidden=include_hidden),
+        note=_detail_note(run=run, include_hidden=include_hidden, visibility=visibility),
     )
 
 
@@ -194,33 +234,60 @@ def _serialize_assessment_result(
     result: AssessmentResult | None,
     *,
     include_hidden: bool,
+    visibility,
 ) -> AssessmentResultRead | None:
     if result is None:
         return None
     hidden_score_present = result.approval_probability_raw is not None
     result_json = dict(result.result_json or {})
-    if hidden_score_present and not include_hidden:
+    if visibility.hidden_probability_allowed:
+        pass
+    elif visibility.visible_probability_allowed:
         result_json = {
-            "phase": "Phase 6A",
+            "phase": "Phase 8A",
+            "score_execution_status": result_json.get(
+                "score_execution_status",
+                "VISIBLE_REVIEWER_ONLY",
+            ),
+            "visible_probability_mode": "VISIBLE_REVIEWER_ONLY",
+            "hidden_score_redacted": True,
+            "note": (
+                "This scope is visible only for reviewer/admin contexts. Raw hidden probability "
+                "and internal explanation payloads remain redacted in the standard view."
+            ),
+        }
+    elif hidden_score_present and not include_hidden:
+        result_json = {
+            "phase": "Phase 8A",
             "score_execution_status": result_json.get("score_execution_status", "HIDDEN_ONLY"),
             "hidden_score_redacted": True,
             "note": (
-                "Hidden internal score exists for this frozen run, but standard assessment "
-                "reads remain non-speaking in Phase 6A."
+                "Probability is redacted for this scope and viewer role. Hidden/internal score "
+                "details remain restricted in Phase 8A."
             ),
         }
     return AssessmentResultRead(
         id=result.id,
-        model_release_id=(result.model_release_id if include_hidden else None),
-        release_scope_key=(result.release_scope_key if include_hidden else None),
+        model_release_id=(
+            result.model_release_id
+            if visibility.hidden_probability_allowed or visibility.visible_probability_allowed
+            else None
+        ),
+        release_scope_key=(
+            result.release_scope_key
+            if visibility.hidden_probability_allowed or visibility.visible_probability_allowed
+            else None
+        ),
         eligibility_status=result.eligibility_status,
         estimate_status=result.estimate_status,
         review_status=result.review_status,
         approval_probability_raw=(
-            result.approval_probability_raw if include_hidden else None
+            result.approval_probability_raw if visibility.hidden_probability_allowed else None
         ),
         approval_probability_display=(
-            result.approval_probability_display if include_hidden else None
+            result.approval_probability_display
+            if visibility.hidden_probability_allowed or visibility.visible_probability_allowed
+            else None
         ),
         estimate_quality=result.estimate_quality,
         source_coverage_quality=result.source_coverage_quality,
@@ -239,11 +306,14 @@ def _serialize_prediction_ledger(
     ledger: PredictionLedger | None,
     *,
     include_hidden: bool,
+    visibility,
 ) -> PredictionLedgerRead | None:
     if ledger is None:
         return None
     response_json = dict(ledger.response_json or {})
-    if ledger.model_release_id is not None and not include_hidden:
+    if visibility.hidden_probability_allowed:
+        pass
+    elif ledger.model_release_id is not None:
         response_json = {
             "response_mode": ledger.response_mode,
             "hidden_score_redacted": True,
@@ -253,19 +323,38 @@ def _serialize_prediction_ledger(
         id=ledger.id,
         site_geom_hash=ledger.site_geom_hash,
         feature_hash=ledger.feature_hash,
-        model_release_id=(ledger.model_release_id if include_hidden else None),
-        release_scope_key=(ledger.release_scope_key if include_hidden else None),
-        calibration_hash=(ledger.calibration_hash if include_hidden else None),
+        model_release_id=(
+            ledger.model_release_id
+            if visibility.hidden_probability_allowed or visibility.visible_probability_allowed
+            else None
+        ),
+        release_scope_key=(
+            ledger.release_scope_key
+            if visibility.hidden_probability_allowed or visibility.visible_probability_allowed
+            else None
+        ),
+        calibration_hash=(
+            ledger.calibration_hash if visibility.hidden_probability_allowed else None
+        ),
+        model_artifact_hash=(
+            ledger.model_artifact_hash if visibility.hidden_probability_allowed else None
+        ),
+        validation_artifact_hash=(
+            ledger.validation_artifact_hash if visibility.hidden_probability_allowed else None
+        ),
         response_mode=ledger.response_mode,
         source_snapshot_ids_json=list(ledger.source_snapshot_ids_json or []),
         raw_asset_ids_json=list(ledger.raw_asset_ids_json or []),
         result_payload_hash=ledger.result_payload_hash,
         response_json=response_json,
+        replay_verification_status=ledger.replay_verification_status,
+        replay_verified_at=ledger.replay_verified_at,
+        replay_verification_note=ledger.replay_verification_note,
         created_at=ledger.created_at,
     )
 
 
-def _serialize_valuation_result(valuation_run) -> ValuationResultRead | None:
+def _serialize_valuation_result(valuation_run, *, visibility) -> ValuationResultRead | None:
     if valuation_run is None or valuation_run.result is None:
         return None
     result = valuation_run.result
@@ -280,7 +369,11 @@ def _serialize_valuation_result(valuation_run) -> ValuationResultRead | None:
         uplift_low=result.uplift_low,
         uplift_mid=result.uplift_mid,
         uplift_high=result.uplift_high,
-        expected_uplift_mid=result.expected_uplift_mid,
+        expected_uplift_mid=(
+            result.expected_uplift_mid
+            if visibility.hidden_probability_allowed or visibility.visible_probability_allowed
+            else None
+        ),
         valuation_quality=result.valuation_quality,
         manual_review_required=result.manual_review_required,
         basis_json=dict(result.basis_json or {}),
@@ -291,14 +384,21 @@ def _serialize_valuation_result(valuation_run) -> ValuationResultRead | None:
     )
 
 
-def _detail_note(*, run: AssessmentRun, include_hidden: bool) -> str:
+def _detail_note(*, run: AssessmentRun, include_hidden: bool, visibility) -> str:
     if run.result is None:
         return PRE_SCORE_NOTE
-    if run.result.approval_probability_raw is not None:
+    if run.result.approval_probability_raw is not None and visibility.hidden_probability_allowed:
         return HIDDEN_SCORE_NOTE if include_hidden else (
-            "Hidden score mode is available for internal evaluation, but this view remains "
-            "non-speaking in Phase 6A."
+            "Hidden score mode is available for internal evaluation, but raw probability is "
+            "withheld from this standard view."
         )
+    if visibility.visible_probability_allowed:
+        return (
+            "Visible reviewer-only probability is enabled for this scope. Raw hidden probability "
+            "and internal explanation payloads remain restricted."
+        )
+    if visibility.blocked:
+        return visibility.blocked_reason_text or PRE_SCORE_NOTE
     return str((run.result.result_json or {}).get("note") or PRE_SCORE_NOTE)
 
 

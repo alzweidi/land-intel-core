@@ -4,12 +4,17 @@ from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from landintel.assessments.service import AssessmentBuildError, create_or_refresh_assessment_run
+from landintel.domain.enums import AppRoleName
 from landintel.domain.schemas import (
     AssessmentDetailRead,
     AssessmentListResponse,
+    AssessmentOverrideRequest,
     AssessmentRequest,
-    PlaceholderResponse,
+    AuditExportRead,
 )
+from landintel.review.audit_export import build_assessment_audit_export
+from landintel.review.overrides import apply_assessment_override
+from landintel.review.visibility import ReviewAccessError
 from landintel.services.assessments_readback import get_assessment, list_assessments
 from landintel.storage.base import StorageAdapter
 from sqlalchemy.orm import Session
@@ -47,6 +52,11 @@ def create_assessment(
         session=session,
         assessment_id=run.id,
         include_hidden=request.hidden_mode,
+        viewer_role=(
+            request.viewer_role
+            if request.viewer_role is not None
+            else (AppRoleName.REVIEWER if request.hidden_mode else AppRoleName.ANALYST)
+        ),
     )
     if detail is None:
         raise HTTPException(
@@ -77,12 +87,18 @@ def get_assessment_runs(
 def get_assessment_detail(
     assessment_id: UUID,
     hidden_mode: bool = Query(default=False),
+    viewer_role: AppRoleName | None = Query(default=None),
     session: Session = Depends(get_db_session),
 ) -> AssessmentDetailRead:
     detail = get_assessment(
         session=session,
         assessment_id=assessment_id,
         include_hidden=hidden_mode,
+        viewer_role=(
+            viewer_role
+            if viewer_role is not None
+            else (AppRoleName.REVIEWER if hidden_mode else AppRoleName.ANALYST)
+        ),
     )
     if detail is None:
         raise HTTPException(
@@ -92,12 +108,62 @@ def get_assessment_detail(
     return detail
 
 
-@router.post("/api/assessments/{assessment_id}/override", response_model=PlaceholderResponse)
-def override_assessment(assessment_id: UUID) -> PlaceholderResponse:
-    raise HTTPException(
-        status_code=status.HTTP_501_NOT_IMPLEMENTED,
-        detail={
-            "message": "Analyst overrides remain deferred to Phase 8.",
-            "assessment_id": str(assessment_id),
-        },
+@router.post("/api/assessments/{assessment_id}/override", response_model=AssessmentDetailRead)
+def override_assessment(
+    assessment_id: UUID,
+    request: AssessmentOverrideRequest,
+    session: Session = Depends(get_db_session),
+) -> AssessmentDetailRead:
+    try:
+        apply_assessment_override(
+            session=session,
+            assessment_id=assessment_id,
+            request=request,
+        )
+        session.commit()
+        session.expire_all()
+    except ReviewAccessError as exc:
+        session.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=str(exc),
+        ) from exc
+
+    detail = get_assessment(
+        session=session,
+        assessment_id=assessment_id,
+        include_hidden=request.actor_role in {AppRoleName.REVIEWER, AppRoleName.ADMIN},
+        viewer_role=request.actor_role,
     )
+    if detail is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail={"message": "Assessment detail not found.", "assessment_id": str(assessment_id)},
+        )
+    return detail
+
+
+@router.get("/api/assessments/{assessment_id}/audit-export", response_model=AuditExportRead)
+def get_assessment_audit_export(
+    assessment_id: UUID,
+    requested_by: str | None = Query(default="api-audit-export"),
+    actor_role: AppRoleName = Query(default=AppRoleName.REVIEWER),
+    session: Session = Depends(get_db_session),
+    storage: StorageAdapter = Depends(get_storage_adapter),
+) -> AuditExportRead:
+    try:
+        export = build_assessment_audit_export(
+            session=session,
+            storage=storage,
+            assessment_id=assessment_id,
+            requested_by=requested_by,
+            actor_role=actor_role,
+        )
+        session.commit()
+    except ReviewAccessError as exc:
+        session.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=str(exc),
+        ) from exc
+    return export

@@ -7,7 +7,11 @@ from uuid import UUID
 from pydantic import AnyHttpUrl, BaseModel, ConfigDict, Field
 
 from landintel.domain.enums import (
+    AppRoleName,
+    AssessmentOverrideStatus,
+    AssessmentOverrideType,
     AssessmentRunState,
+    AuditExportStatus,
     BaselinePackStatus,
     CalibrationMethod,
     ComparableOutcome,
@@ -26,6 +30,8 @@ from landintel.domain.enums import (
     GoldSetReviewStatus,
     HistoricalLabelClass,
     HistoricalLabelDecision,
+    IncidentStatus,
+    IncidentType,
     JobStatus,
     JobType,
     ListingClusterStatus,
@@ -46,6 +52,7 @@ from landintel.domain.enums import (
     SourceParseStatus,
     ValuationQuality,
     VerifiedStatus,
+    VisibilityMode,
 )
 
 
@@ -633,6 +640,7 @@ class AssessmentRequest(BaseModel):
     as_of_date: date
     requested_by: str | None = Field(default=None, max_length=255)
     hidden_mode: bool = False
+    viewer_role: AppRoleName | None = None
 
 
 class AssessmentFeatureSnapshotRead(BaseModel):
@@ -684,6 +692,47 @@ class ValuationResultRead(BaseModel):
     result_json: dict[str, Any]
     payload_hash: str
     created_at: datetime
+
+
+class AssessmentOverrideRead(BaseModel):
+    id: UUID
+    override_type: AssessmentOverrideType
+    status: AssessmentOverrideStatus
+    actor_name: str
+    actor_role: AppRoleName
+    reason: str
+    override_json: dict[str, Any]
+    supersedes_id: UUID | None = None
+    resolved_by: str | None = None
+    resolved_at: datetime | None = None
+    created_at: datetime
+
+
+class VisibilityGateRead(BaseModel):
+    scope_key: str | None = None
+    visibility_mode: VisibilityMode
+    exposure_mode: str
+    viewer_role: AppRoleName
+    visible_probability_allowed: bool
+    hidden_probability_allowed: bool
+    blocked: bool
+    blocked_reason_codes: list[str] = Field(default_factory=list)
+    blocked_reason_text: str | None = None
+    active_incident_id: UUID | None = None
+    active_incident_reason: str | None = None
+    replay_verified: bool
+    payload_hash_matches: bool
+    artifact_hashes_match: bool
+    scope_release_matches_result: bool
+
+
+class AssessmentOverrideSummaryRead(BaseModel):
+    active_overrides: list[AssessmentOverrideRead] = Field(default_factory=list)
+    effective_review_status: ReviewStatus | None = None
+    effective_manual_review_required: bool | None = None
+    ranking_suppressed: bool = False
+    display_block_reason: str | None = None
+    effective_valuation: ValuationResultRead | None = None
 
 
 class ComparablePlanningApplicationRead(BaseModel):
@@ -781,11 +830,16 @@ class PredictionLedgerRead(BaseModel):
     model_release_id: UUID | None
     release_scope_key: str | None = None
     calibration_hash: str | None
+    model_artifact_hash: str | None = None
+    validation_artifact_hash: str | None = None
     response_mode: str
     source_snapshot_ids_json: list[str]
     raw_asset_ids_json: list[str]
     result_payload_hash: str
     response_json: dict[str, Any]
+    replay_verification_status: str
+    replay_verified_at: datetime | None = None
+    replay_verification_note: str | None = None
     created_at: datetime
 
 
@@ -814,6 +868,8 @@ class AssessmentDetailRead(AssessmentSummaryRead):
     feature_snapshot: AssessmentFeatureSnapshotRead | None = None
     result: AssessmentResultRead | None = None
     valuation: ValuationResultRead | None = None
+    override_summary: AssessmentOverrideSummaryRead | None = None
+    visibility: VisibilityGateRead | None = None
     evidence: EvidencePackRead
     comparable_case_set: ComparableCaseSetRead | None = None
     prediction_ledger: PredictionLedgerRead | None = None
@@ -831,6 +887,8 @@ class OpportunitySummaryRead(BaseModel):
     hold_reason: str | None
     ranking_reason: str
     hidden_mode_only: bool = True
+    visibility: VisibilityGateRead | None = None
+    display_block_reason: str | None = None
     eligibility_status: EligibilityStatus | None
     estimate_status: EstimateStatus | None
     manual_review_required: bool
@@ -866,6 +924,14 @@ class ActiveReleaseScopeRead(BaseModel):
     model_release_id: UUID
     activated_by: str | None
     activated_at: datetime
+    visibility_mode: VisibilityMode
+    visibility_reason: str | None = None
+    visible_enabled_by: str | None = None
+    visible_enabled_at: datetime | None = None
+    visibility_updated_by: str | None = None
+    visibility_updated_at: datetime | None = None
+    open_incident_count: int = 0
+    active_incident_reason: str | None = None
 
 
 class ModelReleaseSummaryRead(BaseModel):
@@ -883,6 +949,8 @@ class ModelReleaseSummaryRead(BaseModel):
     positive_count: int
     negative_count: int
     reason_text: str | None
+    active_scope_count: int = 0
+    active_scope_visibility_modes: list[VisibilityMode] = Field(default_factory=list)
     activated_by: str | None
     activated_at: datetime | None
     retired_by: str | None
@@ -920,10 +988,71 @@ class ModelReleaseRebuildRequest(BaseModel):
 
 class ModelReleaseActivateRequest(BaseModel):
     requested_by: str | None = Field(default=None, max_length=255)
+    actor_role: AppRoleName | None = None
 
 
 class ModelReleaseRetireRequest(BaseModel):
     requested_by: str | None = Field(default=None, max_length=255)
+    actor_role: AppRoleName | None = None
+
+
+class ReleaseScopeVisibilityRequest(BaseModel):
+    requested_by: str | None = Field(default=None, max_length=255)
+    actor_role: AppRoleName
+    visibility_mode: VisibilityMode
+    reason: str = Field(min_length=3, max_length=4000)
+
+
+class IncidentActionRequest(BaseModel):
+    requested_by: str | None = Field(default=None, max_length=255)
+    actor_role: AppRoleName
+    action: str = Field(min_length=3, max_length=64)
+    reason: str = Field(min_length=3, max_length=4000)
+
+
+class IncidentRecordRead(BaseModel):
+    id: UUID
+    scope_key: str
+    template_key: str
+    borough_id: str | None = None
+    incident_type: IncidentType
+    status: IncidentStatus
+    reason: str
+    previous_visibility_mode: VisibilityMode | None = None
+    applied_visibility_mode: VisibilityMode
+    created_by: str
+    resolved_by: str | None = None
+    created_at: datetime
+    resolved_at: datetime | None = None
+
+
+class AssessmentOverrideRequest(BaseModel):
+    requested_by: str | None = Field(default=None, max_length=255)
+    actor_role: AppRoleName
+    override_type: AssessmentOverrideType
+    reason: str = Field(min_length=3, max_length=4000)
+    acquisition_basis_gbp: float | None = None
+    acquisition_basis_type: PriceBasisType | None = None
+    valuation_assumption_set_id: UUID | None = None
+    review_resolution_note: str | None = Field(default=None, max_length=4000)
+    resolve_manual_review: bool | None = None
+    ranking_suppressed: bool | None = None
+    display_block_reason: str | None = Field(default=None, max_length=4000)
+
+
+class AuditExportRead(BaseModel):
+    id: UUID
+    assessment_run_id: UUID
+    assessment_result_id: UUID | None = None
+    valuation_run_id: UUID | None = None
+    prediction_ledger_id: UUID | None = None
+    model_release_id: UUID | None = None
+    status: AuditExportStatus
+    manifest_path: str | None = None
+    manifest_hash: str | None = None
+    manifest_json: dict[str, Any]
+    requested_by: str
+    created_at: datetime
 
 
 class AssessmentListResponse(BaseModel):

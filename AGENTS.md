@@ -5,8 +5,8 @@
 - `services/api`: FastAPI routes for listings, clusters, sites, scenarios, assessments, admin, and later-phase stubs
 - `services/worker`: Postgres-backed worker loop with connector, cluster rebuild, site refresh/linkage, planning enrichment, scenario refresh, historical-label, comparable, replay, and gold-set jobs
 - `services/scheduler`: recurring enqueue loop for approved automated listing sources with explicit intervals
-- `services/web`: Next.js analyst UI focused on listings, clusters, sites, planning context, scenario editing, hidden-mode assessments, valuation/ranking surfaces, gold-set review, and admin release inspection
-- `python/landintel`: shared config, ORM models, connector framework, listing parsing/clustering, geospatial/site services, planning enrichment, evidence assembly, scenarios, assessments, scoring, valuation, storage, and readback
+- `services/web`: Next.js analyst UI focused on listings, clusters, sites, planning context, scenario editing, hidden-mode assessments, valuation/ranking surfaces, review queue, and admin control/health pages
+- `python/landintel`: shared config, ORM models, connector framework, listing parsing/clustering, geospatial/site services, planning enrichment, evidence assembly, scenarios, assessments, scoring, valuation, review controls, storage, and readback
 - `db/migrations`: Alembic revisions
 - `infra/compose`: local/VPS compose assets
 - `docs`: controlling spec and implementation notes
@@ -33,7 +33,7 @@
 
 ## Non-Negotiable Rules From The Spec
 
-- Stop at Phase 7A. Do not start Phase 8 overrides / kill switches / visible release controls / broader dashboards.
+- Stop at Phase 8A. Do not start broader visible rollout, new model families, parcel-only scoring, appeal-model work, public SaaS flows, or later off-market/site-assembly work.
 - No AWS, Kubernetes, Redis, vector DB, domain microservices, or separate model-serving service.
 - Use the Postgres-backed `job_run` queue with `FOR UPDATE SKIP LOCKED`.
 - Every connector run must create one `source_snapshot`, one or more `raw_asset` rows, a coverage note, and a parse status.
@@ -52,7 +52,7 @@
 - If a mandatory source family is missing for a critical permission conclusion, return manual review or abstain.
 - LLMs may help summarize evidence, but they must not create authoritative planning facts.
 - Scenarios are hypotheses, not facts.
-- No standard-analyst visible probability output exists in this phase.
+- No standard-analyst visible probability output exists by default in this phase.
 - Hidden scoring is internal-only and must resolve only through `model_release` / `active_release_scope`.
 - Ranking stays planning-first: economics never outrank planning state.
 - If acquisition basis is missing, valuation may still return post-permission values but uplift stays null and valuation quality is downgraded.
@@ -60,6 +60,10 @@
 - All valuation assumptions must live in a versioned `valuation_assumption_set`.
 - Valuation runs/results must be immutable and tied to the frozen `assessment_run`.
 - Use HMLR Price Paid + UKHPI as the mandatory official valuation sources in this phase.
+- Override flow must preserve the original result, valuation, and ledger side-by-side with any effective override state.
+- Visible probability may only be enabled for explicitly signed-off qualifying scopes; fixture-scale local/dev remains hidden-only by default.
+- If replay fails, ledger/artifact hashes mismatch, or an incident is open, visible publication must be blocked immediately.
+- Audit release activations, visibility changes, incidents, overrides, source compliance changes, and baseline/rulepack activations.
 - No future leakage in historical labels or point-in-time features.
 - Assessment runs require a confirmed scenario and always freeze PIT artifacts before any hidden scoring.
 - Preserve provenance for every frozen feature and replay-safe assessment artifact.
@@ -68,7 +72,7 @@
 - Do not downgrade an abstain/manual-review condition just because a scenario exists.
 - If strong nearest historical support cannot be shown honestly, default to `ANALYST_REQUIRED`.
 
-## Phase 7A Done Means
+## Phase 8A Done Means
 
 - `docker compose up --build` boots `api`, `worker`, `scheduler`, `web`, and local PostGIS
 - `alembic upgrade head` succeeds
@@ -94,8 +98,12 @@
 - fixture-scale valuation data bootstrap works with immutable provenance
 - assessment detail returns a valuation block with assumption version, quality, and sense-check warnings
 - `GET /api/opportunities` returns a planning-first ranked opportunity list with honest `Hold` behavior when probability is not honestly available
-- the web app renders the site list/detail, MapLibre geometry editor, planning-context panels, scenario editor, assessment view, and gold-set review surface locally
-- the web app also exposes hidden assessment mode, opportunity ranking, and the admin model-release registry locally
+- override flow preserves original results and exposes effective override state separately
+- audit export manifests can be built for frozen assessments
+- admin health/model/economic summaries are available locally
+- review queue shows manual-review, blocked, and coverage-gap cases
+- scope visibility defaults to hidden-only and visible reviewer mode is only available where the scope honestly qualifies
+- the web app renders the site list/detail, MapLibre geometry editor, planning-context panels, scenario editor, assessment view, opportunity view, review queue, and admin health/release surfaces locally
 - tests and lint/build checks pass
 
 ## Source Approval Notes

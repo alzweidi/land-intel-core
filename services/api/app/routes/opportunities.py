@@ -3,7 +3,7 @@ from __future__ import annotations
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
-from landintel.domain.enums import OpportunityBand, ValuationQuality
+from landintel.domain.enums import AppRoleName, OpportunityBand, ValuationQuality
 from landintel.domain.schemas import OpportunityDetailRead, OpportunityListResponse
 from landintel.services.opportunities_readback import get_opportunity, list_opportunities
 from sqlalchemy.orm import Session
@@ -22,6 +22,8 @@ def get_opportunities(
     auction_deadline_days: int | None = Query(default=None, ge=0),
     min_price: int | None = Query(default=None, ge=0),
     max_price: int | None = Query(default=None, ge=0),
+    hidden_mode: bool = Query(default=False),
+    viewer_role: AppRoleName | None = Query(default=None),
     session: Session = Depends(get_db_session),
 ) -> OpportunityListResponse:
     return list_opportunities(
@@ -33,15 +35,28 @@ def get_opportunities(
         auction_deadline_days=auction_deadline_days,
         min_price=min_price,
         max_price=max_price,
+        include_hidden=hidden_mode,
+        viewer_role=viewer_role if viewer_role is not None else (
+            AppRoleName.REVIEWER if hidden_mode else AppRoleName.ANALYST
+        ),
     )
 
 
 @router.get("/{site_id}", response_model=OpportunityDetailRead)
 def get_opportunity_detail(
     site_id: UUID,
+    hidden_mode: bool = Query(default=False),
+    viewer_role: AppRoleName | None = Query(default=None),
     session: Session = Depends(get_db_session),
 ) -> OpportunityDetailRead:
-    detail = get_opportunity(session=session, site_id=site_id)
+    detail = get_opportunity(
+        session=session,
+        site_id=site_id,
+        include_hidden=hidden_mode,
+        viewer_role=viewer_role if viewer_role is not None else (
+            AppRoleName.REVIEWER if hidden_mode else AppRoleName.ANALYST
+        ),
+    )
     if detail is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,

@@ -34,13 +34,44 @@ def build_or_refresh_valuation_for_assessment(
     assessment_run: AssessmentRun,
     requested_by: str | None,
 ) -> ValuationRun:
+    return _build_or_refresh_valuation_for_assessment(
+        session=session,
+        assessment_run=assessment_run,
+        requested_by=requested_by,
+        assumption_set=None,
+    )
+
+
+def build_or_refresh_valuation_for_assessment_with_assumption_set(
+    *,
+    session: Session,
+    assessment_run: AssessmentRun,
+    valuation_assumption_set: ValuationAssumptionSet,
+    requested_by: str | None,
+) -> ValuationRun:
+    return _build_or_refresh_valuation_for_assessment(
+        session=session,
+        assessment_run=assessment_run,
+        requested_by=requested_by,
+        assumption_set=valuation_assumption_set,
+    )
+
+
+def _build_or_refresh_valuation_for_assessment(
+    *,
+    session: Session,
+    assessment_run: AssessmentRun,
+    requested_by: str | None,
+    assumption_set: ValuationAssumptionSet | None,
+) -> ValuationRun:
     if assessment_run.feature_snapshot is None or assessment_run.result is None:
         raise ValuationBuildError("Assessment run must have frozen features and a result first.")
 
-    assumption_set = resolve_active_assumption_set(
-        session,
-        as_of_date=assessment_run.as_of_date,
-    )
+    if assumption_set is None:
+        assumption_set = resolve_active_assumption_set(
+            session,
+            as_of_date=assessment_run.as_of_date,
+        )
     input_hash = _valuation_input_hash(
         assessment_run=assessment_run,
         assumption_set=assumption_set,
