@@ -55,7 +55,7 @@ export default async function SitesPage({ searchParams }: { searchParams?: Searc
   return (
     <div className="page-stack">
       <PageHeader
-        eyebrow="Phase 4A"
+        eyebrow="Phase 5A"
         title="Site candidates"
         summary="Confirmed site records now carry planning context, source coverage visibility, and extant-permission screening inputs. The map and detail records stay explicit about geometry confidence, borough assignment, and what is only indicative evidence."
         actions={

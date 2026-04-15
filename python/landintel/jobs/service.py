@@ -284,6 +284,78 @@ def enqueue_scenario_evidence_refresh_job(
     )
 
 
+def enqueue_historical_label_rebuild_job(
+    session: Session,
+    *,
+    requested_by: str | None,
+) -> JobRun:
+    return _deduplicated_job(
+        session=session,
+        job_type=JobType.HISTORICAL_LABEL_REBUILD,
+        dedupe_key="historical-labels:current",
+        payload_json={},
+        requested_by=requested_by,
+    )
+
+
+def enqueue_assessment_feature_snapshot_build_job(
+    session: Session,
+    *,
+    assessment_id: str,
+    requested_by: str | None,
+) -> JobRun:
+    return _deduplicated_job(
+        session=session,
+        job_type=JobType.ASSESSMENT_FEATURE_SNAPSHOT_BUILD,
+        dedupe_key=f"assessment:{assessment_id}",
+        payload_json={"assessment_id": assessment_id},
+        requested_by=requested_by,
+    )
+
+
+def enqueue_comparable_retrieval_build_job(
+    session: Session,
+    *,
+    assessment_id: str,
+    requested_by: str | None,
+) -> JobRun:
+    return _deduplicated_job(
+        session=session,
+        job_type=JobType.COMPARABLE_RETRIEVAL_BUILD,
+        dedupe_key=f"assessment:{assessment_id}",
+        payload_json={"assessment_id": assessment_id},
+        requested_by=requested_by,
+    )
+
+
+def enqueue_replay_verification_batch_job(
+    session: Session,
+    *,
+    requested_by: str | None,
+) -> JobRun:
+    return _deduplicated_job(
+        session=session,
+        job_type=JobType.REPLAY_VERIFICATION_BATCH,
+        dedupe_key="replay-verification:current",
+        payload_json={},
+        requested_by=requested_by,
+    )
+
+
+def enqueue_gold_set_refresh_job(
+    session: Session,
+    *,
+    requested_by: str | None,
+) -> JobRun:
+    return _deduplicated_job(
+        session=session,
+        job_type=JobType.GOLD_SET_REFRESH,
+        dedupe_key="gold-set:current",
+        payload_json={},
+        requested_by=requested_by,
+    )
+
+
 def _create_job(
     *,
     session: Session,

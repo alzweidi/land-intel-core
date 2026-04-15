@@ -38,6 +38,37 @@
   "applications": [
     {
       "borough_id": "camden",
+      "external_ref": "CAM/2024/0505/P",
+      "application_type": "FULL",
+      "proposal_description": "Redevelopment of a corner plot to provide 6 residential units with landscaping.",
+      "valid_date": "2024-01-15",
+      "decision_date": "2024-04-22",
+      "decision": "Approved",
+      "decision_type": "FULL_RESIDENTIAL",
+      "status": "LAPSED",
+      "route_normalized": "FULL",
+      "units_proposed": 6,
+      "point_4326": {
+        "type": "Point",
+        "coordinates": [-0.14960, 51.53930]
+      },
+      "source_url": "https://camden.example/planning/CAM-2024-0505-P",
+      "documents": [
+        {
+          "doc_type": "decision_notice",
+          "doc_url": "https://camden.example/planning/CAM-2024-0505-P/decision-notice",
+          "mime_type": "text/plain",
+          "content_text": "Decision notice: six-unit residential redevelopment approved in 2024 and later lapsed in the fixture."
+        }
+      ],
+      "raw_record_json": {
+        "dwelling_use": "C3",
+        "active_extant": false,
+        "lapsed": true
+      }
+    },
+    {
+      "borough_id": "camden",
       "external_ref": "CAM/2025/1100/P",
       "application_type": "FULL",
       "proposal_description": "Redevelopment of the yard site to provide 8 residential units with associated landscaping.",
@@ -103,6 +134,37 @@
         "dwelling_use": "C3",
         "active_extant": false,
         "refusal_reasons": ["heritage", "massing"]
+      }
+    },
+    {
+      "borough_id": "camden",
+      "external_ref": "CAM/2024/0707/F",
+      "application_type": "FULL",
+      "proposal_description": "Redevelopment of a service yard to provide 7 residential units with cycle parking.",
+      "valid_date": "2024-02-02",
+      "decision_date": "2024-05-16",
+      "decision": "Refused",
+      "decision_type": "FULL_RESIDENTIAL",
+      "status": "REFUSED",
+      "route_normalized": "FULL",
+      "units_proposed": 7,
+      "point_4326": {
+        "type": "Point",
+        "coordinates": [-0.15040, 51.54010]
+      },
+      "source_url": "https://camden.example/planning/CAM-2024-0707-F",
+      "documents": [
+        {
+          "doc_type": "decision_notice",
+          "doc_url": "https://camden.example/planning/CAM-2024-0707-F/decision-notice",
+          "mime_type": "text/plain",
+          "content_text": "Decision notice: refusal for seven-unit residential scheme due to design and access concerns."
+        }
+      ],
+      "raw_record_json": {
+        "dwelling_use": "C3",
+        "active_extant": false,
+        "refusal_reasons": ["design", "access"]
       }
     },
     {

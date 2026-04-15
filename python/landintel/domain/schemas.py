@@ -7,17 +7,24 @@ from uuid import UUID
 from pydantic import AnyHttpUrl, BaseModel, ConfigDict, Field
 
 from landintel.domain.enums import (
+    AssessmentRunState,
     BaselinePackStatus,
+    ComparableOutcome,
     ComplianceMode,
     ConnectorType,
     DocumentExtractionStatus,
     DocumentType,
     EligibilityStatus,
+    EstimateQuality,
+    EstimateStatus,
     EvidenceImportance,
     EvidencePolarity,
     ExtantPermissionStatus,
     GeomConfidence,
     GeomSourceType,
+    GoldSetReviewStatus,
+    HistoricalLabelClass,
+    HistoricalLabelDecision,
     JobStatus,
     JobType,
     ListingClusterStatus,
@@ -25,6 +32,7 @@ from landintel.domain.enums import (
     ListingType,
     PriceBasisType,
     ProposalForm,
+    ReviewStatus,
     ScenarioSource,
     ScenarioStatus,
     SiteStatus,
@@ -618,3 +626,166 @@ class AssessmentRequest(BaseModel):
     site_id: UUID
     scenario_id: UUID
     as_of_date: date
+    requested_by: str | None = Field(default=None, max_length=255)
+
+
+class AssessmentFeatureSnapshotRead(BaseModel):
+    id: UUID
+    feature_version: str
+    feature_hash: str
+    feature_json: dict[str, Any]
+    coverage_json: dict[str, Any]
+    created_at: datetime
+
+
+class AssessmentResultRead(BaseModel):
+    id: UUID
+    eligibility_status: EligibilityStatus
+    estimate_status: EstimateStatus
+    review_status: ReviewStatus
+    approval_probability_raw: float | None
+    approval_probability_display: str | None
+    estimate_quality: EstimateQuality | None
+    source_coverage_quality: str | None
+    geometry_quality: str | None
+    support_quality: str | None
+    ood_status: str | None
+    manual_review_required: bool
+    result_json: dict[str, Any]
+    published_at: datetime | None
+
+
+class ComparablePlanningApplicationRead(BaseModel):
+    id: UUID
+    external_ref: str
+    borough_id: str | None
+    proposal_description: str
+    valid_date: date | None
+    decision_date: date | None
+    decision: str | None
+    route_normalized: str | None
+    units_proposed: int | None
+    source_system: str
+    source_url: str | None
+
+
+class HistoricalLabelSummaryRead(BaseModel):
+    id: UUID
+    planning_application_id: UUID
+    borough_id: str | None
+    template_key: str | None
+    proposal_form: ProposalForm | None
+    route_normalized: str | None
+    units_proposed: int | None
+    site_area_sqm: float | None
+    label_version: str
+    label_class: HistoricalLabelClass
+    label_decision: HistoricalLabelDecision
+    label_reason: str | None
+    valid_date: date | None
+    first_substantive_decision_date: date | None
+    label_window_end: date | None
+    source_priority_used: int
+    archetype_key: str | None
+    designation_profile_json: dict[str, Any]
+    provenance_json: dict[str, Any]
+    source_snapshot_ids_json: list[str]
+    raw_asset_ids_json: list[str]
+    review_status: GoldSetReviewStatus
+    review_notes: str | None
+    reviewed_by: str | None
+    reviewed_at: datetime | None
+    notable_policy_issues_json: list[str]
+    extant_permission_outcome: str | None
+    site_geometry_confidence: GeomConfidence | None
+    created_at: datetime
+    updated_at: datetime
+
+
+class HistoricalLabelCaseRead(HistoricalLabelSummaryRead):
+    planning_application: PlanningApplicationRead
+
+
+class HistoricalLabelListResponse(BaseModel):
+    items: list[HistoricalLabelSummaryRead]
+    total: int
+
+
+class HistoricalLabelReviewRequest(BaseModel):
+    review_status: GoldSetReviewStatus
+    review_notes: str | None = Field(default=None, max_length=4000)
+    notable_policy_issues: list[str] = Field(default_factory=list)
+    extant_permission_outcome: str | None = Field(default=None, max_length=100)
+    site_geometry_confidence: GeomConfidence | None = None
+    reviewed_by: str | None = Field(default=None, max_length=255)
+
+
+class ComparableCaseMemberRead(BaseModel):
+    id: UUID
+    planning_application_id: UUID
+    similarity_score: float
+    outcome: ComparableOutcome
+    rank: int
+    fallback_path: str
+    match_json: dict[str, Any]
+    planning_application: ComparablePlanningApplicationRead
+    historical_label: HistoricalLabelSummaryRead
+
+
+class ComparableCaseSetRead(BaseModel):
+    id: UUID
+    strategy: str
+    same_borough_count: int
+    london_count: int
+    approved_count: int
+    refused_count: int
+    approved_members: list[ComparableCaseMemberRead] = Field(default_factory=list)
+    refused_members: list[ComparableCaseMemberRead] = Field(default_factory=list)
+
+
+class PredictionLedgerRead(BaseModel):
+    id: UUID
+    site_geom_hash: str
+    feature_hash: str
+    model_release_id: UUID | None
+    calibration_hash: str | None
+    source_snapshot_ids_json: list[str]
+    raw_asset_ids_json: list[str]
+    result_payload_hash: str
+    response_json: dict[str, Any]
+    created_at: datetime
+
+
+class AssessmentSummaryRead(BaseModel):
+    id: UUID
+    site_id: UUID
+    scenario_id: UUID
+    as_of_date: date
+    state: AssessmentRunState
+    idempotency_key: str
+    requested_by: str | None
+    started_at: datetime | None
+    finished_at: datetime | None
+    error_text: str | None
+    created_at: datetime
+    updated_at: datetime
+    estimate_status: EstimateStatus
+    eligibility_status: EligibilityStatus
+    review_status: ReviewStatus
+    manual_review_required: bool
+    site_summary: SiteSummaryRead | None = None
+    scenario_summary: SiteScenarioSummaryRead | None = None
+
+
+class AssessmentDetailRead(AssessmentSummaryRead):
+    feature_snapshot: AssessmentFeatureSnapshotRead | None = None
+    result: AssessmentResultRead | None = None
+    evidence: EvidencePackRead
+    comparable_case_set: ComparableCaseSetRead | None = None
+    prediction_ledger: PredictionLedgerRead | None = None
+    note: str
+
+
+class AssessmentListResponse(BaseModel):
+    items: list[AssessmentSummaryRead]
+    total: int

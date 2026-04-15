@@ -479,6 +479,193 @@ export type SiteGeometrySaveInput = {
   revision_note?: string;
 };
 
+export type AssessmentQuery = {
+  site_id?: string;
+  scenario_id?: string;
+};
+
+export type AssessmentFeatureSnapshot = {
+  id: string;
+  feature_version: string;
+  feature_hash: string;
+  feature_json: Record<string, unknown>;
+  coverage_json: Record<string, unknown>;
+  created_at: string;
+};
+
+export type AssessmentResult = {
+  id: string;
+  eligibility_status: string;
+  estimate_status: string;
+  review_status: string;
+  approval_probability_raw: number | null;
+  approval_probability_display: string | null;
+  estimate_quality: string | null;
+  source_coverage_quality: string | null;
+  geometry_quality: string | null;
+  support_quality: string | null;
+  ood_status: string | null;
+  manual_review_required: boolean;
+  result_json: Record<string, unknown>;
+  published_at: string | null;
+};
+
+export type ComparablePlanningApplication = {
+  id: string;
+  external_ref: string;
+  borough_id: string | null;
+  proposal_description: string;
+  valid_date: string | null;
+  decision_date: string | null;
+  decision: string | null;
+  route_normalized: string | null;
+  units_proposed: number | null;
+  source_system: string;
+  source_url: string | null;
+};
+
+export type HistoricalLabelSummary = {
+  id: string;
+  planning_application_id: string;
+  borough_id: string | null;
+  template_key: string | null;
+  proposal_form: ProposalForm | null;
+  route_normalized: string | null;
+  units_proposed: number | null;
+  site_area_sqm: number | null;
+  label_version: string;
+  label_class: string;
+  label_decision: string;
+  label_reason: string | null;
+  valid_date: string | null;
+  first_substantive_decision_date: string | null;
+  label_window_end: string | null;
+  source_priority_used: number;
+  archetype_key: string | null;
+  designation_profile_json: Record<string, unknown>;
+  provenance_json: Record<string, unknown>;
+  source_snapshot_ids_json: string[];
+  raw_asset_ids_json: string[];
+  review_status: string;
+  review_notes: string | null;
+  reviewed_by: string | null;
+  reviewed_at: string | null;
+  notable_policy_issues_json: string[];
+  extant_permission_outcome: string | null;
+  site_geometry_confidence: GeometryConfidence | null;
+  created_at: string;
+  updated_at: string;
+};
+
+export type GoldSetPlanningApplication = {
+  id: string;
+  borough_id: string | null;
+  source_system: string;
+  source_snapshot_id: string;
+  external_ref: string;
+  application_type: string;
+  proposal_description: string;
+  valid_date: string | null;
+  decision_date: string | null;
+  decision: string | null;
+  decision_type: string | null;
+  status: string;
+  route_normalized: string | null;
+  units_proposed: number | null;
+  source_priority: number;
+  source_url: string | null;
+  site_geom_4326: GeometryFeature | null;
+  site_point_4326: GeometryFeature | null;
+  documents: PlanningDocument[];
+  raw_record_json: Record<string, unknown>;
+};
+
+export type HistoricalLabelCase = HistoricalLabelSummary & {
+  planning_application: GoldSetPlanningApplication;
+};
+
+export type ComparableCaseMember = {
+  id: string;
+  planning_application_id: string;
+  similarity_score: number;
+  outcome: 'APPROVED' | 'REFUSED';
+  rank: number;
+  fallback_path: string;
+  match_json: Record<string, unknown>;
+  planning_application: ComparablePlanningApplication;
+  historical_label: HistoricalLabelSummary;
+};
+
+export type ComparableCaseSet = {
+  id: string;
+  strategy: string;
+  same_borough_count: number;
+  london_count: number;
+  approved_count: number;
+  refused_count: number;
+  approved_members: ComparableCaseMember[];
+  refused_members: ComparableCaseMember[];
+};
+
+export type PredictionLedger = {
+  id: string;
+  site_geom_hash: string;
+  feature_hash: string;
+  model_release_id: string | null;
+  calibration_hash: string | null;
+  source_snapshot_ids_json: string[];
+  raw_asset_ids_json: string[];
+  result_payload_hash: string;
+  response_json: Record<string, unknown>;
+  created_at: string;
+};
+
+export type AssessmentSummary = {
+  id: string;
+  site_id: string;
+  scenario_id: string;
+  as_of_date: string;
+  state: string;
+  idempotency_key: string;
+  requested_by: string | null;
+  started_at: string | null;
+  finished_at: string | null;
+  error_text: string | null;
+  created_at: string;
+  updated_at: string;
+  estimate_status: string;
+  eligibility_status: string;
+  review_status: string;
+  manual_review_required: boolean;
+  site_summary: SiteSummary | null;
+  scenario_summary: ScenarioSummary | null;
+};
+
+export type AssessmentDetail = AssessmentSummary & {
+  feature_snapshot: AssessmentFeatureSnapshot | null;
+  result: AssessmentResult | null;
+  evidence: EvidencePack | null;
+  comparable_case_set: ComparableCaseSet | null;
+  prediction_ledger: PredictionLedger | null;
+  note: string;
+};
+
+export type AssessmentCreateInput = {
+  site_id: string;
+  scenario_id: string;
+  as_of_date: string;
+  requested_by?: string;
+};
+
+export type HistoricalLabelReviewInput = {
+  review_status: string;
+  review_notes?: string;
+  notable_policy_issues?: string[];
+  extant_permission_outcome?: string;
+  site_geometry_confidence?: GeometryConfidence;
+  reviewed_by?: string;
+};
+
 type ApiCollectionResponse<T> =
   | T[]
   | {
@@ -1544,6 +1731,430 @@ function mapScenarioSuggestResponse(value: unknown): ScenarioSuggestResponse | n
   };
 }
 
+function mapAssessmentFeatureSnapshot(value: unknown): AssessmentFeatureSnapshot | null {
+  if (!isRecord(value)) {
+    return null;
+  }
+
+  return {
+    id: toStringValue(value.id),
+    feature_version: toStringValue(value.feature_version ?? value.featureVersion),
+    feature_hash: toStringValue(value.feature_hash ?? value.featureHash),
+    feature_json: isRecord(value.feature_json) ? value.feature_json : {},
+    coverage_json: isRecord(value.coverage_json) ? value.coverage_json : {},
+    created_at: toStringValue(value.created_at ?? value.createdAt)
+  };
+}
+
+function mapAssessmentResult(value: unknown): AssessmentResult | null {
+  if (!isRecord(value)) {
+    return null;
+  }
+
+  return {
+    id: toStringValue(value.id),
+    eligibility_status: toStringValue(value.eligibility_status ?? value.eligibilityStatus),
+    estimate_status: toStringValue(value.estimate_status ?? value.estimateStatus, 'NONE'),
+    review_status: toStringValue(value.review_status ?? value.reviewStatus),
+    approval_probability_raw:
+      value.approval_probability_raw === null || value.approval_probability_raw === undefined
+        ? null
+        : toNumberValue(value.approval_probability_raw),
+    approval_probability_display:
+      value.approval_probability_display === null || value.approval_probability_display === undefined
+        ? null
+        : toStringValue(value.approval_probability_display),
+    estimate_quality:
+      value.estimate_quality === null || value.estimate_quality === undefined
+        ? null
+        : toStringValue(value.estimate_quality),
+    source_coverage_quality:
+      value.source_coverage_quality === null || value.source_coverage_quality === undefined
+        ? null
+        : toStringValue(value.source_coverage_quality),
+    geometry_quality:
+      value.geometry_quality === null || value.geometry_quality === undefined
+        ? null
+        : toStringValue(value.geometry_quality),
+    support_quality:
+      value.support_quality === null || value.support_quality === undefined
+        ? null
+        : toStringValue(value.support_quality),
+    ood_status:
+      value.ood_status === null || value.ood_status === undefined
+        ? null
+        : toStringValue(value.ood_status),
+    manual_review_required: Boolean(value.manual_review_required ?? value.manualReviewRequired),
+    result_json: isRecord(value.result_json) ? value.result_json : {},
+    published_at:
+      value.published_at === null || value.published_at === undefined
+        ? null
+        : toStringValue(value.published_at)
+  };
+}
+
+function mapComparablePlanningApplication(value: unknown): ComparablePlanningApplication {
+  if (!isRecord(value)) {
+    throw new Error('Invalid comparable planning application');
+  }
+
+  return {
+    id: toStringValue(value.id),
+    external_ref: toStringValue(value.external_ref ?? value.externalRef),
+    borough_id:
+      value.borough_id === null || value.borough_id === undefined
+        ? null
+        : toStringValue(value.borough_id),
+    proposal_description: toStringValue(value.proposal_description ?? value.proposalDescription),
+    valid_date:
+      value.valid_date === null || value.valid_date === undefined ? null : toStringValue(value.valid_date),
+    decision_date:
+      value.decision_date === null || value.decision_date === undefined
+        ? null
+        : toStringValue(value.decision_date),
+    decision:
+      value.decision === null || value.decision === undefined ? null : toStringValue(value.decision),
+    route_normalized:
+      value.route_normalized === null || value.route_normalized === undefined
+        ? null
+        : toStringValue(value.route_normalized),
+    units_proposed:
+      value.units_proposed === null || value.units_proposed === undefined
+        ? null
+        : toNumberValue(value.units_proposed),
+    source_system: toStringValue(value.source_system ?? value.sourceSystem),
+    source_url:
+      value.source_url === null || value.source_url === undefined ? null : toStringValue(value.source_url)
+  };
+}
+
+function mapHistoricalLabelSummary(value: unknown): HistoricalLabelSummary {
+  if (!isRecord(value)) {
+    throw new Error('Invalid historical label summary');
+  }
+
+  return {
+    id: toStringValue(value.id),
+    planning_application_id: toStringValue(value.planning_application_id ?? value.planningApplicationId),
+    borough_id:
+      value.borough_id === null || value.borough_id === undefined ? null : toStringValue(value.borough_id),
+    template_key:
+      value.template_key === null || value.template_key === undefined
+        ? null
+        : toStringValue(value.template_key),
+    proposal_form:
+      value.proposal_form === null || value.proposal_form === undefined
+        ? null
+        : (toStringValue(value.proposal_form) as ProposalForm),
+    route_normalized:
+      value.route_normalized === null || value.route_normalized === undefined
+        ? null
+        : toStringValue(value.route_normalized),
+    units_proposed:
+      value.units_proposed === null || value.units_proposed === undefined
+        ? null
+        : toNumberValue(value.units_proposed),
+    site_area_sqm:
+      value.site_area_sqm === null || value.site_area_sqm === undefined
+        ? null
+        : toNumberValue(value.site_area_sqm),
+    label_version: toStringValue(value.label_version ?? value.labelVersion),
+    label_class: toStringValue(value.label_class ?? value.labelClass),
+    label_decision: toStringValue(value.label_decision ?? value.labelDecision),
+    label_reason:
+      value.label_reason === null || value.label_reason === undefined
+        ? null
+        : toStringValue(value.label_reason),
+    valid_date:
+      value.valid_date === null || value.valid_date === undefined ? null : toStringValue(value.valid_date),
+    first_substantive_decision_date:
+      value.first_substantive_decision_date === null || value.first_substantive_decision_date === undefined
+        ? null
+        : toStringValue(value.first_substantive_decision_date),
+    label_window_end:
+      value.label_window_end === null || value.label_window_end === undefined
+        ? null
+        : toStringValue(value.label_window_end),
+    source_priority_used: toNumberValue(value.source_priority_used ?? value.sourcePriorityUsed) ?? 0,
+    archetype_key:
+      value.archetype_key === null || value.archetype_key === undefined
+        ? null
+        : toStringValue(value.archetype_key),
+    designation_profile_json: isRecord(value.designation_profile_json) ? value.designation_profile_json : {},
+    provenance_json: isRecord(value.provenance_json) ? value.provenance_json : {},
+    source_snapshot_ids_json: pickCollection(value.source_snapshot_ids_json as ApiCollectionResponse<unknown>).map(
+      (item) => toStringValue(item)
+    ),
+    raw_asset_ids_json: pickCollection(value.raw_asset_ids_json as ApiCollectionResponse<unknown>).map((item) =>
+      toStringValue(item)
+    ),
+    review_status: toStringValue(value.review_status ?? value.reviewStatus),
+    review_notes:
+      value.review_notes === null || value.review_notes === undefined
+        ? null
+        : toStringValue(value.review_notes),
+    reviewed_by:
+      value.reviewed_by === null || value.reviewed_by === undefined
+        ? null
+        : toStringValue(value.reviewed_by),
+    reviewed_at:
+      value.reviewed_at === null || value.reviewed_at === undefined
+        ? null
+        : toStringValue(value.reviewed_at),
+    notable_policy_issues_json: pickCollection(
+      value.notable_policy_issues_json as ApiCollectionResponse<unknown>
+    ).map((item) => toStringValue(item)),
+    extant_permission_outcome:
+      value.extant_permission_outcome === null || value.extant_permission_outcome === undefined
+        ? null
+        : toStringValue(value.extant_permission_outcome),
+    site_geometry_confidence:
+      value.site_geometry_confidence === null || value.site_geometry_confidence === undefined
+        ? null
+        : (toStringValue(value.site_geometry_confidence) as GeometryConfidence),
+    created_at: toStringValue(value.created_at ?? value.createdAt),
+    updated_at: toStringValue(value.updated_at ?? value.updatedAt)
+  };
+}
+
+function mapGoldSetPlanningApplication(value: unknown): GoldSetPlanningApplication {
+  if (!isRecord(value)) {
+    throw new Error('Invalid gold-set planning application');
+  }
+
+  return {
+    id: toStringValue(value.id),
+    borough_id:
+      value.borough_id === null || value.borough_id === undefined ? null : toStringValue(value.borough_id),
+    source_system: toStringValue(value.source_system ?? value.sourceSystem),
+    source_snapshot_id: toStringValue(value.source_snapshot_id ?? value.sourceSnapshotId),
+    external_ref: toStringValue(value.external_ref ?? value.externalRef),
+    application_type: toStringValue(value.application_type ?? value.applicationType),
+    proposal_description: toStringValue(value.proposal_description ?? value.proposalDescription),
+    valid_date:
+      value.valid_date === null || value.valid_date === undefined ? null : toStringValue(value.valid_date),
+    decision_date:
+      value.decision_date === null || value.decision_date === undefined
+        ? null
+        : toStringValue(value.decision_date),
+    decision:
+      value.decision === null || value.decision === undefined ? null : toStringValue(value.decision),
+    decision_type:
+      value.decision_type === null || value.decision_type === undefined
+        ? null
+        : toStringValue(value.decision_type),
+    status: toStringValue(value.status),
+    route_normalized:
+      value.route_normalized === null || value.route_normalized === undefined
+        ? null
+        : toStringValue(value.route_normalized),
+    units_proposed:
+      value.units_proposed === null || value.units_proposed === undefined
+        ? null
+        : toNumberValue(value.units_proposed),
+    source_priority: toNumberValue(value.source_priority ?? value.sourcePriority) ?? 0,
+    source_url:
+      value.source_url === null || value.source_url === undefined ? null : toStringValue(value.source_url),
+    site_geom_4326:
+      value.site_geom_4326 === null || value.site_geom_4326 === undefined
+        ? null
+        : mapGeometryFeature(value.site_geom_4326),
+    site_point_4326:
+      value.site_point_4326 === null || value.site_point_4326 === undefined
+        ? null
+        : mapGeometryFeature(value.site_point_4326),
+    documents: pickCollection(value.documents as ApiCollectionResponse<unknown>).map((item) => ({
+      id: isRecord(item) ? toStringValue(item.id) : '',
+      doc_type: isRecord(item) ? toStringValue(item.doc_type ?? item.docType) : '',
+      doc_url: isRecord(item) ? toStringValue(item.doc_url ?? item.docUrl) : '',
+      asset_id:
+        isRecord(item) && item.asset_id !== null && item.asset_id !== undefined
+          ? toStringValue(item.asset_id)
+          : null
+    })),
+    raw_record_json: isRecord(value.raw_record_json) ? value.raw_record_json : {}
+  };
+}
+
+function mapHistoricalLabelCase(value: unknown): HistoricalLabelCase {
+  if (!isRecord(value)) {
+    throw new Error('Invalid historical label case');
+  }
+
+  const planningApplication = getRecord(value, 'planning_application');
+  return {
+    ...mapHistoricalLabelSummary(value),
+    planning_application: planningApplication
+      ? mapGoldSetPlanningApplication(planningApplication)
+      : {
+          id: '',
+          borough_id: null,
+          source_system: '',
+          source_snapshot_id: '',
+          external_ref: '',
+          application_type: '',
+          proposal_description: '',
+          valid_date: null,
+          decision_date: null,
+          decision: null,
+          decision_type: null,
+          status: '',
+          route_normalized: null,
+          units_proposed: null,
+          source_priority: 0,
+          source_url: null,
+          site_geom_4326: null,
+          site_point_4326: null,
+          documents: [],
+          raw_record_json: {}
+        }
+  };
+}
+
+function mapComparableCaseMember(value: unknown): ComparableCaseMember {
+  if (!isRecord(value)) {
+    throw new Error('Invalid comparable case member');
+  }
+
+  const planningApplication = getRecord(value, 'planning_application');
+  const historicalLabel = getRecord(value, 'historical_label');
+  return {
+    id: toStringValue(value.id),
+    planning_application_id: toStringValue(value.planning_application_id ?? value.planningApplicationId),
+    similarity_score: toNumberValue(value.similarity_score ?? value.similarityScore) ?? 0,
+    outcome: toStringValue(value.outcome, 'APPROVED') as ComparableCaseMember['outcome'],
+    rank: toNumberValue(value.rank) ?? 0,
+    fallback_path: toStringValue(value.fallback_path ?? value.fallbackPath),
+    match_json: isRecord(value.match_json) ? value.match_json : {},
+    planning_application: planningApplication
+      ? mapComparablePlanningApplication(planningApplication)
+      : {
+          id: '',
+          external_ref: '',
+          borough_id: null,
+          proposal_description: '',
+          valid_date: null,
+          decision_date: null,
+          decision: null,
+          route_normalized: null,
+          units_proposed: null,
+          source_system: '',
+          source_url: null
+        },
+    historical_label: historicalLabel
+      ? mapHistoricalLabelSummary(historicalLabel)
+      : mapHistoricalLabelSummary({})
+  };
+}
+
+function mapComparableCaseSet(value: unknown): ComparableCaseSet | null {
+  if (!isRecord(value)) {
+    return null;
+  }
+
+  return {
+    id: toStringValue(value.id),
+    strategy: toStringValue(value.strategy),
+    same_borough_count: toNumberValue(value.same_borough_count ?? value.sameBoroughCount) ?? 0,
+    london_count: toNumberValue(value.london_count ?? value.londonCount) ?? 0,
+    approved_count: toNumberValue(value.approved_count ?? value.approvedCount) ?? 0,
+    refused_count: toNumberValue(value.refused_count ?? value.refusedCount) ?? 0,
+    approved_members: pickCollection(value.approved_members as ApiCollectionResponse<unknown>).map(
+      mapComparableCaseMember
+    ),
+    refused_members: pickCollection(value.refused_members as ApiCollectionResponse<unknown>).map(
+      mapComparableCaseMember
+    )
+  };
+}
+
+function mapPredictionLedger(value: unknown): PredictionLedger | null {
+  if (!isRecord(value)) {
+    return null;
+  }
+
+  return {
+    id: toStringValue(value.id),
+    site_geom_hash: toStringValue(value.site_geom_hash ?? value.siteGeomHash),
+    feature_hash: toStringValue(value.feature_hash ?? value.featureHash),
+    model_release_id:
+      value.model_release_id === null || value.model_release_id === undefined
+        ? null
+        : toStringValue(value.model_release_id),
+    calibration_hash:
+      value.calibration_hash === null || value.calibration_hash === undefined
+        ? null
+        : toStringValue(value.calibration_hash),
+    source_snapshot_ids_json: pickCollection(
+      value.source_snapshot_ids_json as ApiCollectionResponse<unknown>
+    ).map((item) => toStringValue(item)),
+    raw_asset_ids_json: pickCollection(value.raw_asset_ids_json as ApiCollectionResponse<unknown>).map(
+      (item) => toStringValue(item)
+    ),
+    result_payload_hash: toStringValue(value.result_payload_hash ?? value.resultPayloadHash),
+    response_json: isRecord(value.response_json) ? value.response_json : {},
+    created_at: toStringValue(value.created_at ?? value.createdAt)
+  };
+}
+
+function mapAssessmentSummary(value: unknown): AssessmentSummary {
+  if (!isRecord(value)) {
+    throw new Error('Invalid assessment summary');
+  }
+
+  const siteSummary = getRecord(value, 'site_summary');
+  const scenarioSummary = getRecord(value, 'scenario_summary');
+
+  return {
+    id: toStringValue(value.id),
+    site_id: toStringValue(value.site_id ?? value.siteId),
+    scenario_id: toStringValue(value.scenario_id ?? value.scenarioId),
+    as_of_date: toStringValue(value.as_of_date ?? value.asOfDate),
+    state: toStringValue(value.state),
+    idempotency_key: toStringValue(value.idempotency_key ?? value.idempotencyKey),
+    requested_by:
+      value.requested_by === null || value.requested_by === undefined
+        ? null
+        : toStringValue(value.requested_by),
+    started_at:
+      value.started_at === null || value.started_at === undefined
+        ? null
+        : toStringValue(value.started_at),
+    finished_at:
+      value.finished_at === null || value.finished_at === undefined
+        ? null
+        : toStringValue(value.finished_at),
+    error_text:
+      value.error_text === null || value.error_text === undefined
+        ? null
+        : toStringValue(value.error_text),
+    created_at: toStringValue(value.created_at ?? value.createdAt),
+    updated_at: toStringValue(value.updated_at ?? value.updatedAt),
+    estimate_status: toStringValue(value.estimate_status ?? value.estimateStatus, 'NONE'),
+    eligibility_status: toStringValue(value.eligibility_status ?? value.eligibilityStatus),
+    review_status: toStringValue(value.review_status ?? value.reviewStatus),
+    manual_review_required: Boolean(value.manual_review_required ?? value.manualReviewRequired),
+    site_summary: siteSummary ? mapSiteSummary(siteSummary) : null,
+    scenario_summary: scenarioSummary ? mapScenarioSummary(scenarioSummary) : null
+  };
+}
+
+function mapAssessmentDetail(value: unknown): AssessmentDetail | null {
+  if (!isRecord(value)) {
+    return null;
+  }
+
+  return {
+    ...mapAssessmentSummary(value),
+    feature_snapshot: mapAssessmentFeatureSnapshot(value.feature_snapshot ?? value.featureSnapshot),
+    result: mapAssessmentResult(value.result),
+    evidence: mapEvidencePack(value.evidence),
+    comparable_case_set: mapComparableCaseSet(value.comparable_case_set ?? value.comparableCaseSet),
+    prediction_ledger: mapPredictionLedger(value.prediction_ledger ?? value.predictionLedger),
+    note: toStringValue(value.note)
+  };
+}
+
 function mapGeometryFeature(value: unknown): GeometryFeature {
   if (!isRecord(value)) {
     throw new Error('Invalid geometry feature');
@@ -2129,5 +2740,99 @@ export async function confirmScenario(
   return {
     apiAvailable: false,
     item: null
+  };
+}
+
+export async function getAssessments(
+  query: AssessmentQuery = {}
+): Promise<{ items: AssessmentSummary[]; apiAvailable: boolean }> {
+  const result = await queryApiCollection(
+    `/api/assessments${buildQueryString(query)}`,
+    mapAssessmentSummary
+  );
+  return {
+    items: result.items,
+    apiAvailable: result.apiAvailable
+  };
+}
+
+export async function getAssessment(
+  assessmentId: string
+): Promise<{ item: AssessmentDetail | null; apiAvailable: boolean }> {
+  const payload = await requestJson(`/api/assessments/${encodeURIComponent(assessmentId)}`);
+  return {
+    apiAvailable: payload !== null,
+    item: payload ? mapAssessmentDetail(payload) : null
+  };
+}
+
+export async function createAssessment(
+  input: AssessmentCreateInput
+): Promise<{ item: AssessmentDetail | null; apiAvailable: boolean }> {
+  const payload = await requestJson('/api/assessments', {
+    body: JSON.stringify({
+      site_id: input.site_id,
+      scenario_id: input.scenario_id,
+      as_of_date: input.as_of_date,
+      requested_by: input.requested_by ?? 'web-ui'
+    }),
+    headers: {
+      'Content-Type': 'application/json'
+    },
+    method: 'POST'
+  });
+
+  return {
+    apiAvailable: payload !== null,
+    item: payload ? mapAssessmentDetail(payload) : null
+  };
+}
+
+export async function getGoldSetCases(query: {
+  review_status?: string;
+  template_key?: string;
+} = {}): Promise<{ items: HistoricalLabelSummary[]; apiAvailable: boolean }> {
+  const result = await queryApiCollection(
+    `/api/admin/gold-set/cases${buildQueryString(query)}`,
+    mapHistoricalLabelSummary
+  );
+  return {
+    items: result.items,
+    apiAvailable: result.apiAvailable
+  };
+}
+
+export async function getGoldSetCase(
+  caseId: string
+): Promise<{ item: HistoricalLabelCase | null; apiAvailable: boolean }> {
+  const payload = await requestJson(`/api/admin/gold-set/cases/${encodeURIComponent(caseId)}`);
+  return {
+    apiAvailable: payload !== null,
+    item: payload ? mapHistoricalLabelCase(payload) : null
+  };
+}
+
+export async function reviewGoldSetCase(
+  caseId: string,
+  input: HistoricalLabelReviewInput
+): Promise<{ item: HistoricalLabelCase | null; apiAvailable: boolean }> {
+  const payload = await requestJson(`/api/admin/gold-set/cases/${encodeURIComponent(caseId)}/review`, {
+    body: JSON.stringify({
+      review_status: input.review_status,
+      review_notes: input.review_notes ?? null,
+      notable_policy_issues: input.notable_policy_issues ?? [],
+      extant_permission_outcome: input.extant_permission_outcome ?? null,
+      site_geometry_confidence: input.site_geometry_confidence ?? null,
+      reviewed_by: input.reviewed_by ?? 'web-ui'
+    }),
+    headers: {
+      'Content-Type': 'application/json'
+    },
+    method: 'POST'
+  });
+
+  return {
+    apiAvailable: payload !== null,
+    item: payload ? mapHistoricalLabelCase(payload) : null
   };
 }

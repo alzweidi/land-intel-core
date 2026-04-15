@@ -2,7 +2,7 @@
 
 London-first land intelligence monorepo. The controlling spec for this repo is [docs/london_land_intelligence_implementation_spec_v1 (2).md](/Users/atta/land-intel-core/docs/london_land_intelligence_implementation_spec_v1%20(2).md).
 
-Phase 4A is implemented here. The repo now covers the Phase 1A listing pipeline, Phase 2 site geometry, Phase 3A planning context, and the Phase 4A scenario-engine foundation:
+Phase 5A is implemented here. The repo now covers the Phase 1A listing pipeline, Phase 2 site geometry, Phase 3A planning context, Phase 4A scenario foundations, and the Phase 5A pre-score assessment foundation:
 - compliant connector framework and immutable listing snapshots
 - listing parsing, normalization, and deterministic clustering
 - site creation from listing clusters
@@ -16,8 +16,12 @@ Phase 4A is implemented here. The repo now covers the Phase 1A listing pipeline,
 - analyst scenario edit / confirm / reject workflow with frozen geometry hash and stale-state handling
 - scenario-conditioned evidence in API and internal UI
 - site list/detail API and internal map/detail UI with planning and scenario panels
+- historical label construction with explicit positive / negative / excluded mappings
+- point-in-time feature snapshots with provenance, missingness flags, and stable feature hashing
+- frozen assessment runs with deterministic comparable retrieval and replay-safe prediction-ledger rows
+- minimal gold-set review APIs and internal review surface
 
-Phase 5+ historical labels, comparable retrieval, model work, scoring, valuation, ranking, visible probability, and hidden probability remain deferred.
+Phase 5B and Phase 6+ model work, calibration, OOD logic, scoring, valuation, ranking, visible probability, and hidden probability remain deferred.
 
 ## Repo Layout
 
@@ -69,7 +73,7 @@ source .venv/bin/activate
 python -m landintel.geospatial.bootstrap --dataset all --requested-by local-dev
 ```
 
-6. Bootstrap the local Phase 3A/4A planning fixtures:
+6. Bootstrap the local Phase 3A through Phase 5A planning fixtures:
 
 ```bash
 source .venv/bin/activate
@@ -183,6 +187,28 @@ curl -X POST http://localhost:8000/api/scenarios/<scenario_uuid>/confirm \
   -d '{"action":"confirm","reviewed_by":"local-smoke","review_notes":"Analyst confirmed after reviewing rulepack fit."}'
 ```
 
+Create and inspect a frozen pre-score assessment:
+
+```bash
+curl -X POST http://localhost:8000/api/assessments \
+  -H 'Content-Type: application/json' \
+  -d '{"site_id":"<site_uuid>","scenario_id":"<confirmed_scenario_uuid>","as_of_date":"2026-04-15","requested_by":"local-smoke"}'
+
+curl http://localhost:8000/api/assessments
+curl http://localhost:8000/api/assessments/<assessment_uuid>
+```
+
+Inspect and review gold-set cases:
+
+```bash
+curl http://localhost:8000/api/admin/gold-set/cases
+curl http://localhost:8000/api/admin/gold-set/cases/<case_uuid>
+
+curl -X POST http://localhost:8000/api/admin/gold-set/cases/<case_uuid>/review \
+  -H 'Content-Type: application/json' \
+  -d '{"review_status":"CONFIRMED","review_notes":"Fixture review","reviewed_by":"local-smoke"}'
+```
+
 ## Source Approval Rules
 
 - `manual_url` uses connector type `MANUAL_URL` and is allowed for manual analyst-triggered intake.
@@ -232,6 +258,12 @@ Minimal `refresh_policy_json` for an automated source:
 - `GET /api/sites/{site_id}/scenarios`
 - `GET /api/scenarios/{scenario_id}`
 - `POST /api/scenarios/{scenario_id}/confirm`
+- `POST /api/assessments`
+- `GET /api/assessments`
+- `GET /api/assessments/{assessment_id}`
+- `GET /api/admin/gold-set/cases`
+- `GET /api/admin/gold-set/cases/{case_id}`
+- `POST /api/admin/gold-set/cases/{case_id}/review`
 - `GET /api/health/data`
 
 ## Reference Data Bootstrap
@@ -245,7 +277,7 @@ Minimal `refresh_policy_json` for an automated source:
 - `python -m landintel.planning.bootstrap --dataset policy --requested-by local-dev` imports London DataMap / borough policy area fixtures.
 - `python -m landintel.planning.bootstrap --dataset constraints --requested-by local-dev` imports Planning Data, flood, heritage, and Article 4 fixtures.
 - `python -m landintel.planning.bootstrap --dataset baseline --requested-by local-dev` imports cited pilot-borough baseline packs and machine-readable rulepacks.
-- `python -m landintel.planning.bootstrap --dataset all --requested-by local-dev` runs the full Phase 3A/4A fixture bootstrap.
+- `python -m landintel.planning.bootstrap --dataset all --requested-by local-dev` runs the full Phase 3A through Phase 5A fixture bootstrap.
 - local/dev uses fixture-scale coverage only; this phase does not attempt national bulk ingestion.
 
 ## Geometry Confidence Meanings
@@ -282,7 +314,19 @@ All canonical calculations run in EPSG:27700. EPSG:4326 is stored only for displ
 - if the site geometry changes later, current scenarios are marked stale and review-required rather than silently carried forward
 - stale-state is surfaced in the API/UI with warning codes and audit history
 
-## Phase 4A Rules
+## Historical Labels And Assessments
+
+- the historical label target is the first substantive decision within 18 months of validation
+- positive labels: approve, conditional approve, and operationally mapped resolve-to-grant / minded-to-grant outcomes
+- negative labels: refuse
+- excluded or censored: withdrawn, invalid, duplicate/administrative, undetermined beyond the window, appeal-only outcomes, and non-relevant application types
+- borough register data remains the authority of record where available; PLD is supplemental only
+- point-in-time features use only information available on or before the frozen `as_of_date`
+- replay of the same frozen assessment input must reproduce the same feature hash and payload hash
+- assessment runs require a confirmed scenario and stay pre-score with `estimate_status = NONE`
+- comparable retrieval is deterministic explanation infrastructure only, not a substitute model
+
+## Phase 5A Rules
 
 - the assessed object is the site geometry, not an individual title polygon
 - title polygons are indicative evidence only and can support multi-title linkage
@@ -295,7 +339,8 @@ All canonical calculations run in EPSG:27700. EPSG:4326 is stored only for displ
 - do not infer planning truth, policy truth, or parcel-only scoring signals from listing text
 - do not use brochure OCR/CV, speculative polygon inference, or LLM-generated planning facts in this phase
 - scenarios are hypotheses, not facts
-- no probability, valuation, ranking, or assessment execution is implemented in this phase
+- no visible or hidden probability is implemented in this phase
+- no valuation, ranking, or model training is implemented in this phase
 - do not downgrade an `ABSTAIN` / manual-review condition just because a scenario exists
 - if strong nearest historical support cannot be shown honestly, default to `ANALYST_REQUIRED`
 
@@ -358,18 +403,20 @@ docker compose ps
 - missing fields stay null; the parser does not invent planning claims or geometry
 - Phase 3A planning imports stay fixture-scale for local/dev and focus on deterministic site enrichment, not citywide production ingest
 - Phase 4A scenario suggestions stay deterministic, testable, and config-driven; they are not predictions
+- Phase 5A assessment runs stay pre-score only and use deterministic comparable fallback rules with stable replay hashes
 - pilot borough rulepacks are usable operational summaries for fixture boroughs, but they are not a substitute for analyst judgment or legal advice
 
-## Deferred To Phase 5+
+## Deferred To Phase 5B And Phase 6+
 
-- historical labels and point-in-time feature reconstruction
-- gold-set workflow and comparable retrieval
-- assessment runs
-- feature snapshots for model training
+- broader gold-set tooling and larger review workflow UX
+- richer historical backfill and point-in-time reconstruction coverage
+- feature snapshots for model training beyond the frozen Phase 5A artifact path
 - scoring
+- calibration
+- OOD logic
 - valuation
 - ranking
 - visible probability
 - hidden probability
 - comparable-case ranking logic
-- assessments, scoring, valuation, ranking, and model training
+- model training and release management

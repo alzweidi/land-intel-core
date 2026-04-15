@@ -23,14 +23,23 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from landintel.db.base import Base
 from landintel.domain.enums import (
     AppRoleName,
+    AssessmentRunState,
     BaselinePackStatus,
+    ComparableOutcome,
     ComplianceMode,
     ConnectorType,
     DocumentExtractionStatus,
     DocumentType,
+    EligibilityStatus,
+    EstimateQuality,
+    EstimateStatus,
     EvidenceImportance,
+    EvidencePolarity,
     GeomConfidence,
     GeomSourceType,
+    GoldSetReviewStatus,
+    HistoricalLabelClass,
+    HistoricalLabelDecision,
     JobStatus,
     JobType,
     ListingClusterStatus,
@@ -38,6 +47,7 @@ from landintel.domain.enums import (
     ListingType,
     PriceBasisType,
     ProposalForm,
+    ReviewStatus,
     ScenarioSource,
     ScenarioStatus,
     SiteMarketEventType,
@@ -46,6 +56,7 @@ from landintel.domain.enums import (
     SourceCoverageStatus,
     SourceFreshnessStatus,
     SourceParseStatus,
+    VerifiedStatus,
 )
 
 
@@ -570,6 +581,11 @@ class SiteCandidate(Base):
         cascade="all, delete-orphan",
         order_by="SiteScenario.updated_at.desc()",
     )
+    assessment_runs: Mapped[list["AssessmentRun"]] = relationship(
+        back_populates="site",
+        cascade="all, delete-orphan",
+        order_by="AssessmentRun.created_at.desc()",
+    )
 
 
 class SiteGeometryRevision(Base):
@@ -767,6 +783,13 @@ class PlanningApplication(Base):
         cascade="all, delete-orphan",
     )
     site_links: Mapped[list["SitePlanningLink"]] = relationship(
+        back_populates="planning_application"
+    )
+    historical_labels: Mapped[list["HistoricalCaseLabel"]] = relationship(
+        back_populates="planning_application",
+        cascade="all, delete-orphan",
+    )
+    comparable_members: Mapped[list["ComparableCaseMember"]] = relationship(
         back_populates="planning_application"
     )
 
@@ -1228,6 +1251,11 @@ class SiteScenario(Base):
         cascade="all, delete-orphan",
         order_by="ScenarioReview.reviewed_at.desc()",
     )
+    assessment_runs: Mapped[list["AssessmentRun"]] = relationship(
+        back_populates="scenario",
+        cascade="all, delete-orphan",
+        order_by="AssessmentRun.created_at.desc()",
+    )
 
 
 class ScenarioReview(Base):
@@ -1253,6 +1281,390 @@ class ScenarioReview(Base):
     )
 
     scenario: Mapped[SiteScenario] = relationship(back_populates="reviews")
+
+
+class HistoricalCaseLabel(Base):
+    __tablename__ = "historical_case_label"
+    __table_args__ = (UniqueConstraint("planning_application_id", "label_version"),)
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
+    planning_application_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid,
+        ForeignKey("planning_application.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    borough_id: Mapped[str | None] = mapped_column(String(100))
+    template_key: Mapped[str | None] = mapped_column(String(100))
+    proposal_form: Mapped[ProposalForm | None] = mapped_column(
+        Enum(ProposalForm, name="proposal_form", create_type=False),
+    )
+    route_normalized: Mapped[str | None] = mapped_column(String(100))
+    units_proposed: Mapped[int | None] = mapped_column(Integer)
+    site_area_sqm: Mapped[float | None] = mapped_column(Float)
+    label_version: Mapped[str] = mapped_column(String(100), nullable=False)
+    label_class: Mapped[HistoricalLabelClass] = mapped_column(
+        Enum(HistoricalLabelClass, name="historical_label_class"),
+        nullable=False,
+    )
+    label_decision: Mapped[HistoricalLabelDecision] = mapped_column(
+        Enum(HistoricalLabelDecision, name="historical_label_decision"),
+        nullable=False,
+    )
+    label_reason: Mapped[str | None] = mapped_column(Text)
+    valid_date: Mapped[date | None] = mapped_column(Date)
+    first_substantive_decision_date: Mapped[date | None] = mapped_column(Date)
+    label_window_end: Mapped[date | None] = mapped_column(Date)
+    source_priority_used: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    archetype_key: Mapped[str | None] = mapped_column(String(255))
+    designation_profile_json: Mapped[dict[str, object]] = mapped_column(
+        JSON,
+        nullable=False,
+        default=dict,
+    )
+    provenance_json: Mapped[dict[str, object]] = mapped_column(
+        JSON,
+        nullable=False,
+        default=dict,
+    )
+    source_snapshot_ids_json: Mapped[list[str]] = mapped_column(
+        JSON,
+        nullable=False,
+        default=list,
+    )
+    raw_asset_ids_json: Mapped[list[str]] = mapped_column(
+        JSON,
+        nullable=False,
+        default=list,
+    )
+    review_status: Mapped[GoldSetReviewStatus] = mapped_column(
+        Enum(GoldSetReviewStatus, name="gold_set_review_status"),
+        nullable=False,
+        default=GoldSetReviewStatus.PENDING,
+    )
+    review_notes: Mapped[str | None] = mapped_column(Text)
+    reviewed_by: Mapped[str | None] = mapped_column(String(255))
+    reviewed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    notable_policy_issues_json: Mapped[list[str]] = mapped_column(
+        JSON,
+        nullable=False,
+        default=list,
+    )
+    extant_permission_outcome: Mapped[str | None] = mapped_column(String(100))
+    site_geometry_confidence: Mapped[GeomConfidence | None] = mapped_column(
+        Enum(GeomConfidence, name="geom_confidence", create_type=False),
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        default=utc_now,
+        server_default=func.now(),
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        default=utc_now,
+        onupdate=utc_now,
+        server_default=func.now(),
+    )
+
+    planning_application: Mapped[PlanningApplication] = relationship(
+        back_populates="historical_labels"
+    )
+
+
+class AssessmentRun(Base):
+    __tablename__ = "assessment_run"
+    __table_args__ = (UniqueConstraint("idempotency_key"),)
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
+    site_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid,
+        ForeignKey("site_candidate.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    scenario_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid,
+        ForeignKey("site_scenario.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    as_of_date: Mapped[date] = mapped_column(Date, nullable=False)
+    state: Mapped[AssessmentRunState] = mapped_column(
+        Enum(AssessmentRunState, name="assessment_run_state"),
+        nullable=False,
+        default=AssessmentRunState.PENDING,
+    )
+    idempotency_key: Mapped[str] = mapped_column(String(128), nullable=False, unique=True)
+    requested_by: Mapped[str | None] = mapped_column(String(255))
+    started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    error_text: Mapped[str | None] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        default=utc_now,
+        server_default=func.now(),
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        default=utc_now,
+        onupdate=utc_now,
+        server_default=func.now(),
+    )
+
+    site: Mapped[SiteCandidate] = relationship(back_populates="assessment_runs")
+    scenario: Mapped[SiteScenario] = relationship(back_populates="assessment_runs")
+    feature_snapshot: Mapped["AssessmentFeatureSnapshot | None"] = relationship(
+        back_populates="assessment_run",
+        cascade="all, delete-orphan",
+        uselist=False,
+    )
+    result: Mapped["AssessmentResult | None"] = relationship(
+        back_populates="assessment_run",
+        cascade="all, delete-orphan",
+        uselist=False,
+    )
+    comparable_case_set: Mapped["ComparableCaseSet | None"] = relationship(
+        back_populates="assessment_run",
+        cascade="all, delete-orphan",
+        uselist=False,
+    )
+    evidence_items: Mapped[list["EvidenceItem"]] = relationship(
+        back_populates="assessment_run",
+        cascade="all, delete-orphan",
+        order_by="EvidenceItem.created_at.asc()",
+    )
+    prediction_ledger: Mapped["PredictionLedger | None"] = relationship(
+        back_populates="assessment_run",
+        cascade="all, delete-orphan",
+        uselist=False,
+    )
+
+
+class AssessmentFeatureSnapshot(Base):
+    __tablename__ = "assessment_feature_snapshot"
+    __table_args__ = (UniqueConstraint("assessment_run_id"),)
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
+    assessment_run_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid,
+        ForeignKey("assessment_run.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    feature_version: Mapped[str] = mapped_column(String(100), nullable=False)
+    feature_hash: Mapped[str] = mapped_column(String(64), nullable=False)
+    feature_json: Mapped[dict[str, object]] = mapped_column(JSON, nullable=False, default=dict)
+    coverage_json: Mapped[dict[str, object]] = mapped_column(JSON, nullable=False, default=dict)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        default=utc_now,
+        server_default=func.now(),
+    )
+
+    assessment_run: Mapped[AssessmentRun] = relationship(back_populates="feature_snapshot")
+
+
+class AssessmentResult(Base):
+    __tablename__ = "assessment_result"
+    __table_args__ = (UniqueConstraint("assessment_run_id"),)
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
+    assessment_run_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid,
+        ForeignKey("assessment_run.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    model_release_id: Mapped[uuid.UUID | None] = mapped_column(Uuid)
+    eligibility_status: Mapped[EligibilityStatus] = mapped_column(
+        Enum(EligibilityStatus, name="eligibility_status", create_type=False),
+        nullable=False,
+    )
+    estimate_status: Mapped[EstimateStatus] = mapped_column(
+        Enum(EstimateStatus, name="estimate_status"),
+        nullable=False,
+        default=EstimateStatus.NONE,
+    )
+    review_status: Mapped[ReviewStatus] = mapped_column(
+        Enum(ReviewStatus, name="review_status"),
+        nullable=False,
+        default=ReviewStatus.NOT_REQUIRED,
+    )
+    approval_probability_raw: Mapped[float | None] = mapped_column(Float)
+    approval_probability_display: Mapped[str | None] = mapped_column(String(32))
+    estimate_quality: Mapped[EstimateQuality | None] = mapped_column(
+        Enum(EstimateQuality, name="estimate_quality"),
+    )
+    source_coverage_quality: Mapped[str | None] = mapped_column(String(32))
+    geometry_quality: Mapped[str | None] = mapped_column(String(32))
+    support_quality: Mapped[str | None] = mapped_column(String(32))
+    ood_status: Mapped[str | None] = mapped_column(String(32))
+    manual_review_required: Mapped[bool] = mapped_column(
+        Boolean,
+        nullable=False,
+        default=False,
+    )
+    result_json: Mapped[dict[str, object]] = mapped_column(JSON, nullable=False, default=dict)
+    published_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        default=utc_now,
+        server_default=func.now(),
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        default=utc_now,
+        onupdate=utc_now,
+        server_default=func.now(),
+    )
+
+    assessment_run: Mapped[AssessmentRun] = relationship(back_populates="result")
+
+
+class ComparableCaseSet(Base):
+    __tablename__ = "comparable_case_set"
+    __table_args__ = (UniqueConstraint("assessment_run_id"),)
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
+    assessment_run_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid,
+        ForeignKey("assessment_run.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    strategy: Mapped[str] = mapped_column(String(100), nullable=False)
+    same_borough_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    london_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    approved_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    refused_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        default=utc_now,
+        server_default=func.now(),
+    )
+
+    assessment_run: Mapped[AssessmentRun] = relationship(back_populates="comparable_case_set")
+    members: Mapped[list["ComparableCaseMember"]] = relationship(
+        back_populates="comparable_case_set",
+        cascade="all, delete-orphan",
+        order_by="ComparableCaseMember.rank.asc()",
+    )
+
+
+class ComparableCaseMember(Base):
+    __tablename__ = "comparable_case_member"
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
+    comparable_case_set_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid,
+        ForeignKey("comparable_case_set.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    planning_application_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid,
+        ForeignKey("planning_application.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    similarity_score: Mapped[float] = mapped_column(Float, nullable=False)
+    outcome: Mapped[ComparableOutcome] = mapped_column(
+        Enum(ComparableOutcome, name="comparable_outcome"),
+        nullable=False,
+    )
+    rank: Mapped[int] = mapped_column(Integer, nullable=False)
+    fallback_path: Mapped[str] = mapped_column(String(100), nullable=False)
+    match_json: Mapped[dict[str, object]] = mapped_column(JSON, nullable=False, default=dict)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        default=utc_now,
+        server_default=func.now(),
+    )
+
+    comparable_case_set: Mapped[ComparableCaseSet] = relationship(back_populates="members")
+    planning_application: Mapped[PlanningApplication] = relationship(
+        back_populates="comparable_members"
+    )
+
+
+class EvidenceItem(Base):
+    __tablename__ = "evidence_item"
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
+    assessment_run_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid,
+        ForeignKey("assessment_run.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    polarity: Mapped[EvidencePolarity] = mapped_column(
+        Enum(EvidencePolarity, name="evidence_polarity"),
+        nullable=False,
+    )
+    topic: Mapped[str] = mapped_column(String(100), nullable=False)
+    claim_text: Mapped[str] = mapped_column(Text, nullable=False)
+    importance: Mapped[EvidenceImportance] = mapped_column(
+        Enum(EvidenceImportance, name="evidence_importance", create_type=False),
+        nullable=False,
+    )
+    source_class: Mapped[SourceClass] = mapped_column(
+        Enum(SourceClass, name="source_class", create_type=False),
+        nullable=False,
+    )
+    source_label: Mapped[str] = mapped_column(String(255), nullable=False)
+    source_url: Mapped[str | None] = mapped_column(Text)
+    source_snapshot_id: Mapped[uuid.UUID | None] = mapped_column(Uuid)
+    raw_asset_id: Mapped[uuid.UUID | None] = mapped_column(Uuid)
+    excerpt_text: Mapped[str | None] = mapped_column(Text)
+    verified_status: Mapped[VerifiedStatus] = mapped_column(
+        Enum(VerifiedStatus, name="verified_status"),
+        nullable=False,
+        default=VerifiedStatus.VERIFIED,
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        default=utc_now,
+        server_default=func.now(),
+    )
+
+    assessment_run: Mapped[AssessmentRun] = relationship(back_populates="evidence_items")
+
+
+class PredictionLedger(Base):
+    __tablename__ = "prediction_ledger"
+    __table_args__ = (UniqueConstraint("assessment_run_id"),)
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
+    assessment_run_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid,
+        ForeignKey("assessment_run.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    site_geom_hash: Mapped[str] = mapped_column(String(64), nullable=False)
+    feature_hash: Mapped[str] = mapped_column(String(64), nullable=False)
+    model_release_id: Mapped[uuid.UUID | None] = mapped_column(Uuid)
+    calibration_hash: Mapped[str | None] = mapped_column(String(64))
+    source_snapshot_ids_json: Mapped[list[str]] = mapped_column(
+        JSON,
+        nullable=False,
+        default=list,
+    )
+    raw_asset_ids_json: Mapped[list[str]] = mapped_column(
+        JSON,
+        nullable=False,
+        default=list,
+    )
+    result_payload_hash: Mapped[str] = mapped_column(String(64), nullable=False)
+    response_json: Mapped[dict[str, object]] = mapped_column(JSON, nullable=False, default=dict)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        default=utc_now,
+        server_default=func.now(),
+    )
+
+    assessment_run: Mapped[AssessmentRun] = relationship(back_populates="prediction_ledger")
 
 
 class AuthUser(Base):
@@ -1445,3 +1857,34 @@ Index(
 )
 Index("ix_scenario_review_scenario_id", ScenarioReview.scenario_id)
 Index("ix_scenario_review_reviewed_at", ScenarioReview.reviewed_at)
+Index(
+    "ix_historical_case_label_borough_template_class",
+    HistoricalCaseLabel.borough_id,
+    HistoricalCaseLabel.template_key,
+    HistoricalCaseLabel.label_class,
+)
+Index("ix_historical_case_label_review_status", HistoricalCaseLabel.review_status)
+Index("ix_historical_case_label_decision_date", HistoricalCaseLabel.first_substantive_decision_date)
+Index("ix_historical_case_label_valid_date", HistoricalCaseLabel.valid_date)
+Index("ix_assessment_run_state", AssessmentRun.state)
+Index("ix_assessment_run_site_as_of_date", AssessmentRun.site_id, AssessmentRun.as_of_date)
+Index(
+    "ix_assessment_run_scenario_as_of_date",
+    AssessmentRun.scenario_id,
+    AssessmentRun.as_of_date,
+)
+Index("ix_assessment_feature_snapshot_run_id", AssessmentFeatureSnapshot.assessment_run_id)
+Index("ix_assessment_result_run_id", AssessmentResult.assessment_run_id)
+Index("ix_comparable_case_set_run_id", ComparableCaseSet.assessment_run_id)
+Index(
+    "ix_comparable_case_member_set_outcome_rank",
+    ComparableCaseMember.comparable_case_set_id,
+    ComparableCaseMember.outcome,
+    ComparableCaseMember.rank,
+)
+Index(
+    "ix_evidence_item_run_polarity",
+    EvidenceItem.assessment_run_id,
+    EvidenceItem.polarity,
+)
+Index("ix_prediction_ledger_run_id", PredictionLedger.assessment_run_id)

@@ -7,9 +7,9 @@ export default function HomePage() {
   return (
     <div className="page-stack">
       <PageHeader
-        eyebrow="Phase 1A"
-        title="Listing ingestion and clustering control room"
-        summary="This shell now centers the live listings layer: intake, immutable snapshots, clustering, and the minimal admin surfaces needed to run approved connectors."
+        eyebrow="Phase 5A"
+        title="London land intelligence control room"
+        summary="Listings, sites, planning context, scenarios, and frozen pre-score assessments are now live. The current shell stays explicit about what is operational versus what remains deferred."
         actions={
           <div className="page-actions__group">
             <Link className="button button--solid" href="/listings">
@@ -23,10 +23,10 @@ export default function HomePage() {
       />
 
       <section className="stat-grid">
-        <StatCard tone="accent" label="Phase" value="1A" detail="Listings and clustering only" />
-        <StatCard tone="success" label="Sources" value="3" detail="Manual, CSV, and approved public-page" />
-        <StatCard tone="warning" label="Snapshots" value="Immutable" detail="No in-place overwrite of raw assets" />
-        <StatCard tone="neutral" label="Clustering" value="Deterministic" detail="Rules are boring and documented" />
+        <StatCard tone="accent" label="Phase" value="5A" detail="Pre-score assessment foundations only" />
+        <StatCard tone="success" label="Sources" value="3+" detail="Listings plus fixture-scale planning and policy families" />
+        <StatCard tone="warning" label="Snapshots" value="Immutable" detail="No in-place overwrite of raw assets or source snapshots" />
+        <StatCard tone="neutral" label="Assessment" value="Frozen" detail="Replay-safe features, evidence, and comparables with no score output" />
       </section>
 
       <section className="route-grid">
@@ -43,12 +43,13 @@ export default function HomePage() {
 
       <Panel
         eyebrow="Spec guardrails"
-        title="What Phase 1A deliberately does not do"
-        note="Listings, sites, planning context, and scenario foundations are live. Assessment, scoring, valuation, and ranking surfaces remain stubbed."
+        title="What Phase 5A deliberately does not do"
+        note="Frozen assessment artifacts are live. Model training, scoring, valuation, ranking, and overrides remain deferred."
       >
         <ul className="checklist">
-          <li>No site geometry or title linkage.</li>
-          <li>No assessment execution, scoring, valuation, or ranking.</li>
+          <li>No model training, calibration, OOD logic, or hidden-score mode.</li>
+          <li>No probability, valuation, uplift, or ranking output.</li>
+          <li>No future-leaking feature construction or forbidden label shortcuts.</li>
           <li>No unapproved public-page connector execution.</li>
           <li>No hidden overwrite of raw source assets or snapshots.</li>
         </ul>

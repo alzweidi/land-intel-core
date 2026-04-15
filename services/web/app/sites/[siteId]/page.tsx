@@ -56,7 +56,7 @@ export default async function SiteDetailPage({
     return (
       <div className="page-stack">
         <PageHeader
-          eyebrow="Phase 4A"
+          eyebrow="Phase 5A"
           title="Site not found"
           summary={`No site record is available for ${siteId}. The page still renders as a stable empty state.`}
           actions={
@@ -106,7 +106,7 @@ export default async function SiteDetailPage({
   return (
     <div className="page-stack">
       <PageHeader
-        eyebrow="Phase 4A"
+        eyebrow="Phase 5A"
         title={site.display_name}
         summary={
           extant?.summary ??
@@ -114,9 +114,24 @@ export default async function SiteDetailPage({
           'Planning context, source coverage, and evidence are visible below.'
         }
         actions={
-          <Link className="button button--ghost" href="/sites">
-            Back to site list
-          </Link>
+          <div className="page-actions__group">
+            <Link className="button button--ghost" href="/sites">
+              Back to site list
+            </Link>
+            <Link className="button button--ghost" href={`/sites/${siteId}/scenario-editor`}>
+              Scenario editor
+            </Link>
+            {headlineScenario &&
+            (headlineScenario.status === 'ANALYST_CONFIRMED' ||
+              headlineScenario.status === 'AUTO_CONFIRMED') ? (
+              <Link
+                className="button button--ghost"
+                href={`/assessments?siteId=${site.site_id}&scenarioId=${headlineScenario.id}`}
+              >
+                Create assessment
+              </Link>
+            ) : null}
+          </div>
         }
       />
 

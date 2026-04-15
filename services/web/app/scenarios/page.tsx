@@ -27,7 +27,7 @@ export default function ScenariosPage() {
   return (
     <div className="page-stack">
       <PageHeader
-        eyebrow="Phase 4A"
+        eyebrow="Phase 5A"
         title="Scenario engine foundation"
         summary="The enabled v1 templates are seeded and operational. Generate, compare, and confirm scenarios from each site detail page; no scoring or probability is exposed here."
         actions={

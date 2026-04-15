@@ -3,6 +3,13 @@ from landintel.jobs.service import mark_job_failed, mark_job_succeeded
 from landintel.listings.service import execute_listing_job, rebuild_listing_clusters
 from landintel.storage.base import StorageAdapter
 
+from .assessment import (
+    run_assessment_feature_snapshot_build_job,
+    run_comparable_retrieval_build_job,
+    run_gold_set_refresh_job,
+    run_historical_label_rebuild_job,
+    run_replay_verification_batch_job,
+)
 from .planning_enrich import (
     run_borough_register_ingest_job,
     run_pld_ingest_job,
@@ -95,6 +102,31 @@ def dispatch_connector_job(session, job, settings, storage: StorageAdapter) -> b
 
     if job.job_type == JobType.SCENARIO_EVIDENCE_REFRESH:
         run_scenario_evidence_refresh_job(session=session, job=job)
+        mark_job_succeeded(session=session, job=job)
+        return True
+
+    if job.job_type == JobType.HISTORICAL_LABEL_REBUILD:
+        run_historical_label_rebuild_job(session=session, job=job)
+        mark_job_succeeded(session=session, job=job)
+        return True
+
+    if job.job_type == JobType.ASSESSMENT_FEATURE_SNAPSHOT_BUILD:
+        run_assessment_feature_snapshot_build_job(session=session, job=job)
+        mark_job_succeeded(session=session, job=job)
+        return True
+
+    if job.job_type == JobType.COMPARABLE_RETRIEVAL_BUILD:
+        run_comparable_retrieval_build_job(session=session, job=job)
+        mark_job_succeeded(session=session, job=job)
+        return True
+
+    if job.job_type == JobType.REPLAY_VERIFICATION_BATCH:
+        run_replay_verification_batch_job(session=session, job=job)
+        mark_job_succeeded(session=session, job=job)
+        return True
+
+    if job.job_type == JobType.GOLD_SET_REFRESH:
+        run_gold_set_refresh_job(session=session, job=job)
         mark_job_succeeded(session=session, job=job)
         return True
 

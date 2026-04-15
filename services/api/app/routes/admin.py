@@ -1,14 +1,27 @@
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
+from landintel.domain.enums import GoldSetReviewStatus
 from landintel.domain.schemas import (
+    HistoricalLabelCaseRead,
+    HistoricalLabelListResponse,
+    HistoricalLabelReviewRequest,
     JobRunRead,
     ListingSourceRead,
     PlaceholderResponse,
     SourceSnapshotRead,
 )
-from landintel.jobs.service import list_jobs
+from landintel.jobs.service import enqueue_gold_set_refresh_job, list_jobs
 from landintel.monitoring.health import build_data_health, build_model_health_stub
+from landintel.planning.historical_labels import (
+    get_historical_label_case,
+    rebuild_historical_case_labels,
+    review_historical_label_case,
+)
+from landintel.services.assessments_readback import (
+    get_gold_set_case_read,
+    list_gold_set_cases_read,
+)
 from landintel.services.listings_readback import (
     get_source_snapshot,
     list_listing_sources,
@@ -72,10 +85,91 @@ def get_listing_sources(
 def get_phase_status() -> PlaceholderResponse:
     return PlaceholderResponse(
         detail=(
-            "Phase 4A scenario suggestion, confirmation, stale-state tracking, and "
-            "scenario-conditioned evidence are active. Assessment execution, scoring, "
-            "valuation, and ranking remain deferred."
+            "Phase 5A historical labels, frozen pre-score assessments, comparable retrieval, "
+            "prediction-ledger foundations, and gold-set review are active. Model training, "
+            "probability, valuation, and ranking remain deferred."
         ),
         surface="admin.phase-status",
-        spec_phase="Phase 4A",
+        spec_phase="Phase 5A",
     )
+
+
+@router.get("/admin/gold-set/cases", response_model=HistoricalLabelListResponse)
+def get_gold_set_cases(
+    review_status: GoldSetReviewStatus | None = Query(default=None),
+    template_key: str | None = Query(default=None),
+    session: Session = Depends(get_db_session),
+) -> HistoricalLabelListResponse:
+    _ensure_historical_labels(session=session)
+    return list_gold_set_cases_read(
+        session=session,
+        review_status=review_status,
+        template_key=template_key,
+    )
+
+
+@router.get("/admin/gold-set/cases/{case_id}", response_model=HistoricalLabelCaseRead)
+def get_gold_set_case_detail(
+    case_id: UUID,
+    session: Session = Depends(get_db_session),
+) -> HistoricalLabelCaseRead:
+    _ensure_historical_labels(session=session)
+    case = get_gold_set_case_read(session=session, case_id=case_id)
+    if case is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail={"message": "Gold-set case not found.", "case_id": str(case_id)},
+        )
+    return case
+
+
+@router.post("/admin/gold-set/cases/{case_id}/review", response_model=HistoricalLabelCaseRead)
+def review_gold_set_case(
+    case_id: UUID,
+    request: HistoricalLabelReviewRequest,
+    session: Session = Depends(get_db_session),
+) -> HistoricalLabelCaseRead:
+    _ensure_historical_labels(session=session)
+    case = get_historical_label_case(session=session, case_id=case_id)
+    if case is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail={"message": "Gold-set case not found.", "case_id": str(case_id)},
+        )
+    review_historical_label_case(
+        session=session,
+        case=case,
+        review_status=request.review_status,
+        review_notes=request.review_notes,
+        notable_policy_issues=request.notable_policy_issues,
+        extant_permission_outcome=request.extant_permission_outcome,
+        site_geometry_confidence=request.site_geometry_confidence,
+        reviewed_by=request.reviewed_by,
+    )
+    session.commit()
+    session.expire_all()
+    detail = get_gold_set_case_read(session=session, case_id=case_id)
+    if detail is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail={"message": "Gold-set case not found after review.", "case_id": str(case_id)},
+        )
+    return detail
+
+
+@router.post("/admin/gold-set/refresh", response_model=JobRunRead)
+def refresh_gold_set(
+    session: Session = Depends(get_db_session),
+) -> JobRunRead:
+    job = enqueue_gold_set_refresh_job(session=session, requested_by="api-admin")
+    session.commit()
+    return JobRunRead.model_validate(job)
+
+
+def _ensure_historical_labels(*, session: Session) -> None:
+    existing = list_gold_set_cases_read(session=session)
+    if existing.total > 0:
+        return
+    rebuild_historical_case_labels(session=session, requested_by="api-read")
+    session.commit()
+    session.expire_all()

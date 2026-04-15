@@ -36,7 +36,7 @@ export const navGroups: NavGroup[] = [
     ]
   },
   {
-    title: 'Later phases',
+    title: 'Active phases',
     items: [
       {
         href: '/discovery',
@@ -56,7 +56,7 @@ export const navGroups: NavGroup[] = [
       {
         href: '/assessments',
         label: 'Assessments',
-        description: 'Frozen run history'
+        description: 'Frozen pre-score assessment runs'
       }
     ]
   },
@@ -66,7 +66,7 @@ export const navGroups: NavGroup[] = [
       {
         href: '/review-queue',
         label: 'Review queue',
-        description: 'Manual review and exception queue'
+        description: 'Gold-set review and exception queue'
       },
       {
         href: '/data-health',
@@ -127,14 +127,14 @@ export const surfaceCatalog = [
   {
     href: '/assessments',
     title: 'Assessment view',
-    summary: 'Render frozen assessment results, evidence blocks, and valuation bands.',
-    tag: 'assessment'
+    summary: 'Inspect frozen pre-score runs with evidence, comparables, provenance, and replay metadata.',
+    tag: 'pre-score'
   },
   {
     href: '/review-queue',
     title: 'Review queue',
-    summary: 'Track manual-review-required and changed cases in a simple queue layout.',
-    tag: 'ops'
+    summary: 'Review historical label candidates and record minimal gold-set adjudication notes.',
+    tag: 'gold set'
   },
   {
     href: '/data-health',
