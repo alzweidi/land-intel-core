@@ -1,10 +1,19 @@
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
-from landintel.domain.schemas import JobRunRead, PlaceholderResponse, SourceSnapshotRead
+from landintel.domain.schemas import (
+    JobRunRead,
+    ListingSourceRead,
+    PlaceholderResponse,
+    SourceSnapshotRead,
+)
 from landintel.jobs.service import list_jobs
 from landintel.monitoring.health import build_data_health_stub, build_model_health_stub
-from landintel.services.readback import get_source_snapshot, list_source_snapshots
+from landintel.services.listings_readback import (
+    get_source_snapshot,
+    list_listing_sources,
+    list_source_snapshots,
+)
 from sqlalchemy.orm import Session
 
 from ..dependencies import get_db_session
@@ -35,8 +44,7 @@ def get_source_snapshots(
     limit: int = Query(default=100, ge=1, le=500),
     session: Session = Depends(get_db_session),
 ) -> list[SourceSnapshotRead]:
-    snapshots = list_source_snapshots(session=session, limit=limit)
-    return [SourceSnapshotRead.model_validate(snapshot) for snapshot in snapshots]
+    return list_source_snapshots(session=session, limit=limit)
 
 
 @router.get("/admin/source-snapshots/{snapshot_id}", response_model=SourceSnapshotRead)
@@ -50,16 +58,23 @@ def get_source_snapshot_detail(
             status_code=status.HTTP_404_NOT_FOUND,
             detail={"message": "Source snapshot not found.", "snapshot_id": str(snapshot_id)},
         )
-    return SourceSnapshotRead.model_validate(snapshot)
+    return snapshot
+
+
+@router.get("/admin/listing-sources", response_model=list[ListingSourceRead])
+def get_listing_sources(
+    session: Session = Depends(get_db_session),
+) -> list[ListingSourceRead]:
+    return list_listing_sources(session=session)
 
 
 @router.get("/admin/phase-status", response_model=PlaceholderResponse)
 def get_phase_status() -> PlaceholderResponse:
     return PlaceholderResponse(
         detail=(
-            "Phase status is represented by docs plus the placeholder surfaces "
-            "in this skeleton."
+            "Phase 1A listing ingestion and clustering are active. "
+            "Site, scenario, assessment, and scoring surfaces remain stubbed."
         ),
         surface="admin.phase-status",
-        spec_phase="Phase 0",
+        spec_phase="Phase 1A",
     )

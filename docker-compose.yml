@@ -27,7 +27,14 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
-    command: ["alembic", "upgrade", "head"]
+    command:
+      - /bin/sh
+      - -lc
+      - |
+        until python -c "import os; from sqlalchemy import create_engine, text; engine = create_engine(os.environ['DATABASE_URL']); conn = engine.connect(); conn.execute(text('SELECT 1')); conn.close()"; do
+          sleep 2
+        done
+        alembic upgrade head
 
   api:
     build:
@@ -95,4 +102,3 @@ services:
 volumes:
   postgres_data:
   raw_storage:
-

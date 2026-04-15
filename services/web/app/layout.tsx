@@ -27,7 +27,7 @@ export const metadata: Metadata = {
     default: 'Land Intel',
     template: '%s · Land Intel'
   },
-  description: 'Phase 0 frontend scaffold for the London-first land intelligence platform.'
+  description: 'Phase 1A frontend for the London-first land intelligence platform.'
 };
 
 export default function RootLayout({

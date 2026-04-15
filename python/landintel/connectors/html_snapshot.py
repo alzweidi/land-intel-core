@@ -12,17 +12,23 @@ class HtmlSnapshotFetcher:
         self.settings = settings
 
     def fetch(self, url: str) -> FetchedAsset:
+        return self.fetch_asset(url)
+
+    def fetch_asset(self, url: str) -> FetchedAsset:
         with httpx.Client(
             follow_redirects=True,
             timeout=self.settings.snapshot_http_timeout_seconds,
-            headers={"User-Agent": "landintel-phase0/0.1"},
+            headers={"User-Agent": "landintel-phase1a/0.1"},
         ) as client:
             response = client.get(url)
             response.raise_for_status()
 
-        soup = BeautifulSoup(response.text, "html.parser")
-        title = soup.title.string.strip() if soup.title and soup.title.string else None
-        content_type = response.headers.get("content-type", "text/html; charset=utf-8")
+        content_type = response.headers.get("content-type", "application/octet-stream")
+        page_title = None
+        if "html" in content_type.lower():
+            soup = BeautifulSoup(response.text, "html.parser")
+            page_title = soup.title.string.strip() if soup.title and soup.title.string else None
+
         return FetchedAsset(
             requested_url=url,
             final_url=str(response.url),
@@ -31,6 +37,5 @@ class HtmlSnapshotFetcher:
             status_code=response.status_code,
             fetched_at=datetime.now(UTC),
             headers=dict(response.headers),
-            page_title=title,
+            page_title=page_title,
         )
-

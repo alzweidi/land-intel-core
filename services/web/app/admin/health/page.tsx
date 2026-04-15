@@ -1,3 +1,5 @@
+import Link from 'next/link';
+
 import { Badge, DefinitionList, PageHeader, Panel } from '@/components/ui';
 import { adminChecks } from '@/lib/mock-data';
 
@@ -8,6 +10,11 @@ export default function AdminHealthPage() {
         eyebrow="Admin / health"
         title="Operational health shell"
         summary="The admin health route is a placeholder control surface for jobs, auth, and service checks. It is designed to be obviously unfinished."
+        actions={
+          <Link className="button button--solid" href="/admin/source-runs">
+            Open source runs
+          </Link>
+        }
       />
 
       <section className="stat-grid">

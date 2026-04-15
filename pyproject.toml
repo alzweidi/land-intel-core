@@ -15,9 +15,11 @@ dependencies = [
   "fastapi>=0.115,<1.0",
   "httpx>=0.27,<1.0",
   "orjson>=3.10,<4.0",
+  "pymupdf>=1.24,<2.0",
   "prometheus-client>=0.20,<1.0",
   "psycopg[binary]>=3.2,<4.0",
   "pydantic-settings>=2.2,<3.0",
+  "python-multipart>=0.0.9,<1.0",
   "sentry-sdk>=2.0,<3.0",
   "sqlalchemy>=2.0,<3.0",
   "uvicorn[standard]>=0.30,<1.0",
@@ -29,9 +31,7 @@ dev = [
   "respx>=0.21,<1.0",
   "ruff>=0.6,<1.0",
 ]
-document = [
-  "pymupdf>=1.24,<2.0",
-]
+document = []
 ml = [
   "scikit-learn>=1.5,<2.0",
 ]

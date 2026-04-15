@@ -3,6 +3,7 @@
 import sqlalchemy as sa
 from alembic import op
 from landintel.domain.enums import AppRoleName, JobStatus, JobType, SourceFreshnessStatus
+from sqlalchemy.dialects import postgresql
 
 # revision identifiers, used by Alembic.
 revision = "20260415_000001"
@@ -11,17 +12,46 @@ branch_labels = None
 depends_on = None
 
 
-source_freshness_status = sa.Enum(
-    SourceFreshnessStatus,
-    name="source_freshness_status",
-)
-app_role_name = sa.Enum(AppRoleName, name="app_role_name")
-job_status = sa.Enum(JobStatus, name="job_status")
-job_type = sa.Enum(JobType, name="job_type")
-
-
 def upgrade() -> None:
     bind = op.get_bind()
+    if bind.dialect.name == "postgresql":
+        source_freshness_status = postgresql.ENUM(
+            SourceFreshnessStatus,
+            name="source_freshness_status",
+        )
+        app_role_name = postgresql.ENUM(AppRoleName, name="app_role_name")
+        job_status = postgresql.ENUM(JobStatus, name="job_status")
+        job_type = postgresql.ENUM(JobType, name="job_type")
+        source_freshness_status_ref = postgresql.ENUM(
+            SourceFreshnessStatus,
+            name="source_freshness_status",
+            create_type=False,
+        )
+        app_role_name_ref = postgresql.ENUM(
+            AppRoleName,
+            name="app_role_name",
+            create_type=False,
+        )
+        job_status_ref = postgresql.ENUM(
+            JobStatus,
+            name="job_status",
+            create_type=False,
+        )
+        job_type_ref = postgresql.ENUM(
+            JobType,
+            name="job_type",
+            create_type=False,
+        )
+    else:
+        source_freshness_status = sa.Enum(SourceFreshnessStatus, name="source_freshness_status")
+        app_role_name = sa.Enum(AppRoleName, name="app_role_name")
+        job_status = sa.Enum(JobStatus, name="job_status")
+        job_type = sa.Enum(JobType, name="job_type")
+        source_freshness_status_ref = source_freshness_status
+        app_role_name_ref = app_role_name
+        job_status_ref = job_status
+        job_type_ref = job_type
+
     if bind.dialect.name == "postgresql":
         op.execute("CREATE EXTENSION IF NOT EXISTS postgis")
 
@@ -42,7 +72,7 @@ def upgrade() -> None:
         sa.Column("schema_hash", sa.String(length=64), nullable=False),
         sa.Column("content_hash", sa.String(length=64), nullable=False),
         sa.Column("coverage_note", sa.Text(), nullable=True),
-        sa.Column("freshness_status", source_freshness_status, nullable=False),
+        sa.Column("freshness_status", source_freshness_status_ref, nullable=False),
         sa.Column("manifest_json", sa.JSON(), nullable=False),
     )
     op.create_index("ix_source_snapshot_source_uri", "source_snapshot", ["source_uri"])
@@ -61,7 +91,7 @@ def upgrade() -> None:
 
     op.create_table(
         "app_role",
-        sa.Column("name", app_role_name, primary_key=True, nullable=False),
+        sa.Column("name", app_role_name_ref, primary_key=True, nullable=False),
         sa.Column("description", sa.String(length=255), nullable=False),
     )
 
@@ -76,7 +106,7 @@ def upgrade() -> None:
         ),
         sa.Column(
             "role_name",
-            app_role_name,
+            app_role_name_ref,
             sa.ForeignKey("app_role.name", ondelete="CASCADE"),
             nullable=False,
         ),
@@ -104,9 +134,9 @@ def upgrade() -> None:
     op.create_table(
         "job_run",
         sa.Column("id", sa.Uuid(), primary_key=True, nullable=False),
-        sa.Column("job_type", job_type, nullable=False),
+        sa.Column("job_type", job_type_ref, nullable=False),
         sa.Column("payload_json", sa.JSON(), nullable=False),
-        sa.Column("status", job_status, nullable=False),
+        sa.Column("status", job_status_ref, nullable=False),
         sa.Column("attempts", sa.Integer(), nullable=False),
         sa.Column("run_at", sa.DateTime(timezone=True), nullable=False),
         sa.Column("next_run_at", sa.DateTime(timezone=True), nullable=False),
@@ -142,7 +172,7 @@ def upgrade() -> None:
     op.bulk_insert(
         sa.table(
             "app_role",
-            sa.column("name", app_role_name),
+            sa.column("name", app_role_name_ref),
             sa.column("description", sa.String(length=255)),
         ),
         [
@@ -160,6 +190,21 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
+    bind = op.get_bind()
+    if bind.dialect.name == "postgresql":
+        source_freshness_status = postgresql.ENUM(
+            SourceFreshnessStatus,
+            name="source_freshness_status",
+        )
+        app_role_name = postgresql.ENUM(AppRoleName, name="app_role_name")
+        job_status = postgresql.ENUM(JobStatus, name="job_status")
+        job_type = postgresql.ENUM(JobType, name="job_type")
+    else:
+        source_freshness_status = sa.Enum(SourceFreshnessStatus, name="source_freshness_status")
+        app_role_name = sa.Enum(AppRoleName, name="app_role_name")
+        job_status = sa.Enum(JobStatus, name="job_status")
+        job_type = sa.Enum(JobType, name="job_type")
+
     op.drop_index("ix_raw_asset_source_snapshot_id", table_name="raw_asset")
     op.drop_table("raw_asset")
     op.drop_index("ix_job_run_status_next_run_at", table_name="job_run")

@@ -26,3 +26,19 @@ def test_manual_url_intake_queues_job(client, db_session) -> None:
     assert job is not None
     assert job.payload_json["url"] == "https://example.com/"
     assert job.status == JobStatus.QUEUED
+
+
+def test_csv_import_queues_job(client, db_session) -> None:
+    response = client.post(
+        "/api/listings/import/csv",
+        files={"file": ("listings.csv", b"headline,address\nSite,1 Test Road", "text/csv")},
+        data={"source_name": "csv_import", "requested_by": "pytest"},
+    )
+
+    assert response.status_code == 202
+    payload = response.json()
+    assert payload["job_type"] == JobType.CSV_IMPORT_SNAPSHOT.value
+
+    job = db_session.get(JobRun, UUID(payload["job_id"]))
+    assert job is not None
+    assert job.payload_json["source_name"] == "csv_import"

@@ -16,17 +16,32 @@ export const navGroups: NavGroup[] = [
       {
         href: '/',
         label: 'Control room',
-        description: 'Landing shell and route index'
-      },
-      {
-        href: '/discovery',
-        label: 'Discovery',
-        description: 'Map and list placeholder'
+        description: 'Phase 1A landing shell and route index'
       },
       {
         href: '/listings',
         label: 'Listings',
-        description: 'Manual intake and source registry'
+        description: 'Listing search, detail, and intake'
+      },
+      {
+        href: '/listing-clusters',
+        label: 'Clusters',
+        description: 'Deterministic dedupe and cluster review'
+      },
+      {
+        href: '/admin/source-runs',
+        label: 'Source runs',
+        description: 'Manual intake and connector control'
+      }
+    ]
+  },
+  {
+    title: 'Later phases',
+    items: [
+      {
+        href: '/discovery',
+        label: 'Discovery',
+        description: 'Map and list placeholder'
       },
       {
         href: '/sites',
@@ -73,6 +88,24 @@ export const navGroups: NavGroup[] = [
 ];
 
 export const surfaceCatalog = [
+  {
+    href: '/listings',
+    title: 'Listing search',
+    summary: 'Browse live listings, search by source or text, and jump into immutable snapshots.',
+    tag: 'phase 1a'
+  },
+  {
+    href: '/listing-clusters',
+    title: 'Cluster review',
+    summary: 'Inspect deterministic duplicate clusters and their confidence-scored members.',
+    tag: 'dedupe'
+  },
+  {
+    href: '/admin/source-runs',
+    title: 'Connector control',
+    summary: 'Trigger manual URL intake, broker CSV imports, and approved public-page connectors.',
+    tag: 'compliance'
+  },
   {
     href: '/discovery',
     title: 'Discovery map / list',

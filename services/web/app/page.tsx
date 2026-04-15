@@ -1,38 +1,32 @@
 import Link from 'next/link';
 
-import { PageHeader, Panel, StatCard, SurfaceCard } from '@/components/ui';
-import { homeStats } from '@/lib/mock-data';
+import { Badge, PageHeader, Panel, StatCard, SurfaceCard } from '@/components/ui';
 import { surfaceCatalog } from '@/lib/navigation';
 
 export default function HomePage() {
   return (
     <div className="page-stack">
       <PageHeader
-        eyebrow="Phase 0 scaffold"
-        title="London-first land intelligence control room"
-        summary="This internal shell exposes the major surfaces described in the controlling spec, but keeps every domain workflow visibly stubbed."
+        eyebrow="Phase 1A"
+        title="Listing ingestion and clustering control room"
+        summary="This shell now centers the live listings layer: intake, immutable snapshots, clustering, and the minimal admin surfaces needed to run approved connectors."
         actions={
           <div className="page-actions__group">
-            <Link className="button button--solid" href="/discovery">
-              Open discovery
+            <Link className="button button--solid" href="/listings">
+              Open listings
             </Link>
-            <Link className="button button--ghost" href="/admin/health">
-              View health
+            <Link className="button button--ghost" href="/admin/source-runs">
+              Run connector
             </Link>
           </div>
         }
       />
 
       <section className="stat-grid">
-        {homeStats.map((stat) => (
-          <StatCard
-            detail={stat.detail}
-            key={stat.label}
-            label={stat.label}
-            tone={stat.label === 'Scoring logic' ? 'danger' : stat.label === 'Backend coupling' ? 'success' : 'neutral'}
-            value={stat.value}
-          />
-        ))}
+        <StatCard tone="accent" label="Phase" value="1A" detail="Listings and clustering only" />
+        <StatCard tone="success" label="Sources" value="3" detail="Manual, CSV, and approved public-page" />
+        <StatCard tone="warning" label="Snapshots" value="Immutable" detail="No in-place overwrite of raw assets" />
+        <StatCard tone="neutral" label="Clustering" value="Deterministic" detail="Rules are boring and documented" />
       </section>
 
       <section className="route-grid">
@@ -49,16 +43,25 @@ export default function HomePage() {
 
       <Panel
         eyebrow="Spec guardrails"
-        title="What this scaffold deliberately does not do"
-        note="Phase 0 is the bootstrapping pass. The later planning, scoring, and valuation systems are reserved for later phases."
+        title="What Phase 1A deliberately does not do"
+        note="The later site, planning, scenario, scoring, and valuation surfaces stay stubbed. This pass only handles live listings and cluster review."
       >
         <ul className="checklist">
-          <li>No parcel-only scoring or visible probability logic.</li>
-          <li>No geospatial business rules beyond shell placeholders.</li>
-          <li>No enrichment pipelines, clustering, or scenario automation.</li>
-          <li>No hidden overwrite of raw source assets.</li>
+          <li>No site geometry or title linkage.</li>
+          <li>No planning enrichment, scenarios, assessments, or scoring.</li>
+          <li>No unapproved public-page connector execution.</li>
+          <li>No hidden overwrite of raw source assets or snapshots.</li>
         </ul>
+      </Panel>
+
+      <Panel eyebrow="Source policy" title="Connector approval rule">
+        <div className="pill-row">
+          <Badge tone="success">Manual URL always allowed</Badge>
+          <Badge tone="warning">CSV import stays manual</Badge>
+          <Badge tone="danger">Public pages stay blocked unless approved</Badge>
+        </div>
       </Panel>
     </div>
   );
 }
+
