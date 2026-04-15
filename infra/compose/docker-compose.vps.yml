@@ -1,0 +1,37 @@
+services:
+  api:
+    build:
+      context: ../..
+      dockerfile: services/api/Dockerfile
+    env_file:
+      - ../../.env
+    environment:
+      RUN_DB_MIGRATIONS: "false"
+      STORAGE_BACKEND: supabase
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+
+  worker:
+    build:
+      context: ../..
+      dockerfile: services/worker/Dockerfile
+    env_file:
+      - ../../.env
+    environment:
+      RUN_DB_MIGRATIONS: "false"
+      STORAGE_BACKEND: supabase
+    restart: unless-stopped
+    ports:
+      - "9101:9101"
+
+  scheduler:
+    build:
+      context: ../..
+      dockerfile: services/scheduler/Dockerfile
+    env_file:
+      - ../../.env
+    environment:
+      RUN_DB_MIGRATIONS: "false"
+    restart: unless-stopped
+
