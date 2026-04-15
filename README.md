@@ -2,16 +2,19 @@
 
 London-first land intelligence monorepo. The controlling spec for this repo is [docs/london_land_intelligence_implementation_spec_v1 (2).md](/Users/atta/land-intel-core/docs/london_land_intelligence_implementation_spec_v1%20(2).md).
 
-Phase 2 is implemented here. The repo now covers the Phase 1A listing pipeline plus auditable site creation and draft geometry:
+Phase 3A is implemented here. The repo now covers the Phase 1A listing pipeline, Phase 2 site geometry, and the first planning-context layer:
 - compliant connector framework and immutable listing snapshots
 - listing parsing, normalization, and deterministic clustering
 - site creation from listing clusters
 - draft geometry creation and analyst-editable geometry revisions
 - London borough / LPA linkage with trivial-vs-material cross-LPA handling
 - HMLR INSPIRE title linkage as indicative evidence only
-- site list/detail API and internal map/detail UI
+- fixture-scale planning, policy, brownfield, flood, heritage, and Article 4 imports
+- deterministic site planning enrichment and source-coverage tracking
+- auditable extant-permission screening with `FOR` / `AGAINST` / `UNKNOWN` evidence assembly
+- site list/detail API and internal map/detail UI with planning context panels
 
-Phase 3+ planning evidence, extant-permission logic, policy ingestion, scenarios, assessments, scoring, valuation, and model work remain deferred.
+Phase 4+ scenario logic, assessments, scoring, valuation, ranking, visible probability, hidden probability, and model work remain deferred.
 
 ## Repo Layout
 
@@ -63,7 +66,14 @@ source .venv/bin/activate
 python -m landintel.geospatial.bootstrap --dataset all --requested-by local-dev
 ```
 
-6. Run services locally in separate terminals:
+6. Bootstrap the local Phase 3A planning fixtures:
+
+```bash
+source .venv/bin/activate
+python -m landintel.planning.bootstrap --dataset all --requested-by local-dev
+```
+
+7. Run services locally in separate terminals:
 
 ```bash
 source .venv/bin/activate
@@ -85,7 +95,7 @@ cd services/web
 npm run dev
 ```
 
-7. Or boot the full stack with Docker:
+8. Or boot the full stack with Docker:
 
 ```bash
 docker compose up --build
@@ -135,6 +145,16 @@ curl -X POST http://localhost:8000/api/sites/from-cluster/<cluster_uuid> \
 
 curl http://localhost:8000/api/sites
 curl http://localhost:8000/api/sites/<site_uuid>
+```
+
+Run an extant-permission recheck and inspect planning data health:
+
+```bash
+curl -X POST http://localhost:8000/api/sites/<site_uuid>/extant-permission-check \
+  -H 'Content-Type: application/json' \
+  -d '{"requested_by":"local-smoke"}'
+
+curl http://localhost:8000/api/health/data
 ```
 
 Save a geometry revision:
@@ -189,12 +209,21 @@ Minimal `refresh_policy_json` for an automated source:
 - `GET /api/sites`
 - `GET /api/sites/{site_id}`
 - `POST /api/sites/{site_id}/geometry`
+- `POST /api/sites/{site_id}/extant-permission-check`
+- `GET /api/health/data`
 
 ## Reference Data Bootstrap
 
 - `python -m landintel.geospatial.bootstrap --dataset lpa --requested-by local-dev` imports the London borough/LPA fixture set.
 - `python -m landintel.geospatial.bootstrap --dataset titles --requested-by local-dev` imports the sample HMLR INSPIRE title polygons.
 - `python -m landintel.geospatial.bootstrap --dataset all --requested-by local-dev` runs both imports.
+- `python -m landintel.planning.bootstrap --dataset pld --requested-by local-dev` imports fixture-scale London Datahub records.
+- `python -m landintel.planning.bootstrap --dataset borough-register --requested-by local-dev` imports the pilot borough register fixture set.
+- `python -m landintel.planning.bootstrap --dataset brownfield --requested-by local-dev` imports brownfield state fixtures with Part 1 and Part 2 separated.
+- `python -m landintel.planning.bootstrap --dataset policy --requested-by local-dev` imports London DataMap / borough policy area fixtures.
+- `python -m landintel.planning.bootstrap --dataset constraints --requested-by local-dev` imports Planning Data, flood, heritage, and Article 4 fixtures.
+- `python -m landintel.planning.bootstrap --dataset baseline --requested-by local-dev` imports initial borough baseline-pack and rulepack placeholder records.
+- `python -m landintel.planning.bootstrap --dataset all --requested-by local-dev` runs the full Phase 3A fixture bootstrap.
 - local/dev uses fixture-scale coverage only; this phase does not attempt national bulk ingestion.
 
 ## Geometry Confidence Meanings
@@ -206,14 +235,39 @@ Minimal `refresh_policy_json` for an automated source:
 
 All canonical calculations run in EPSG:27700. EPSG:4326 is stored only for display and export surfaces.
 
-## Phase 2 Rules
+## Phase 3A Rules
 
 - the assessed object is the site geometry, not an individual title polygon
 - title polygons are indicative evidence only and can support multi-title linkage
 - material cross-LPA overlap requires manual clipping or analyst confirmation
 - geometry revisions are append-only and audited; raw assets and source snapshots remain immutable
+- PLD is supplemental only; borough planning-register data is the authority of record where available
+- Brownfield Part 1 is not PiP; Brownfield Part 2 stays distinct and can be materially exclusionary
+- missing source coverage never proves no permission, no policy issue, or no constraint
+- missing mandatory source families must return manual review or abstain, not a silent clean state
 - do not infer planning truth, policy truth, or parcel-only scoring signals from listing text
-- do not use brochure OCR/CV or speculative polygon inference in this phase
+- do not use brochure OCR/CV, speculative polygon inference, or LLM-generated planning facts in this phase
+
+## Implemented Source Families
+
+- London Datahub ingest and normalization
+- pilot borough planning-register ingest and normalization
+- brownfield enrichment
+- policy-layer enrichment
+- Planning Data constraint enrichment
+- flood enrichment
+- heritage / Article 4 enrichment
+- borough source-coverage capture, freshness state, and baseline-pack scaffolding
+
+## Extant Permission Outcomes
+
+- `ACTIVE_EXTANT_PERMISSION_FOUND`: authoritative active material overlap is present.
+- `NO_ACTIVE_PERMISSION_FOUND`: no active material overlap was found and mandatory source coverage is complete enough for that conclusion.
+- `NON_MATERIAL_OVERLAP_MANUAL_REVIEW`: overlap exists but does not meet the spec materiality threshold.
+- `UNRESOLVED_MISSING_MANDATORY_SOURCE`: a mandatory source family is missing or incomplete for a critical conclusion.
+- `CONTRADICTORY_SOURCE_MANUAL_REVIEW`: source families disagree in a way that requires analyst review.
+
+The result is always returned with source-coverage context, evidence items, and raw-source links. “Not found” alone is never treated as sufficient evidence.
 
 ## Checks
 
@@ -240,6 +294,7 @@ Docker + migrations:
 source .venv/bin/activate
 DATABASE_URL=postgresql+psycopg://landintel:landintel@localhost:5432/landintel alembic upgrade head
 python -m landintel.geospatial.bootstrap --dataset all --requested-by local-dev
+python -m landintel.planning.bootstrap --dataset all --requested-by local-dev
 docker compose up --build -d
 docker compose ps
 ```
@@ -250,12 +305,18 @@ docker compose ps
 - local/dev reference data uses small London fixture files rather than a national bulk import
 - when only point evidence exists, the site can be created as `POINT_ONLY` / `INSUFFICIENT`, but it stays clearly flagged for manual work
 - missing fields stay null; the parser does not invent planning claims or geometry
+- Phase 3A planning imports stay fixture-scale for local/dev and focus on deterministic site enrichment, not citywide production ingest
+- borough baseline packs and rulepacks are structural placeholders only in this phase; they are not a scenario engine
 
-## Deferred To Phase 3+
+## Deferred To Phase 4+
 
-- planning context and evidence pack generation
-- extant-permission engine
-- PLD / borough planning-register ingestion
-- Planning Data constraint and policy-layer ingestion
 - scenario suggestion or confirmation
+- assessment runs
+- feature snapshots for model training
+- scoring
+- valuation
+- ranking
+- visible probability
+- hidden probability
+- comparable-case ranking logic
 - assessments, scoring, valuation, ranking, and model training

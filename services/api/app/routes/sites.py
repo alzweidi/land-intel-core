@@ -3,12 +3,18 @@ from __future__ import annotations
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
+from landintel.domain.models import SiteCandidate
 from landintel.domain.schemas import (
-    PlaceholderResponse,
+    ExtantPermissionCheckRequest,
     SiteDetailRead,
     SiteFromClusterRequest,
     SiteGeometryUpdateRequest,
     SiteListResponse,
+)
+from landintel.planning.enrich import refresh_site_planning_context
+from landintel.planning.extant_permission import (
+    audit_extant_permission_check,
+    evaluate_site_extant_permission,
 )
 from landintel.services.sites_readback import get_site, list_sites
 from landintel.sites.service import (
@@ -16,6 +22,7 @@ from landintel.sites.service import (
     build_or_refresh_site_from_cluster,
     save_site_geometry_revision,
 )
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from ..dependencies import get_db_session
@@ -118,12 +125,40 @@ def create_site_geometry(
     return site_detail
 
 
-@router.post("/{site_id}/extant-permission-check", response_model=PlaceholderResponse)
-def rerun_extant_permission(site_id: UUID) -> PlaceholderResponse:
-    raise HTTPException(
-        status_code=status.HTTP_501_NOT_IMPLEMENTED,
-        detail={
-            "message": "Extant permission checks are deferred to Phase 3.",
-            "site_id": str(site_id),
-        },
+@router.post("/{site_id}/extant-permission-check", response_model=SiteDetailRead)
+def rerun_extant_permission(
+    site_id: UUID,
+    request: ExtantPermissionCheckRequest | None = None,
+    session: Session = Depends(get_db_session),
+) -> SiteDetailRead:
+    site = session.execute(
+        select(SiteCandidate).where(SiteCandidate.id == site_id)
+    ).scalar_one_or_none()
+    if site is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail={"message": "Site detail not found.", "site_id": str(site_id)},
+        )
+
+    refresh_site_planning_context(
+        session=session,
+        site=site,
+        requested_by=request.requested_by if request is not None else None,
     )
+    result = evaluate_site_extant_permission(session=session, site=site)
+    audit_extant_permission_check(
+        session=session,
+        site=site,
+        requested_by=request.requested_by if request is not None else None,
+        result=result,
+    )
+    session.commit()
+    session.expire_all()
+
+    site_detail = get_site(session, site_id=site_id)
+    if site_detail is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Site detail not found after extant-permission check.",
+        )
+    return site_detail

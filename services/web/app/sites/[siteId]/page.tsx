@@ -2,6 +2,7 @@ import Link from 'next/link';
 
 import { Badge, DefinitionList, PageHeader, Panel } from '@/components/ui';
 import { SiteGeometryEditor } from '@/components/site-geometry-editor';
+import { SitePlanningMap } from '@/components/site-planning-map';
 import { getSite } from '@/lib/landintel-api';
 
 export const dynamic = 'force-dynamic';
@@ -22,6 +23,26 @@ function confidenceTone(value: string): 'neutral' | 'accent' | 'success' | 'warn
   return 'danger';
 }
 
+function permissionTone(value: string | undefined): 'neutral' | 'accent' | 'success' | 'warning' | 'danger' {
+  if (!value) {
+    return 'neutral';
+  }
+
+  if (value === 'NO_ACTIVE_PERMISSION_FOUND') {
+    return 'success';
+  }
+
+  if (value === 'ACTIVE_EXTANT_PERMISSION_FOUND') {
+    return 'danger';
+  }
+
+  if (value.includes('MANUAL_REVIEW') || value.includes('UNRESOLVED')) {
+    return 'warning';
+  }
+
+  return 'accent';
+}
+
 export default async function SiteDetailPage({
   params
 }: {
@@ -35,7 +56,7 @@ export default async function SiteDetailPage({
     return (
       <div className="page-stack">
         <PageHeader
-          eyebrow="Phase 2"
+          eyebrow="Phase 3A"
           title="Site not found"
           summary={`No site record is available for ${siteId}. The page still renders as a stable empty state.`}
           actions={
@@ -48,15 +69,48 @@ export default async function SiteDetailPage({
     );
   }
 
-  const currentRevision = site.revision_history.find((revision) => revision.is_current) ?? site.revision_history[0];
-  const titleSummary = site.title_links.map((link) => `${link.title_number} (${link.overlap_pct ?? 0}%)`).join(' · ');
+  const currentRevision =
+    site.revision_history.find((revision) => revision.is_current) ?? site.revision_history[0];
+  const extant = site.extant_permission;
+  const evidence = site.evidence ?? { for: [], against: [], unknown: [] };
+  const sourceCoverage = site.source_coverage ?? [];
+  const planningHistory = site.planning_history ?? [];
+  const brownfieldStates = site.brownfield_states ?? [];
+  const policyFacts = site.policy_facts ?? [];
+  const constraintFacts = site.constraint_facts ?? [];
+  const sourceSnapshots = site.source_snapshots ?? [];
+  const rawLinks = [
+    ...site.documents.map((document) => ({
+      href: document.href,
+      label: document.label,
+      note: document.note
+    })),
+    ...planningHistory.flatMap((record) =>
+      record.planning_application.documents.map((document) => ({
+        href: document.doc_url,
+        label: `${record.planning_application.external_ref} · ${document.doc_type}`,
+        note: record.planning_application.source_system
+      }))
+    ),
+    ...sourceSnapshots
+      .map((snapshot) => ({
+        href: snapshot.source_uri,
+        label: snapshot.source_name,
+        note: snapshot.source_family
+      }))
+      .filter((item) => item.href)
+  ].filter((item, index, items) => items.findIndex((candidate) => candidate.href === item.href) === index);
 
   return (
     <div className="page-stack">
       <PageHeader
-        eyebrow="Phase 2"
+        eyebrow="Phase 3A"
         title={site.display_name}
-        summary={site.summary || site.description_text}
+        summary={
+          extant?.summary ??
+          site.summary ??
+          'Planning context, source coverage, and evidence are visible below.'
+        }
         actions={
           <Link className="button button--ghost" href="/sites">
             Back to site list
@@ -68,22 +122,28 @@ export default async function SiteDetailPage({
         <div className="stat-card">
           <Badge tone="accent">Geometry</Badge>
           <div className="stat-value">{site.geometry_source_type}</div>
-          <p className="stat-detail">{site.geometry_confidence} confidence, revision {site.revision_count}</p>
+          <p className="stat-detail">
+            {site.geometry_confidence} confidence, revision {site.revision_count}
+          </p>
         </div>
         <div className="stat-card">
-          <Badge tone="success">Borough</Badge>
-          <div className="stat-value">{site.borough_name}</div>
-          <p className="stat-detail">{site.controlling_lpa_name} is the controlling LPA in this record</p>
+          <Badge tone={permissionTone(extant?.status)}>Permission</Badge>
+          <div className="stat-value">{extant?.status ?? 'UNKNOWN'}</div>
+          <p className="stat-detail">{extant?.eligibility_status ?? 'UNSET'} eligibility outcome</p>
         </div>
         <div className="stat-card">
-          <Badge tone="warning">Warnings</Badge>
-          <div className="stat-value">{site.warnings.length}</div>
-          <p className="stat-detail">Warnings remain visible and cannot be hidden by the editor</p>
+          <Badge tone="warning">Coverage gaps</Badge>
+          <div className="stat-value">
+            {extant?.coverage_gaps.length ?? sourceCoverage.filter((item) => item.coverage_status !== 'COMPLETE').length}
+          </div>
+          <p className="stat-detail">Missing or partial source families stay visible</p>
         </div>
         <div className="stat-card">
-          <Badge tone="neutral">Documents</Badge>
-          <div className="stat-value">{site.documents.length}</div>
-          <p className="stat-detail">Raw source docs remain immutable links only</p>
+          <Badge tone="neutral">Planning context</Badge>
+          <div className="stat-value">{planningHistory.length}</div>
+          <p className="stat-detail">
+            {policyFacts.length} policy facts · {constraintFacts.length} constraints
+          </p>
         </div>
       </section>
 
@@ -96,19 +156,13 @@ export default async function SiteDetailPage({
               { label: 'Status', value: site.current_listing.latest_status },
               {
                 label: 'Price',
-                value: site.current_price_gbp === null ? 'Pending' : `£${site.current_price_gbp.toLocaleString('en-GB')}`
+                value:
+                  site.current_price_gbp === null
+                    ? 'Pending'
+                    : `£${site.current_price_gbp.toLocaleString('en-GB')}`
               },
-              { label: 'Source snapshot', value: site.source_snapshot_id },
-              {
-                label: 'Source snapshot URL',
-                value: site.source_snapshot_url ? (
-                  <a className="inline-link" href={site.source_snapshot_url} target="_blank" rel="noreferrer">
-                    Open raw snapshot
-                  </a>
-                ) : (
-                  'Unavailable'
-                )
-              }
+              { label: 'Address', value: site.address_text || 'Not parsed' },
+              { label: 'Borough / LPA', value: `${site.borough_name} / ${site.controlling_lpa_name}` }
             ]}
           />
           <div className="mini-list" style={{ marginTop: 16 }}>
@@ -120,94 +174,260 @@ export default async function SiteDetailPage({
           </div>
         </Panel>
 
-        <Panel eyebrow="Geometry" title="Edit draft polygon">
-          <SiteGeometryEditor site={site} />
+        <Panel eyebrow="Permission state" title="Extant-permission screen">
+          {extant ? (
+            <>
+              <div className="mini-card">
+                <div className="mini-card__top">
+                  <div>
+                    <div className="table-primary">{extant.status}</div>
+                    <div className="table-secondary">{extant.eligibility_status}</div>
+                  </div>
+                  <Badge tone={permissionTone(extant.status)}>
+                    {extant.manual_review_required ? 'Manual review' : 'Deterministic'}
+                  </Badge>
+                </div>
+                <div className="table-secondary">{extant.summary}</div>
+              </div>
+              <div className="mini-list" style={{ marginTop: 16 }}>
+                {extant.reasons.map((reason) => (
+                  <div className="mini-list__row" key={reason}>
+                    <span>{reason}</span>
+                  </div>
+                ))}
+                {extant.coverage_gaps.map((gap) => (
+                  <div className="mini-list__row" key={gap.code}>
+                    <div>
+                      <div className="table-primary">{gap.code}</div>
+                      <div className="table-secondary">{gap.message}</div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </>
+          ) : (
+            <p className="empty-note">No extant-permission result is available for this site.</p>
+          )}
         </Panel>
       </div>
 
       <div className="split-grid">
-        <Panel eyebrow="Borough" title="LPA assignment">
+        <Panel
+          eyebrow="Planning map"
+          title="Planning context map"
+          note="Site geometry, planning history, policy overlays, and constraint layers are working overlays only. Indicative geometries are not authoritative legal boundaries."
+        >
+          <SitePlanningMap site={site} />
+        </Panel>
+
+        <Panel eyebrow="Coverage" title="Source coverage and baseline pack">
           <DefinitionList
             items={[
-              { label: 'Controlling borough', value: site.borough_name },
-              { label: 'Controlling LPA', value: site.controlling_lpa_name },
+              { label: 'Baseline pack', value: site.baseline_pack?.version ?? 'Not loaded' },
+              { label: 'Baseline status', value: site.baseline_pack?.status ?? 'Missing' },
               {
-                label: 'Manual clipping',
-                value: site.lpa_links.some((link) => link.manual_clip_required) ? 'Required for part of this candidate' : 'Not required'
+                label: 'Rulepacks',
+                value: String(site.baseline_pack?.rulepacks.length ?? 0)
               },
               {
-                label: 'Cross-LPA overlap',
-                value: site.lpa_links.some((link) => link.cross_lpa_flag) ? 'Flagged' : 'None'
+                label: 'Manual review',
+                value: extant?.manual_review_required ? 'Required' : 'Not currently required'
               }
             ]}
           />
           <div className="card-stack" style={{ marginTop: 16 }}>
-            {site.lpa_links.map((link) => (
-              <article className="mini-card" key={link.lpa_code}>
+            {sourceCoverage.map((coverage) => (
+              <article className="mini-card" key={coverage.id}>
                 <div className="mini-card__top">
                   <div>
-                    <div className="table-primary">{link.lpa_name}</div>
-                    <div className="table-secondary">{link.lpa_code}</div>
+                    <div className="table-primary">{coverage.source_family}</div>
+                    <div className="table-secondary">{coverage.freshness_status}</div>
                   </div>
-                  <Badge tone={link.controlling ? 'success' : 'warning'}>{link.controlling ? 'Controlling' : 'Cross-LPA'}</Badge>
+                  <Badge
+                    tone={coverage.coverage_status === 'COMPLETE' ? 'success' : 'warning'}
+                  >
+                    {coverage.coverage_status}
+                  </Badge>
                 </div>
-                <div className="mini-card__footer">
-                  {link.overlap_pct === null ? 'Overlap pending' : `${link.overlap_pct.toFixed(1)}% · ${link.overlap_sqm?.toLocaleString('en-GB') ?? '0'} sqm`}
+                <div className="table-secondary">{coverage.coverage_note ?? 'No note recorded.'}</div>
+                {coverage.gap_reason ? (
+                  <div className="table-secondary" style={{ marginTop: 8 }}>
+                    Gap reason: {coverage.gap_reason}
+                  </div>
+                ) : null}
+              </article>
+            ))}
+          </div>
+        </Panel>
+      </div>
+
+      <div className="split-grid">
+        <Panel eyebrow="Planning history" title="Applications on or near site">
+          <div className="card-stack">
+            {planningHistory.map((record) => (
+              <article className="mini-card" key={record.id}>
+                <div className="mini-card__top">
+                  <div>
+                    <div className="table-primary">{record.planning_application.external_ref}</div>
+                    <div className="table-secondary">
+                      {record.planning_application.source_system} · {record.planning_application.status}
+                    </div>
+                  </div>
+                  <Badge tone={confidenceTone(record.match_confidence)}>
+                    {record.match_confidence}
+                  </Badge>
                 </div>
-                <div className="table-secondary">{link.note}</div>
+                <div className="table-secondary">{record.planning_application.proposal_description}</div>
+                <div className="table-secondary" style={{ marginTop: 8 }}>
+                  {record.link_type}
+                  {record.overlap_pct !== null ? ` · ${record.overlap_pct.toFixed(1)}% overlap` : ''}
+                  {record.distance_m !== null ? ` · ${record.distance_m.toFixed(1)}m away` : ''}
+                </div>
+                <div className="mini-list" style={{ marginTop: 10 }}>
+                  {record.planning_application.documents.map((document) => (
+                    <div className="mini-list__row" key={document.id}>
+                      <a className="inline-link" href={document.doc_url} target="_blank" rel="noreferrer">
+                        {document.doc_type}
+                      </a>
+                    </div>
+                  ))}
+                </div>
               </article>
             ))}
           </div>
         </Panel>
 
-        <Panel eyebrow="Title linkage" title="Indicative HMLR evidence">
-          <p className="empty-note">
-            Title polygons remain indicative evidence only. They help confirm the site geometry but they are not treated as legal parcel truth.
-          </p>
-          <div className="mini-list" style={{ marginTop: 16 }}>
-            {site.title_links.map((link) => (
-              <div className="mini-list__row" key={link.title_ref}>
-                <div>
-                  <div className="table-primary">{link.title_number}</div>
-                  <div className="table-secondary">{link.address_text}</div>
-                  <div className="table-secondary">{link.evidence_note}</div>
+        <Panel eyebrow="Policy and constraints" title="Intersecting layers">
+          <div className="card-stack">
+            {policyFacts.map((fact) => (
+              <article className="mini-card" key={fact.id}>
+                <div className="mini-card__top">
+                  <div>
+                    <div className="table-primary">{fact.policy_area.name}</div>
+                    <div className="table-secondary">
+                      {fact.policy_area.policy_family} · {fact.policy_area.policy_code}
+                    </div>
+                  </div>
+                  <Badge tone={fact.importance === 'HIGH' ? 'success' : 'accent'}>
+                    {fact.importance}
+                  </Badge>
                 </div>
-                <div style={{ textAlign: 'right' }}>
-                  <Badge tone={confidenceTone(link.confidence)}>{link.confidence}</Badge>
-                  <div className="table-secondary">{link.overlap_pct === null ? 'Overlap pending' : `${link.overlap_pct.toFixed(1)}% · ${link.overlap_sqm?.toLocaleString('en-GB') ?? '0'} sqm`}</div>
-                  <div className="table-secondary">{link.is_primary ? 'Primary link' : 'Secondary link'}</div>
-                </div>
-              </div>
+                <div className="table-secondary">{fact.relation_type}</div>
+              </article>
             ))}
-          </div>
-          <div className="table-secondary" style={{ marginTop: 12 }}>
-            {titleSummary || 'No title links are available for this site.'}
+            {constraintFacts.map((fact) => (
+              <article className="mini-card" key={fact.id}>
+                <div className="mini-card__top">
+                  <div>
+                    <div className="table-primary">{fact.constraint_feature.feature_subtype}</div>
+                    <div className="table-secondary">
+                      {fact.constraint_feature.feature_family} · {fact.constraint_feature.authority_level}
+                    </div>
+                  </div>
+                  <Badge tone={fact.severity === 'HIGH' ? 'danger' : 'warning'}>
+                    {fact.severity}
+                  </Badge>
+                </div>
+                <div className="table-secondary">{fact.constraint_feature.legal_status ?? 'Status not supplied'}</div>
+              </article>
+            ))}
+            {brownfieldStates.map((state) => (
+              <article className="mini-card" key={state.id}>
+                <div className="mini-card__top">
+                  <div>
+                    <div className="table-primary">{state.external_ref}</div>
+                    <div className="table-secondary">{state.part}</div>
+                  </div>
+                  <Badge tone={state.part === 'PART_2' ? 'warning' : 'neutral'}>
+                    {state.pip_status ?? state.tdc_status ?? 'Informative'}
+                  </Badge>
+                </div>
+                <div className="table-secondary">
+                  PiP {state.pip_status ?? 'none'} · TDC {state.tdc_status ?? 'none'}
+                </div>
+              </article>
+            ))}
           </div>
         </Panel>
       </div>
 
       <div className="split-grid">
-        <Panel eyebrow="Source documents" title="Raw source links">
+        <Panel eyebrow="Evidence FOR" title="Supportive evidence">
           <div className="mini-list">
-            {site.documents.map((document) => (
-              <div className="mini-list__row" key={document.id}>
+            {evidence.for.map((item) => (
+              <div className="mini-list__row" key={`${item.topic}-${item.source_label}-${item.claim_text}`}>
                 <div>
-                  <div className="table-primary">
-                    <a className="inline-link" href={document.href} target="_blank" rel="noreferrer">
-                      {document.label}
-                    </a>
-                  </div>
+                  <div className="table-primary">{item.claim_text}</div>
                   <div className="table-secondary">
-                    {document.doc_type} · {document.mime_type}
+                    {item.topic} · {item.importance} · {item.source_label}
                   </div>
-                  <div className="table-secondary">{document.note}</div>
-                </div>
-                <div style={{ textAlign: 'right' }}>
-                  <Badge tone={document.extraction_status === 'EXTRACTED' ? 'success' : 'warning'}>{document.extraction_status ?? 'UNKNOWN'}</Badge>
+                  {item.source_url ? (
+                    <a className="inline-link" href={item.source_url} target="_blank" rel="noreferrer">
+                      Open source
+                    </a>
+                  ) : null}
                 </div>
               </div>
             ))}
           </div>
+        </Panel>
+
+        <Panel eyebrow="Evidence AGAINST" title="Constraining evidence">
+          <div className="mini-list">
+            {evidence.against.map((item) => (
+              <div className="mini-list__row" key={`${item.topic}-${item.source_label}-${item.claim_text}`}>
+                <div>
+                  <div className="table-primary">{item.claim_text}</div>
+                  <div className="table-secondary">
+                    {item.topic} · {item.importance} · {item.source_label}
+                  </div>
+                  {item.source_url ? (
+                    <a className="inline-link" href={item.source_url} target="_blank" rel="noreferrer">
+                      Open source
+                    </a>
+                  ) : null}
+                </div>
+              </div>
+            ))}
+          </div>
+        </Panel>
+      </div>
+
+      <div className="split-grid">
+        <Panel eyebrow="Evidence UNKNOWN" title="Coverage caveats and manual-review items">
+          <div className="mini-list">
+            {evidence.unknown.map((item) => (
+              <div className="mini-list__row" key={`${item.topic}-${item.source_label}-${item.claim_text}`}>
+                <div>
+                  <div className="table-primary">{item.claim_text}</div>
+                  <div className="table-secondary">
+                    {item.topic} · {item.importance} · {item.source_label}
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </Panel>
+
+        <Panel eyebrow="Raw sources" title="Source snapshots and raw document links">
+          <div className="mini-list">
+            {rawLinks.map((link) => (
+              <div className="mini-list__row" key={link.href}>
+                <div>
+                  <a className="inline-link" href={link.href} target="_blank" rel="noreferrer">
+                    {link.label}
+                  </a>
+                  <div className="table-secondary">{link.note}</div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </Panel>
+      </div>
+
+      <div className="split-grid">
+        <Panel eyebrow="Geometry" title="Edit draft polygon">
+          <SiteGeometryEditor site={site} />
         </Panel>
 
         <Panel eyebrow="Revision history" title="Geometry revision summary">
@@ -217,15 +437,25 @@ export default async function SiteDetailPage({
                 <div className="mini-card__top">
                   <div>
                     <div className="table-primary">{revision.revision_id}</div>
-                    <div className="table-secondary">{revision.created_at} · {revision.created_by}</div>
+                    <div className="table-secondary">
+                      {revision.created_at} · {revision.created_by}
+                    </div>
                   </div>
-                  <Badge tone={revision.is_current ? 'success' : 'neutral'}>{revision.is_current ? 'Current' : 'Previous'}</Badge>
+                  <Badge tone={revision.is_current ? 'success' : 'neutral'}>
+                    {revision.is_current ? 'Current' : 'Previous'}
+                  </Badge>
                 </div>
                 <DefinitionList
                   items={[
                     { label: 'Source type', value: revision.geom_source_type },
                     { label: 'Confidence', value: revision.geom_confidence },
-                    { label: 'Area', value: revision.site_area_sqm === null ? 'Pending' : `${revision.site_area_sqm.toLocaleString('en-GB')} sqm` },
+                    {
+                      label: 'Area',
+                      value:
+                        revision.site_area_sqm === null
+                          ? 'Pending'
+                          : `${revision.site_area_sqm.toLocaleString('en-GB')} sqm`
+                    },
                     { label: 'Hash', value: revision.geom_hash },
                     { label: 'Note', value: revision.note || 'No note supplied' }
                   ]}
@@ -238,41 +468,6 @@ export default async function SiteDetailPage({
               Current revision: {currentRevision.revision_id}
             </div>
           ) : null}
-        </Panel>
-      </div>
-
-      <div className="split-grid">
-        <Panel eyebrow="Market" title="Linked market events">
-          <div className="mini-list">
-            {site.market_events.map((event) => (
-              <div className="mini-list__row" key={event.event_id}>
-                <div>
-                  <div className="table-primary">{event.event_type}</div>
-                  <div className="table-secondary">{event.event_at}</div>
-                  <div className="table-secondary">{event.note}</div>
-                </div>
-                <div style={{ textAlign: 'right' }}>
-                  <div className="table-primary">
-                    {event.price_gbp === null ? 'Price pending' : `£${event.price_gbp.toLocaleString('en-GB')}`}
-                  </div>
-                  <div className="table-secondary">{event.price_basis_type ?? 'No basis type'}</div>
-                </div>
-              </div>
-            ))}
-          </div>
-        </Panel>
-
-        <Panel eyebrow="Warnings" title="Visible caveats">
-          <div className="mini-list">
-            {site.review_flags.map((flag) => (
-              <div className="mini-list__row" key={flag}>
-                <span>{flag}</span>
-              </div>
-            ))}
-          </div>
-          <div className="table-secondary" style={{ marginTop: 12 }}>
-            {site.geometry_editor_guidance}
-          </div>
         </Panel>
       </div>
     </div>

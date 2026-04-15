@@ -7,17 +7,33 @@ from sqlalchemy.orm import Session, selectinload
 
 from landintel.domain.enums import PriceBasisType
 from landintel.domain.models import (
+    BoroughBaselinePack,
     ListingCluster,
     ListingDocument,
     ListingItem,
     ListingSnapshot,
+    PlanningApplication,
+    PlanningApplicationDocument,
+    PlanningConstraintFeature,
+    PolicyArea,
     SiteCandidate,
+    SiteConstraintFact,
     SiteLpaLink,
+    SitePlanningLink,
+    SitePolicyFact,
     SiteTitleLink,
     SourceSnapshot,
 )
 from landintel.domain.schemas import (
+    BoroughBaselinePackRead,
+    BoroughRulepackRead,
+    BrownfieldSiteStateRead,
+    PlanningApplicationDocumentRead,
+    PlanningApplicationRead,
+    PlanningConstraintFeatureRead,
+    PolicyAreaRead,
     SiteClusterSummaryRead,
+    SiteConstraintFactRead,
     SiteDetailRead,
     SiteGeometryRead,
     SiteGeometryRevisionRead,
@@ -25,12 +41,23 @@ from landintel.domain.schemas import (
     SiteListResponse,
     SiteLpaLinkRead,
     SiteMarketEventRead,
+    SitePlanningLinkRead,
+    SitePolicyFactRead,
     SiteSummaryRead,
     SiteTitleLinkRead,
     SiteWarningRead,
+    SourceCoverageSnapshotRead,
 )
+from landintel.evidence.assemble import assemble_site_evidence
+from landintel.planning.enrich import (
+    get_borough_baseline_pack,
+    list_brownfield_states_for_site,
+    list_latest_coverage_snapshots,
+)
+from landintel.planning.extant_permission import evaluate_site_extant_permission
 from landintel.services.listings_readback import (
     serialize_listing_document,
+    serialize_raw_asset,
     serialize_source_snapshot,
 )
 
@@ -75,7 +102,7 @@ def get_site(session: Session, *, site_id: UUID) -> SiteDetailRead | None:
     site = session.execute(stmt).scalar_one_or_none()
     if site is None:
         return None
-    return serialize_site_detail(site)
+    return serialize_site_detail(session=session, site=site)
 
 
 def serialize_site_summary(site: SiteCandidate) -> SiteSummaryRead:
@@ -104,11 +131,20 @@ def serialize_site_summary(site: SiteCandidate) -> SiteSummaryRead:
     )
 
 
-def serialize_site_detail(site: SiteCandidate) -> SiteDetailRead:
+def serialize_site_detail(*, session: Session, site: SiteCandidate) -> SiteDetailRead:
     summary = serialize_site_summary(site)
     current_listing = site.current_listing
     source_snapshots = _source_snapshots_for_listing(current_listing)
-    documents = current_listing.documents if current_listing is not None else []
+    coverage_rows = list_latest_coverage_snapshots(session=session, borough_id=site.borough_id)
+    brownfield_states = list_brownfield_states_for_site(session=session, site=site)
+    extant_permission = evaluate_site_extant_permission(session=session, site=site)
+    evidence = assemble_site_evidence(
+        session=session,
+        site=site,
+        extant_permission=extant_permission,
+    )
+    baseline_pack = get_borough_baseline_pack(session=session, borough_id=site.borough_id)
+
     return SiteDetailRead(
         **summary.model_dump(),
         geometry_revisions=[
@@ -158,8 +194,83 @@ def serialize_site_detail(site: SiteCandidate) -> SiteDetailRead:
             )
             for event in site.market_events
         ],
-        source_documents=[serialize_listing_document(document) for document in documents],
+        source_documents=[
+            serialize_listing_document(document)
+            for document in (current_listing.documents if current_listing is not None else [])
+        ],
         source_snapshots=[serialize_source_snapshot(snapshot) for snapshot in source_snapshots],
+        source_coverage=[
+            SourceCoverageSnapshotRead(
+                id=row.id,
+                borough_id=row.borough_id,
+                source_family=row.source_family,
+                coverage_status=row.coverage_status,
+                gap_reason=row.gap_reason,
+                freshness_status=row.freshness_status,
+                coverage_note=row.coverage_note,
+                source_snapshot_id=row.source_snapshot_id,
+                captured_at=row.captured_at,
+            )
+            for row in coverage_rows
+        ],
+        planning_history=[
+            SitePlanningLinkRead(
+                id=link.id,
+                link_type=link.link_type,
+                distance_m=round(link.distance_m, 2) if link.distance_m is not None else None,
+                overlap_pct=round(link.overlap_pct, 4) if link.overlap_pct is not None else None,
+                match_confidence=link.match_confidence,
+                manual_verified=link.manual_verified,
+                planning_application=_serialize_planning_application(link.planning_application),
+            )
+            for link in sorted(
+                site.planning_links,
+                key=lambda item: (
+                    item.match_confidence.value,
+                    item.distance_m if item.distance_m is not None else 0.0,
+                ),
+            )
+        ],
+        brownfield_states=[
+            BrownfieldSiteStateRead(
+                id=row.id,
+                borough_id=row.borough_id,
+                source_snapshot_id=row.source_snapshot_id,
+                external_ref=row.external_ref,
+                part=row.part,
+                pip_status=row.pip_status,
+                tdc_status=row.tdc_status,
+                effective_from=row.effective_from,
+                effective_to=row.effective_to,
+                raw_record_id=row.raw_record_id,
+                source_url=row.source_url,
+            )
+            for row in brownfield_states
+        ],
+        policy_facts=[
+            SitePolicyFactRead(
+                id=fact.id,
+                relation_type=fact.relation_type,
+                overlap_pct=round(fact.overlap_pct, 4) if fact.overlap_pct is not None else None,
+                distance_m=round(fact.distance_m, 2) if fact.distance_m is not None else None,
+                importance=fact.importance,
+                policy_area=_serialize_policy_area(fact.policy_area),
+            )
+            for fact in site.policy_facts
+        ],
+        constraint_facts=[
+            SiteConstraintFactRead(
+                id=fact.id,
+                overlap_pct=round(fact.overlap_pct, 4) if fact.overlap_pct is not None else None,
+                distance_m=round(fact.distance_m, 2) if fact.distance_m is not None else None,
+                severity=fact.severity,
+                constraint_feature=_serialize_constraint_feature(fact.constraint_feature),
+            )
+            for fact in site.constraint_facts
+        ],
+        extant_permission=extant_permission,
+        evidence=evidence,
+        baseline_pack=_serialize_baseline_pack(baseline_pack),
     )
 
 
@@ -168,7 +279,9 @@ def _site_load_options():
         selectinload(SiteCandidate.borough),
         selectinload(SiteCandidate.listing_cluster).selectinload(ListingCluster.members),
         selectinload(SiteCandidate.current_listing).selectinload(ListingItem.source),
-        selectinload(SiteCandidate.current_listing).selectinload(ListingItem.documents).selectinload(ListingDocument.asset),
+        selectinload(SiteCandidate.current_listing)
+        .selectinload(ListingItem.documents)
+        .selectinload(ListingDocument.asset),
         selectinload(SiteCandidate.current_listing)
         .selectinload(ListingItem.snapshots)
         .selectinload(ListingSnapshot.source_snapshot)
@@ -177,6 +290,14 @@ def _site_load_options():
         selectinload(SiteCandidate.lpa_links).selectinload(SiteLpaLink.lpa),
         selectinload(SiteCandidate.title_links).selectinload(SiteTitleLink.title_polygon),
         selectinload(SiteCandidate.market_events),
+        selectinload(SiteCandidate.planning_links)
+        .selectinload(SitePlanningLink.planning_application)
+        .selectinload(PlanningApplication.documents)
+        .selectinload(PlanningApplicationDocument.asset),
+        selectinload(SiteCandidate.policy_facts).selectinload(SitePolicyFact.policy_area),
+        selectinload(SiteCandidate.constraint_facts).selectinload(
+            SiteConstraintFact.constraint_feature
+        ),
     )
 
 
@@ -195,6 +316,99 @@ def _serialize_site_listing(listing_item: ListingItem | None) -> SiteListingSumm
         ),
         address_text=snapshot.address_text if snapshot else None,
         source_name=listing_item.source.name,
+    )
+
+
+def _serialize_planning_application(application: PlanningApplication) -> PlanningApplicationRead:
+    return PlanningApplicationRead(
+        id=application.id,
+        borough_id=application.borough_id,
+        source_system=application.source_system,
+        source_snapshot_id=application.source_snapshot_id,
+        external_ref=application.external_ref,
+        application_type=application.application_type,
+        proposal_description=application.proposal_description,
+        valid_date=application.valid_date,
+        decision_date=application.decision_date,
+        decision=application.decision,
+        decision_type=application.decision_type,
+        status=application.status,
+        route_normalized=application.route_normalized,
+        units_proposed=application.units_proposed,
+        source_priority=application.source_priority,
+        source_url=application.source_url,
+        site_geom_4326=application.site_geom_4326,
+        site_point_4326=application.site_point_4326,
+        raw_record_json=application.raw_record_json,
+        documents=[
+            PlanningApplicationDocumentRead(
+                id=document.id,
+                asset_id=document.asset_id,
+                doc_type=document.doc_type,
+                doc_url=document.doc_url,
+                asset=serialize_raw_asset(document.asset) if document.asset is not None else None,
+            )
+            for document in application.documents
+        ],
+    )
+
+
+def _serialize_policy_area(area: PolicyArea) -> PolicyAreaRead:
+    return PolicyAreaRead(
+        id=area.id,
+        borough_id=area.borough_id,
+        policy_family=area.policy_family,
+        policy_code=area.policy_code,
+        name=area.name,
+        geom_4326=area.geom_4326,
+        legal_effective_from=area.legal_effective_from,
+        legal_effective_to=area.legal_effective_to,
+        source_snapshot_id=area.source_snapshot_id,
+        source_class=area.source_class,
+        source_url=area.source_url,
+    )
+
+
+def _serialize_constraint_feature(
+    feature: PlanningConstraintFeature,
+) -> PlanningConstraintFeatureRead:
+    return PlanningConstraintFeatureRead(
+        id=feature.id,
+        feature_family=feature.feature_family,
+        feature_subtype=feature.feature_subtype,
+        authority_level=feature.authority_level,
+        geom_4326=feature.geom_4326,
+        legal_status=feature.legal_status,
+        effective_from=feature.effective_from,
+        effective_to=feature.effective_to,
+        source_snapshot_id=feature.source_snapshot_id,
+        source_class=feature.source_class,
+        source_url=feature.source_url,
+    )
+
+
+def _serialize_baseline_pack(pack: BoroughBaselinePack | None) -> BoroughBaselinePackRead | None:
+    if pack is None:
+        return None
+    return BoroughBaselinePackRead(
+        id=pack.id,
+        borough_id=pack.borough_id,
+        version=pack.version,
+        status=pack.status,
+        signed_off_by=pack.signed_off_by,
+        signed_off_at=pack.signed_off_at,
+        pack_json=pack.pack_json,
+        source_snapshot_id=pack.source_snapshot_id,
+        rulepacks=[
+            BoroughRulepackRead(
+                id=rule.id,
+                template_key=rule.template_key,
+                effective_from=rule.effective_from,
+                effective_to=rule.effective_to,
+                rule_json=rule.rule_json,
+            )
+            for rule in pack.rulepacks
+        ],
     )
 
 

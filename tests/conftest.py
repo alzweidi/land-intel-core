@@ -10,6 +10,16 @@ from landintel.domain import models  # noqa: F401
 from landintel.domain.enums import ComplianceMode, ConnectorType, StorageBackend
 from landintel.domain.models import ListingSource
 from landintel.geospatial.reference_data import import_hmlr_title_polygons, import_lpa_boundaries
+from landintel.planning.planning_register_normalize import import_borough_register_fixture
+from landintel.planning.pld_ingest import import_pld_fixture
+from landintel.planning.reference_layers import (
+    import_baseline_pack_fixture,
+    import_brownfield_fixture,
+    import_constraint_fixture,
+    import_flood_fixture,
+    import_heritage_article4_fixture,
+    import_policy_area_fixture,
+)
 from landintel.storage.local import LocalFileStorageAdapter
 from sqlalchemy.orm import Session
 
@@ -142,3 +152,65 @@ def seed_reference_data(
     )
     db_session.commit()
     return {"lpa": lpa_result, "titles": title_result}
+
+
+@pytest.fixture()
+def seed_planning_data(
+    db_session: Session,
+    storage: LocalFileStorageAdapter,
+    seed_reference_data,
+) -> dict[str, object]:
+    del seed_reference_data
+    fixtures_root = Path(__file__).parent / "fixtures" / "planning"
+    results = {
+        "pld": import_pld_fixture(
+            session=db_session,
+            storage=storage,
+            fixture_path=fixtures_root / "pld_applications.json",
+            requested_by="pytest",
+        ),
+        "borough_register": import_borough_register_fixture(
+            session=db_session,
+            storage=storage,
+            fixture_path=fixtures_root / "borough_register_camden.json",
+            requested_by="pytest",
+        ),
+        "brownfield": import_brownfield_fixture(
+            session=db_session,
+            storage=storage,
+            fixture_path=fixtures_root / "brownfield_sites.geojson",
+            requested_by="pytest",
+        ),
+        "policy": import_policy_area_fixture(
+            session=db_session,
+            storage=storage,
+            fixture_path=fixtures_root / "policy_areas.geojson",
+            requested_by="pytest",
+        ),
+        "constraints": import_constraint_fixture(
+            session=db_session,
+            storage=storage,
+            fixture_path=fixtures_root / "constraint_features.geojson",
+            requested_by="pytest",
+        ),
+        "flood": import_flood_fixture(
+            session=db_session,
+            storage=storage,
+            fixture_path=fixtures_root / "flood_zones.geojson",
+            requested_by="pytest",
+        ),
+        "heritage_article4": import_heritage_article4_fixture(
+            session=db_session,
+            storage=storage,
+            fixture_path=fixtures_root / "heritage_article4.geojson",
+            requested_by="pytest",
+        ),
+        "baseline_pack": import_baseline_pack_fixture(
+            session=db_session,
+            storage=storage,
+            fixture_path=fixtures_root / "baseline_packs.json",
+            requested_by="pytest",
+        ),
+    }
+    db_session.commit()
+    return results

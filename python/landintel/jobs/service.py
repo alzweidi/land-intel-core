@@ -132,6 +132,89 @@ def enqueue_site_title_refresh_job(
     )
 
 
+def enqueue_pld_ingest_job(
+    session: Session,
+    *,
+    fixture_path: str | None = None,
+    requested_by: str | None,
+) -> JobRun:
+    return _deduplicated_job(
+        session=session,
+        job_type=JobType.PLD_INGEST_REFRESH,
+        dedupe_key=f"fixture:{fixture_path or 'default-pld'}",
+        payload_json={"fixture_path": fixture_path} if fixture_path else {},
+        requested_by=requested_by,
+    )
+
+
+def enqueue_borough_register_ingest_job(
+    session: Session,
+    *,
+    fixture_path: str | None = None,
+    requested_by: str | None,
+    include_supporting_layers: bool = True,
+) -> JobRun:
+    payload_json: dict[str, object] = {"include_supporting_layers": include_supporting_layers}
+    if fixture_path:
+        payload_json["fixture_path"] = fixture_path
+    return _deduplicated_job(
+        session=session,
+        job_type=JobType.BOROUGH_REGISTER_INGEST,
+        dedupe_key=f"fixture:{fixture_path or 'default-borough-register'}",
+        payload_json=payload_json,
+        requested_by=requested_by,
+    )
+
+
+def enqueue_site_planning_enrich_job(
+    session: Session,
+    *,
+    site_id: str,
+    requested_by: str | None,
+) -> JobRun:
+    return _deduplicated_job(
+        session=session,
+        job_type=JobType.SITE_PLANNING_ENRICH,
+        dedupe_key=f"site:{site_id}",
+        payload_json={"site_id": site_id},
+        requested_by=requested_by,
+    )
+
+
+def enqueue_site_extant_permission_recheck_job(
+    session: Session,
+    *,
+    site_id: str,
+    requested_by: str | None,
+) -> JobRun:
+    return _deduplicated_job(
+        session=session,
+        job_type=JobType.SITE_EXTANT_PERMISSION_RECHECK,
+        dedupe_key=f"site:{site_id}",
+        payload_json={"site_id": site_id},
+        requested_by=requested_by,
+    )
+
+
+def enqueue_source_coverage_refresh_job(
+    session: Session,
+    *,
+    borough_id: str | None,
+    requested_by: str | None,
+) -> JobRun:
+    dedupe_key = f"borough:{borough_id or 'all'}"
+    payload_json: dict[str, object] = {}
+    if borough_id:
+        payload_json["borough_id"] = borough_id
+    return _deduplicated_job(
+        session=session,
+        job_type=JobType.SOURCE_COVERAGE_REFRESH,
+        dedupe_key=dedupe_key,
+        payload_json=payload_json,
+        requested_by=requested_by,
+    )
+
+
 def _create_job(
     *,
     session: Session,

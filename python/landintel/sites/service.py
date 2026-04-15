@@ -43,6 +43,7 @@ from landintel.geospatial.title_linkage import (
     compute_title_overlaps,
     select_title_candidates,
 )
+from landintel.planning.enrich import refresh_site_planning_context
 
 SITE_NAMESPACE = uuid.UUID("f87417d2-b904-4724-94a3-7f5f18c41540")
 
@@ -143,6 +144,11 @@ def build_or_refresh_site_from_cluster(
 
     refresh_site_links_and_status(session=session, site=site)
     _upsert_market_event(session=session, site=site, current_snapshot=hints.current_snapshot)
+    refresh_site_planning_context(
+        session=session,
+        site=site,
+        requested_by=requested_by or "system",
+    )
     session.flush()
 
     _record_audit_event(
@@ -206,6 +212,11 @@ def save_site_geometry_revision(
     geometry_warnings = geometry_warning_dicts(prepared.warnings)
     site.warning_json = {**site.warning_json, "geometry": geometry_warnings}
     refresh_site_links_and_status(session=session, site=site)
+    refresh_site_planning_context(
+        session=session,
+        site=site,
+        requested_by=created_by or "analyst",
+    )
     session.flush()
 
     _record_audit_event(
@@ -350,10 +361,16 @@ def refresh_site_title_links(*, session: Session, site: SiteCandidate) -> list[d
 
 
 def refresh_site_links_and_status(*, session: Session, site: SiteCandidate) -> None:
-    geometry_warnings = list(site.warning_json.get("geometry", [])) if site.warning_json else []
+    existing = dict(site.warning_json or {})
+    geometry_warnings = list(existing.get("geometry", []))
     lpa_warnings = refresh_site_lpa_links(session=session, site=site)
     title_warnings = refresh_site_title_links(session=session, site=site)
     site.warning_json = {
+        **{
+            key: value
+            for key, value in existing.items()
+            if key not in {"geometry", "lpa", "title"}
+        },
         "geometry": geometry_warnings,
         "lpa": lpa_warnings,
         "title": title_warnings,

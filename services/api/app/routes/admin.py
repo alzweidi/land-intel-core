@@ -8,7 +8,7 @@ from landintel.domain.schemas import (
     SourceSnapshotRead,
 )
 from landintel.jobs.service import list_jobs
-from landintel.monitoring.health import build_data_health_stub, build_model_health_stub
+from landintel.monitoring.health import build_data_health, build_model_health_stub
 from landintel.services.listings_readback import (
     get_source_snapshot,
     list_listing_sources,
@@ -22,8 +22,8 @@ router = APIRouter(prefix="/api", tags=["admin"])
 
 
 @router.get("/health/data")
-def get_data_health() -> dict[str, object]:
-    return build_data_health_stub()
+def get_data_health(session: Session = Depends(get_db_session)) -> dict[str, object]:
+    return build_data_health(session)
 
 
 @router.get("/health/model")
@@ -72,9 +72,10 @@ def get_listing_sources(
 def get_phase_status() -> PlaceholderResponse:
     return PlaceholderResponse(
         detail=(
-            "Phase 1A listing ingestion and clustering are active. "
-            "Site, scenario, assessment, and scoring surfaces remain stubbed."
+            "Phase 3A planning context, extant-permission screening, and evidence assembly are "
+            "active. "
+            "Scenario, assessment, scoring, valuation, and ranking surfaces remain deferred."
         ),
         surface="admin.phase-status",
-        spec_phase="Phase 1A",
+        spec_phase="Phase 3A",
     )

@@ -3,10 +3,10 @@
 ## Repo Layout
 
 - `services/api`: FastAPI routes for listings, clusters, sites, admin, and future stubs
-- `services/worker`: Postgres-backed worker loop with connector, cluster rebuild, and site refresh/linkage jobs
+- `services/worker`: Postgres-backed worker loop with connector, cluster rebuild, site refresh/linkage, and planning enrichment jobs
 - `services/scheduler`: recurring enqueue loop for approved automated listing sources with explicit intervals
-- `services/web`: Next.js analyst UI focused on listings, clusters, and sites
-- `python/landintel`: shared config, ORM models, connector framework, listing parsing/clustering, geospatial/site services, storage, and readback
+- `services/web`: Next.js analyst UI focused on listings, clusters, sites, and planning context readback
+- `python/landintel`: shared config, ORM models, connector framework, listing parsing/clustering, geospatial/site services, planning enrichment, evidence assembly, storage, and readback
 - `db/migrations`: Alembic revisions
 - `infra/compose`: local/VPS compose assets
 - `docs`: controlling spec and implementation notes
@@ -16,6 +16,7 @@
 - Python setup: `python3 -m venv .venv && source .venv/bin/activate && pip install -e ".[dev]"`
 - Backend migrations: `alembic upgrade head`
 - Reference bootstrap: `python -m landintel.geospatial.bootstrap --dataset all --requested-by local-dev`
+- Planning bootstrap: `python -m landintel.planning.bootstrap --dataset all --requested-by local-dev`
 - API: `uvicorn services.api.app.main:create_app --factory --host 0.0.0.0 --port 8000`
 - Worker: `python -m services.worker.app.main`
 - Scheduler: `python -m services.scheduler.app.main`
@@ -31,7 +32,7 @@
 
 ## Non-Negotiable Rules From The Spec
 
-- Stop at Phase 2. Do not start Phase 3 planning context/evidence packs, extant-permission logic, planning-register ingestion, policy-layer ingestion, scenarios, assessments, scoring, valuation, ranking, or model training.
+- Stop at Phase 3A. Do not start Phase 4 scenario suggestion/confirmation, assessments, scoring, valuation, ranking, visible probability, hidden probability, comparable-case ranking logic, or model training.
 - No AWS, Kubernetes, Redis, vector DB, domain microservices, or separate model-serving service.
 - Use the Postgres-backed `job_run` queue with `FOR UPDATE SKIP LOCKED`.
 - Every connector run must create one `source_snapshot`, one or more `raw_asset` rows, a coverage note, and a parse status.
@@ -44,8 +45,13 @@
 - Support multi-title linkage.
 - Apply the cross-LPA rule exactly: trivial overlap stays on the majority LPA and flags; material overlap requires manual clipping or confirmation.
 - Audit site creation, refresh, and geometry revision events.
+- PLD is supplemental only; borough planning-register data is the authority of record where available.
+- Brownfield Part 1 is not PiP. Brownfield Part 2 must stay distinct and can be materially exclusionary.
+- Missing source coverage never proves a clean permission, policy, or constraint state.
+- If a mandatory source family is missing for a critical permission conclusion, return manual review or abstain.
+- LLMs may help summarize evidence, but they must not create authoritative planning facts.
 
-## Phase 2 Done Means
+## Phase 3A Done Means
 
 - `docker compose up --build` boots `api`, `worker`, `scheduler`, `web`, and local PostGIS
 - `alembic upgrade head` succeeds
@@ -54,7 +60,10 @@
 - a listing cluster can be converted into a `site_candidate` with an auditable geometry revision
 - analysts can save new geometry revisions without overwriting prior evidence
 - borough assignment and title linkage are visible in API and UI
-- the web app renders the site list/detail and MapLibre geometry editor locally
+- fixture-scale planning, policy, brownfield, flood, heritage, and Article 4 imports run locally
+- site detail shows permission state, evidence `FOR` / `AGAINST` / `UNKNOWN`, source coverage warnings, and raw-source links
+- extant-permission re-screening works through the API
+- the web app renders the site list/detail, MapLibre geometry editor, and planning-context panels locally
 - tests and lint/build checks pass
 
 ## Source Approval Notes

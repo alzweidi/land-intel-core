@@ -23,10 +23,12 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from landintel.db.base import Base
 from landintel.domain.enums import (
     AppRoleName,
+    BaselinePackStatus,
     ComplianceMode,
     ConnectorType,
     DocumentExtractionStatus,
     DocumentType,
+    EvidenceImportance,
     GeomConfidence,
     GeomSourceType,
     JobStatus,
@@ -37,6 +39,8 @@ from landintel.domain.enums import (
     PriceBasisType,
     SiteMarketEventType,
     SiteStatus,
+    SourceClass,
+    SourceCoverageStatus,
     SourceFreshnessStatus,
     SourceParseStatus,
 )
@@ -80,6 +84,9 @@ class SourceSnapshot(Base):
     listing_snapshots: Mapped[list["ListingSnapshot"]] = relationship(
         back_populates="source_snapshot"
     )
+    coverage_snapshots: Mapped[list["SourceCoverageSnapshot"]] = relationship(
+        back_populates="source_snapshot"
+    )
 
 
 class RawAsset(Base):
@@ -105,6 +112,49 @@ class RawAsset(Base):
 
     source_snapshot: Mapped[SourceSnapshot] = relationship(back_populates="raw_assets")
     listing_documents: Mapped[list["ListingDocument"]] = relationship(back_populates="asset")
+    planning_application_documents: Mapped[list["PlanningApplicationDocument"]] = relationship(
+        back_populates="asset"
+    )
+
+
+class SourceCoverageSnapshot(Base):
+    __tablename__ = "source_coverage_snapshot"
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
+    borough_id: Mapped[str] = mapped_column(
+        String(100),
+        ForeignKey("lpa_boundary.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    source_family: Mapped[str] = mapped_column(String(100), nullable=False)
+    coverage_geom_27700: Mapped[str] = mapped_column(Text, nullable=False)
+    coverage_status: Mapped[SourceCoverageStatus] = mapped_column(
+        Enum(SourceCoverageStatus, name="source_coverage_status"),
+        nullable=False,
+        default=SourceCoverageStatus.UNKNOWN,
+    )
+    gap_reason: Mapped[str | None] = mapped_column(Text)
+    freshness_status: Mapped[SourceFreshnessStatus] = mapped_column(
+        Enum(SourceFreshnessStatus, name="source_freshness_status", create_type=False),
+        nullable=False,
+        default=SourceFreshnessStatus.UNKNOWN,
+    )
+    coverage_note: Mapped[str | None] = mapped_column(Text)
+    source_snapshot_id: Mapped[uuid.UUID | None] = mapped_column(
+        Uuid,
+        ForeignKey("source_snapshot.id", ondelete="SET NULL"),
+    )
+    captured_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        default=utc_now,
+        server_default=func.now(),
+    )
+
+    source_snapshot: Mapped[SourceSnapshot | None] = relationship(
+        back_populates="coverage_snapshots"
+    )
+    borough: Mapped["LpaBoundary"] = relationship(back_populates="coverage_snapshots")
 
 
 class ListingSource(Base):
@@ -374,6 +424,19 @@ class LpaBoundary(Base):
 
     site_candidates: Mapped[list["SiteCandidate"]] = relationship(back_populates="borough")
     site_lpa_links: Mapped[list["SiteLpaLink"]] = relationship(back_populates="lpa")
+    coverage_snapshots: Mapped[list["SourceCoverageSnapshot"]] = relationship(
+        back_populates="borough"
+    )
+    planning_applications: Mapped[list["PlanningApplication"]] = relationship(
+        back_populates="borough"
+    )
+    brownfield_site_states: Mapped[list["BrownfieldSiteState"]] = relationship(
+        back_populates="borough"
+    )
+    policy_areas: Mapped[list["PolicyArea"]] = relationship(back_populates="borough")
+    baseline_packs: Mapped[list["BoroughBaselinePack"]] = relationship(
+        back_populates="borough"
+    )
 
 
 class HmlrTitlePolygon(Base):
@@ -486,6 +549,18 @@ class SiteCandidate(Base):
         back_populates="site",
         cascade="all, delete-orphan",
         order_by="SiteMarketEvent.event_at.desc()",
+    )
+    planning_links: Mapped[list["SitePlanningLink"]] = relationship(
+        back_populates="site",
+        cascade="all, delete-orphan",
+    )
+    policy_facts: Mapped[list["SitePolicyFact"]] = relationship(
+        back_populates="site",
+        cascade="all, delete-orphan",
+    )
+    constraint_facts: Mapped[list["SiteConstraintFact"]] = relationship(
+        back_populates="site",
+        cascade="all, delete-orphan",
     )
 
 
@@ -635,6 +710,368 @@ class SiteMarketEvent(Base):
     listing_item: Mapped[ListingItem | None] = relationship(foreign_keys=[listing_item_id])
 
 
+class PlanningApplication(Base):
+    __tablename__ = "planning_application"
+    __table_args__ = (UniqueConstraint("source_system", "external_ref"),)
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
+    borough_id: Mapped[str | None] = mapped_column(
+        String(100),
+        ForeignKey("lpa_boundary.id", ondelete="SET NULL"),
+    )
+    source_system: Mapped[str] = mapped_column(String(100), nullable=False)
+    source_snapshot_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid,
+        ForeignKey("source_snapshot.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    external_ref: Mapped[str] = mapped_column(String(255), nullable=False)
+    application_type: Mapped[str] = mapped_column(String(100), nullable=False)
+    proposal_description: Mapped[str] = mapped_column(Text, nullable=False)
+    valid_date: Mapped[date | None] = mapped_column(Date)
+    decision_date: Mapped[date | None] = mapped_column(Date)
+    decision: Mapped[str | None] = mapped_column(String(100))
+    decision_type: Mapped[str | None] = mapped_column(String(100))
+    status: Mapped[str] = mapped_column(String(100), nullable=False)
+    route_normalized: Mapped[str | None] = mapped_column(String(100))
+    units_proposed: Mapped[int | None] = mapped_column(Integer)
+    site_geom_27700: Mapped[str | None] = mapped_column(Text)
+    site_geom_4326: Mapped[dict[str, object] | None] = mapped_column(JSON)
+    site_point_27700: Mapped[str | None] = mapped_column(Text)
+    site_point_4326: Mapped[dict[str, object] | None] = mapped_column(JSON)
+    source_priority: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    source_url: Mapped[str | None] = mapped_column(Text)
+    raw_record_json: Mapped[dict[str, object]] = mapped_column(JSON, nullable=False, default=dict)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        default=utc_now,
+        server_default=func.now(),
+    )
+
+    borough: Mapped[LpaBoundary | None] = relationship(back_populates="planning_applications")
+    source_snapshot: Mapped[SourceSnapshot] = relationship()
+    documents: Mapped[list["PlanningApplicationDocument"]] = relationship(
+        back_populates="planning_application",
+        cascade="all, delete-orphan",
+    )
+    site_links: Mapped[list["SitePlanningLink"]] = relationship(
+        back_populates="planning_application"
+    )
+
+
+class PlanningApplicationDocument(Base):
+    __tablename__ = "planning_application_document"
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
+    planning_application_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid,
+        ForeignKey("planning_application.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    asset_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid,
+        ForeignKey("raw_asset.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    doc_type: Mapped[str] = mapped_column(String(100), nullable=False)
+    doc_url: Mapped[str] = mapped_column(Text, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        default=utc_now,
+        server_default=func.now(),
+    )
+
+    planning_application: Mapped[PlanningApplication] = relationship(back_populates="documents")
+    asset: Mapped[RawAsset] = relationship(back_populates="planning_application_documents")
+
+
+class SitePlanningLink(Base):
+    __tablename__ = "site_planning_link"
+    __table_args__ = (UniqueConstraint("site_id", "planning_application_id"),)
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
+    site_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid,
+        ForeignKey("site_candidate.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    planning_application_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid,
+        ForeignKey("planning_application.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    link_type: Mapped[str] = mapped_column(String(100), nullable=False)
+    distance_m: Mapped[float | None] = mapped_column(Float)
+    overlap_pct: Mapped[float | None] = mapped_column(Float)
+    match_confidence: Mapped[GeomConfidence] = mapped_column(
+        Enum(GeomConfidence, name="geom_confidence", create_type=False),
+        nullable=False,
+    )
+    manual_verified: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        default=utc_now,
+        server_default=func.now(),
+    )
+
+    site: Mapped[SiteCandidate] = relationship(back_populates="planning_links")
+    planning_application: Mapped[PlanningApplication] = relationship(back_populates="site_links")
+
+
+class BrownfieldSiteState(Base):
+    __tablename__ = "brownfield_site_state"
+    __table_args__ = (UniqueConstraint("borough_id", "external_ref"),)
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
+    borough_id: Mapped[str] = mapped_column(
+        String(100),
+        ForeignKey("lpa_boundary.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    source_snapshot_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid,
+        ForeignKey("source_snapshot.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    external_ref: Mapped[str] = mapped_column(String(255), nullable=False)
+    geom_27700: Mapped[str] = mapped_column(Text, nullable=False)
+    geom_4326: Mapped[dict[str, object]] = mapped_column(JSON, nullable=False, default=dict)
+    part: Mapped[str] = mapped_column(String(50), nullable=False)
+    pip_status: Mapped[str | None] = mapped_column(String(100))
+    tdc_status: Mapped[str | None] = mapped_column(String(100))
+    effective_from: Mapped[date | None] = mapped_column(Date)
+    effective_to: Mapped[date | None] = mapped_column(Date)
+    raw_record_id: Mapped[str] = mapped_column(String(255), nullable=False)
+    source_url: Mapped[str | None] = mapped_column(Text)
+    raw_record_json: Mapped[dict[str, object]] = mapped_column(JSON, nullable=False, default=dict)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        default=utc_now,
+        server_default=func.now(),
+    )
+
+    borough: Mapped[LpaBoundary] = relationship(back_populates="brownfield_site_states")
+    source_snapshot: Mapped[SourceSnapshot] = relationship()
+
+
+class PolicyArea(Base):
+    __tablename__ = "policy_area"
+    __table_args__ = (UniqueConstraint("borough_id", "policy_family", "policy_code"),)
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
+    borough_id: Mapped[str | None] = mapped_column(
+        String(100),
+        ForeignKey("lpa_boundary.id", ondelete="SET NULL"),
+    )
+    policy_family: Mapped[str] = mapped_column(String(100), nullable=False)
+    policy_code: Mapped[str] = mapped_column(String(100), nullable=False)
+    name: Mapped[str] = mapped_column(String(255), nullable=False)
+    geom_27700: Mapped[str] = mapped_column(Text, nullable=False)
+    geom_4326: Mapped[dict[str, object]] = mapped_column(JSON, nullable=False, default=dict)
+    legal_effective_from: Mapped[date | None] = mapped_column(Date)
+    legal_effective_to: Mapped[date | None] = mapped_column(Date)
+    source_snapshot_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid,
+        ForeignKey("source_snapshot.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    source_class: Mapped[SourceClass] = mapped_column(
+        Enum(SourceClass, name="source_class"),
+        nullable=False,
+    )
+    source_url: Mapped[str | None] = mapped_column(Text)
+    raw_record_json: Mapped[dict[str, object]] = mapped_column(JSON, nullable=False, default=dict)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        default=utc_now,
+        server_default=func.now(),
+    )
+
+    borough: Mapped[LpaBoundary | None] = relationship(back_populates="policy_areas")
+    source_snapshot: Mapped[SourceSnapshot] = relationship()
+    site_facts: Mapped[list["SitePolicyFact"]] = relationship(back_populates="policy_area")
+
+
+class PlanningConstraintFeature(Base):
+    __tablename__ = "planning_constraint_feature"
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
+    feature_family: Mapped[str] = mapped_column(String(100), nullable=False)
+    feature_subtype: Mapped[str] = mapped_column(String(100), nullable=False)
+    authority_level: Mapped[str] = mapped_column(String(100), nullable=False)
+    geom_27700: Mapped[str] = mapped_column(Text, nullable=False)
+    geom_4326: Mapped[dict[str, object]] = mapped_column(JSON, nullable=False, default=dict)
+    legal_status: Mapped[str | None] = mapped_column(String(100))
+    effective_from: Mapped[date | None] = mapped_column(Date)
+    effective_to: Mapped[date | None] = mapped_column(Date)
+    source_snapshot_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid,
+        ForeignKey("source_snapshot.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    source_class: Mapped[SourceClass] = mapped_column(
+        Enum(SourceClass, name="source_class", create_type=False),
+        nullable=False,
+    )
+    source_url: Mapped[str | None] = mapped_column(Text)
+    raw_record_json: Mapped[dict[str, object]] = mapped_column(JSON, nullable=False, default=dict)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        default=utc_now,
+        server_default=func.now(),
+    )
+
+    source_snapshot: Mapped[SourceSnapshot] = relationship()
+    site_facts: Mapped[list["SiteConstraintFact"]] = relationship(
+        back_populates="constraint_feature"
+    )
+
+
+class SitePolicyFact(Base):
+    __tablename__ = "site_policy_fact"
+    __table_args__ = (UniqueConstraint("site_id", "policy_area_id"),)
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
+    site_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid,
+        ForeignKey("site_candidate.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    policy_area_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid,
+        ForeignKey("policy_area.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    relation_type: Mapped[str] = mapped_column(String(100), nullable=False)
+    overlap_pct: Mapped[float | None] = mapped_column(Float)
+    distance_m: Mapped[float | None] = mapped_column(Float)
+    importance: Mapped[EvidenceImportance] = mapped_column(
+        Enum(EvidenceImportance, name="evidence_importance"),
+        nullable=False,
+        default=EvidenceImportance.MEDIUM,
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        default=utc_now,
+        server_default=func.now(),
+    )
+
+    site: Mapped[SiteCandidate] = relationship(back_populates="policy_facts")
+    policy_area: Mapped[PolicyArea] = relationship(back_populates="site_facts")
+
+
+class SiteConstraintFact(Base):
+    __tablename__ = "site_constraint_fact"
+    __table_args__ = (UniqueConstraint("site_id", "constraint_feature_id"),)
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
+    site_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid,
+        ForeignKey("site_candidate.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    constraint_feature_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid,
+        ForeignKey("planning_constraint_feature.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    overlap_pct: Mapped[float | None] = mapped_column(Float)
+    distance_m: Mapped[float | None] = mapped_column(Float)
+    severity: Mapped[EvidenceImportance] = mapped_column(
+        Enum(EvidenceImportance, name="evidence_importance", create_type=False),
+        nullable=False,
+        default=EvidenceImportance.MEDIUM,
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        default=utc_now,
+        server_default=func.now(),
+    )
+
+    site: Mapped[SiteCandidate] = relationship(back_populates="constraint_facts")
+    constraint_feature: Mapped[PlanningConstraintFeature] = relationship(
+        back_populates="site_facts"
+    )
+
+
+class BoroughBaselinePack(Base):
+    __tablename__ = "borough_baseline_pack"
+    __table_args__ = (UniqueConstraint("borough_id", "version"),)
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
+    borough_id: Mapped[str] = mapped_column(
+        String(100),
+        ForeignKey("lpa_boundary.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    version: Mapped[str] = mapped_column(String(100), nullable=False)
+    status: Mapped[BaselinePackStatus] = mapped_column(
+        Enum(BaselinePackStatus, name="baseline_pack_status"),
+        nullable=False,
+        default=BaselinePackStatus.DRAFT,
+    )
+    signed_off_by: Mapped[str | None] = mapped_column(String(255))
+    signed_off_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    pack_json: Mapped[dict[str, object]] = mapped_column(JSON, nullable=False, default=dict)
+    source_snapshot_id: Mapped[uuid.UUID | None] = mapped_column(
+        Uuid,
+        ForeignKey("source_snapshot.id", ondelete="SET NULL"),
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        default=utc_now,
+        server_default=func.now(),
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        default=utc_now,
+        onupdate=utc_now,
+        server_default=func.now(),
+    )
+
+    borough: Mapped[LpaBoundary] = relationship(back_populates="baseline_packs")
+    source_snapshot: Mapped[SourceSnapshot | None] = relationship()
+    rulepacks: Mapped[list["BoroughRulepack"]] = relationship(
+        back_populates="borough_baseline_pack",
+        cascade="all, delete-orphan",
+    )
+
+
+class BoroughRulepack(Base):
+    __tablename__ = "borough_rulepack"
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
+    borough_baseline_pack_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid,
+        ForeignKey("borough_baseline_pack.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    template_key: Mapped[str] = mapped_column(String(100), nullable=False)
+    rule_json: Mapped[dict[str, object]] = mapped_column(JSON, nullable=False, default=dict)
+    effective_from: Mapped[date | None] = mapped_column(Date)
+    effective_to: Mapped[date | None] = mapped_column(Date)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        default=utc_now,
+        server_default=func.now(),
+    )
+
+    borough_baseline_pack: Mapped[BoroughBaselinePack] = relationship(
+        back_populates="rulepacks"
+    )
+
+
 class AuthUser(Base):
     __tablename__ = "auth_user"
 
@@ -744,6 +1181,12 @@ Index("ix_job_run_status_next_run_at", JobRun.status, JobRun.next_run_at)
 Index("ix_source_snapshot_source_uri", SourceSnapshot.source_uri)
 Index("ix_source_snapshot_source_name", SourceSnapshot.source_name)
 Index("ix_raw_asset_source_snapshot_id", RawAsset.source_snapshot_id)
+Index(
+    "ix_source_coverage_snapshot_borough_family_captured",
+    SourceCoverageSnapshot.borough_id,
+    SourceCoverageSnapshot.source_family,
+    SourceCoverageSnapshot.captured_at,
+)
 Index("ix_listing_item_canonical_url", ListingItem.canonical_url)
 Index("ix_listing_item_source_last_seen", ListingItem.source_id, ListingItem.last_seen_at)
 Index("ix_listing_item_latest_status", ListingItem.latest_status)
@@ -769,3 +1212,37 @@ Index(
 Index("ix_site_title_link_site_id", SiteTitleLink.site_id)
 Index("ix_site_lpa_link_site_id", SiteLpaLink.site_id)
 Index("ix_site_market_event_site_event_at", SiteMarketEvent.site_id, SiteMarketEvent.event_at)
+Index("ix_planning_application_borough_id", PlanningApplication.borough_id)
+Index("ix_planning_application_external_ref", PlanningApplication.external_ref)
+Index("ix_planning_application_status", PlanningApplication.status)
+Index("ix_planning_application_valid_date", PlanningApplication.valid_date)
+Index("ix_planning_application_decision_date", PlanningApplication.decision_date)
+Index(
+    "ix_planning_application_source_system_priority",
+    PlanningApplication.source_system,
+    PlanningApplication.source_priority,
+)
+Index(
+    "ix_planning_application_document_application_id",
+    PlanningApplicationDocument.planning_application_id,
+)
+Index("ix_site_planning_link_site_id", SitePlanningLink.site_id)
+Index("ix_site_planning_link_application_id", SitePlanningLink.planning_application_id)
+Index("ix_brownfield_site_state_borough_id", BrownfieldSiteState.borough_id)
+Index("ix_brownfield_site_state_external_ref", BrownfieldSiteState.external_ref)
+Index("ix_brownfield_site_state_effective_to", BrownfieldSiteState.effective_to)
+Index("ix_policy_area_borough_id", PolicyArea.borough_id)
+Index("ix_policy_area_policy_code", PolicyArea.policy_code)
+Index("ix_policy_area_effective_from", PolicyArea.legal_effective_from)
+Index("ix_policy_area_effective_to", PolicyArea.legal_effective_to)
+Index("ix_planning_constraint_feature_family", PlanningConstraintFeature.feature_family)
+Index("ix_planning_constraint_feature_effective_to", PlanningConstraintFeature.effective_to)
+Index("ix_site_policy_fact_site_id", SitePolicyFact.site_id)
+Index("ix_site_constraint_fact_site_id", SiteConstraintFact.site_id)
+Index("ix_borough_baseline_pack_borough_id", BoroughBaselinePack.borough_id)
+Index("ix_borough_baseline_pack_status", BoroughBaselinePack.status)
+Index(
+    "ix_borough_rulepack_pack_template",
+    BoroughRulepack.borough_baseline_pack_id,
+    BoroughRulepack.template_key,
+)

@@ -3,6 +3,13 @@ from landintel.jobs.service import mark_job_failed, mark_job_succeeded
 from landintel.listings.service import execute_listing_job, rebuild_listing_clusters
 from landintel.storage.base import StorageAdapter
 
+from .planning_enrich import (
+    run_borough_register_ingest_job,
+    run_pld_ingest_job,
+    run_site_extant_permission_recheck_job,
+    run_site_planning_enrich_job,
+    run_source_coverage_refresh_job,
+)
 from .site_build import (
     run_site_build_job,
     run_site_lpa_refresh_job,
@@ -37,6 +44,31 @@ def dispatch_connector_job(session, job, settings, storage: StorageAdapter) -> b
 
     if job.job_type == JobType.SITE_TITLE_LINK_REFRESH:
         run_site_title_refresh_job(session=session, job=job)
+        mark_job_succeeded(session=session, job=job)
+        return True
+
+    if job.job_type == JobType.PLD_INGEST_REFRESH:
+        run_pld_ingest_job(session=session, job=job, storage=storage)
+        mark_job_succeeded(session=session, job=job)
+        return True
+
+    if job.job_type == JobType.BOROUGH_REGISTER_INGEST:
+        run_borough_register_ingest_job(session=session, job=job, storage=storage)
+        mark_job_succeeded(session=session, job=job)
+        return True
+
+    if job.job_type == JobType.SITE_PLANNING_ENRICH:
+        run_site_planning_enrich_job(session=session, job=job)
+        mark_job_succeeded(session=session, job=job)
+        return True
+
+    if job.job_type == JobType.SITE_EXTANT_PERMISSION_RECHECK:
+        run_site_extant_permission_recheck_job(session=session, job=job)
+        mark_job_succeeded(session=session, job=job)
+        return True
+
+    if job.job_type == JobType.SOURCE_COVERAGE_REFRESH:
+        run_source_coverage_refresh_job(session=session, job=job)
         mark_job_succeeded(session=session, job=job)
         return True
 

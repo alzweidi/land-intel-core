@@ -5,10 +5,15 @@ from uuid import UUID
 from pydantic import AnyHttpUrl, BaseModel, ConfigDict, Field
 
 from landintel.domain.enums import (
+    BaselinePackStatus,
     ComplianceMode,
     ConnectorType,
     DocumentExtractionStatus,
     DocumentType,
+    EligibilityStatus,
+    EvidenceImportance,
+    EvidencePolarity,
+    ExtantPermissionStatus,
     GeomConfidence,
     GeomSourceType,
     JobStatus,
@@ -18,8 +23,11 @@ from landintel.domain.enums import (
     ListingType,
     PriceBasisType,
     SiteStatus,
+    SourceClass,
+    SourceCoverageStatus,
     SourceFreshnessStatus,
     SourceParseStatus,
+    VerifiedStatus,
 )
 
 
@@ -200,6 +208,10 @@ class SiteGeometryUpdateRequest(BaseModel):
     raw_asset_id: UUID | None = None
 
 
+class ExtantPermissionCheckRequest(BaseModel):
+    requested_by: str | None = Field(default=None, max_length=255)
+
+
 class SiteWarningRead(BaseModel):
     code: str
     message: str
@@ -270,6 +282,185 @@ class SiteListingSummaryRead(BaseModel):
     source_name: str
 
 
+class SourceCoverageSnapshotRead(BaseModel):
+    id: UUID
+    borough_id: str
+    source_family: str
+    coverage_status: SourceCoverageStatus
+    gap_reason: str | None
+    freshness_status: SourceFreshnessStatus
+    coverage_note: str | None
+    source_snapshot_id: UUID | None
+    captured_at: datetime
+
+
+class PlanningApplicationDocumentRead(BaseModel):
+    id: UUID
+    asset_id: UUID
+    doc_type: str
+    doc_url: str
+    asset: RawAssetRead | None = None
+
+
+class PlanningApplicationRead(BaseModel):
+    id: UUID
+    borough_id: str | None
+    source_system: str
+    source_snapshot_id: UUID
+    external_ref: str
+    application_type: str
+    proposal_description: str
+    valid_date: date | None
+    decision_date: date | None
+    decision: str | None
+    decision_type: str | None
+    status: str
+    route_normalized: str | None
+    units_proposed: int | None
+    source_priority: int
+    source_url: str | None
+    site_geom_4326: dict[str, Any] | None
+    site_point_4326: dict[str, Any] | None
+    raw_record_json: dict[str, Any]
+    documents: list[PlanningApplicationDocumentRead] = Field(default_factory=list)
+
+
+class SitePlanningLinkRead(BaseModel):
+    id: UUID
+    link_type: str
+    distance_m: float | None
+    overlap_pct: float | None
+    match_confidence: GeomConfidence
+    manual_verified: bool
+    planning_application: PlanningApplicationRead
+
+
+class BrownfieldSiteStateRead(BaseModel):
+    id: UUID
+    borough_id: str
+    source_snapshot_id: UUID
+    external_ref: str
+    part: str
+    pip_status: str | None
+    tdc_status: str | None
+    effective_from: date | None
+    effective_to: date | None
+    raw_record_id: str
+    source_url: str | None
+
+
+class PolicyAreaRead(BaseModel):
+    id: UUID
+    borough_id: str | None
+    policy_family: str
+    policy_code: str
+    name: str
+    geom_4326: dict[str, Any]
+    legal_effective_from: date | None
+    legal_effective_to: date | None
+    source_snapshot_id: UUID
+    source_class: SourceClass
+    source_url: str | None
+
+
+class PlanningConstraintFeatureRead(BaseModel):
+    id: UUID
+    feature_family: str
+    feature_subtype: str
+    authority_level: str
+    geom_4326: dict[str, Any]
+    legal_status: str | None
+    effective_from: date | None
+    effective_to: date | None
+    source_snapshot_id: UUID
+    source_class: SourceClass
+    source_url: str | None
+
+
+class SitePolicyFactRead(BaseModel):
+    id: UUID
+    relation_type: str
+    overlap_pct: float | None
+    distance_m: float | None
+    importance: EvidenceImportance
+    policy_area: PolicyAreaRead
+
+
+class SiteConstraintFactRead(BaseModel):
+    id: UUID
+    overlap_pct: float | None
+    distance_m: float | None
+    severity: EvidenceImportance
+    constraint_feature: PlanningConstraintFeatureRead
+
+
+class BoroughRulepackRead(BaseModel):
+    id: UUID
+    template_key: str
+    effective_from: date | None
+    effective_to: date | None
+    rule_json: dict[str, Any]
+
+
+class BoroughBaselinePackRead(BaseModel):
+    id: UUID
+    borough_id: str
+    version: str
+    status: BaselinePackStatus
+    signed_off_by: str | None
+    signed_off_at: datetime | None
+    pack_json: dict[str, Any]
+    source_snapshot_id: UUID | None
+    rulepacks: list[BoroughRulepackRead] = Field(default_factory=list)
+
+
+class ExtantPermissionMatchRead(BaseModel):
+    source_kind: str
+    source_system: str
+    source_label: str
+    source_url: str | None
+    source_snapshot_id: UUID | None
+    planning_application_id: UUID | None = None
+    brownfield_state_id: UUID | None = None
+    overlap_pct: float | None = None
+    overlap_sqm: float | None = None
+    distance_m: float | None = None
+    material: bool
+    detail: str
+
+
+class ExtantPermissionRead(BaseModel):
+    status: ExtantPermissionStatus
+    eligibility_status: EligibilityStatus
+    manual_review_required: bool
+    summary: str
+    reasons: list[str] = Field(default_factory=list)
+    coverage_gaps: list[SiteWarningRead] = Field(default_factory=list)
+    matched_records: list[ExtantPermissionMatchRead] = Field(default_factory=list)
+
+
+class EvidenceItemRead(BaseModel):
+    polarity: EvidencePolarity
+    claim_text: str
+    topic: str
+    importance: EvidenceImportance
+    source_class: SourceClass
+    source_label: str
+    source_url: str | None
+    source_snapshot_id: UUID | None
+    raw_asset_id: UUID | None
+    excerpt_text: str | None
+    verified_status: VerifiedStatus
+
+
+class EvidencePackRead(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+
+    for_: list[EvidenceItemRead] = Field(default_factory=list, alias="for")
+    against: list[EvidenceItemRead] = Field(default_factory=list)
+    unknown: list[EvidenceItemRead] = Field(default_factory=list)
+
+
 class SiteSummaryRead(BaseModel):
     id: UUID
     display_name: str
@@ -290,6 +481,14 @@ class SiteDetailRead(SiteSummaryRead):
     market_events: list[SiteMarketEventRead]
     source_documents: list[ListingDocumentRead]
     source_snapshots: list[SourceSnapshotRead]
+    source_coverage: list[SourceCoverageSnapshotRead] = Field(default_factory=list)
+    planning_history: list[SitePlanningLinkRead] = Field(default_factory=list)
+    brownfield_states: list[BrownfieldSiteStateRead] = Field(default_factory=list)
+    policy_facts: list[SitePolicyFactRead] = Field(default_factory=list)
+    constraint_facts: list[SiteConstraintFactRead] = Field(default_factory=list)
+    extant_permission: ExtantPermissionRead
+    evidence: EvidencePackRead
+    baseline_pack: BoroughBaselinePackRead | None = None
 
 
 class SiteListResponse(BaseModel):

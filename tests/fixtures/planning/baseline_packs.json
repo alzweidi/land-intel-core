@@ -1,0 +1,54 @@
+{
+  "meta": {
+    "coverage_note": "Baseline-pack scaffold fixture for Phase 3A local/dev.",
+    "freshness_status": "FRESH",
+    "coverage": [
+      {
+        "borough_id": "camden",
+        "source_family": "baseline_pack",
+        "coverage_status": "COMPLETE",
+        "freshness_status": "FRESH",
+        "coverage_note": "Pilot Camden baseline-pack scaffold."
+      }
+    ]
+  },
+  "baseline_packs": [
+    {
+      "borough_id": "camden",
+      "version": "phase3a-fixture-v1",
+      "status": "DRAFT",
+      "signed_off_by": null,
+      "signed_off_at": null,
+      "pack_json": {
+        "borough_name": "London Borough of Camden",
+        "coverage_expectations": [
+          "borough_register",
+          "prior_approval",
+          "brownfield",
+          "policy",
+          "constraint",
+          "flood",
+          "heritage_article4"
+        ],
+        "notes": [
+          "Placeholder baseline pack for Phase 3A only.",
+          "No scenario engine or scoring rules are active."
+        ]
+      },
+      "rulepacks": [
+        {
+          "template_key": "extant_permission_screen",
+          "effective_from": "2026-04-15",
+          "effective_to": null,
+          "rule_json": {
+            "status": "placeholder",
+            "notes": [
+              "Rulepack structure exists but is not a scenario engine.",
+              "Analyst judgement remains required where source coverage is partial or contradictory."
+            ]
+          }
+        }
+      ]
+    }
+  ]
+}

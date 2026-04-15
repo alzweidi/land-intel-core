@@ -170,8 +170,182 @@ export type SiteDetail = SiteSummary & {
   lpa_links: SiteLpaLink[];
   documents: SiteDocument[];
   market_events: SiteMarketEvent[];
+  source_snapshots?: Array<{
+    id: string;
+    source_family: string;
+    source_name: string;
+    source_uri: string;
+    acquired_at: string;
+  }>;
   geometry_editor_guidance: string;
   last_updated_at: string;
+  source_coverage?: SourceCoverageRecord[];
+  planning_history?: PlanningHistoryRecord[];
+  brownfield_states?: BrownfieldStateRecord[];
+  policy_facts?: PolicyFactRecord[];
+  constraint_facts?: ConstraintFactRecord[];
+  extant_permission?: ExtantPermissionRecord | null;
+  evidence?: EvidencePack | null;
+  baseline_pack?: BaselinePackRecord | null;
+};
+
+export type SourceCoverageRecord = {
+  id: string;
+  borough_id: string;
+  source_family: string;
+  coverage_status: string;
+  gap_reason: string | null;
+  freshness_status: string;
+  coverage_note: string | null;
+  source_snapshot_id: string | null;
+  captured_at: string;
+};
+
+export type PlanningDocument = {
+  id: string;
+  doc_type: string;
+  doc_url: string;
+  asset_id: string | null;
+};
+
+export type PlanningHistoryRecord = {
+  id: string;
+  link_type: string;
+  distance_m: number | null;
+  overlap_pct: number | null;
+  match_confidence: GeometryConfidence;
+  manual_verified: boolean;
+  planning_application: {
+    id: string;
+    borough_id: string | null;
+    source_system: string;
+    source_snapshot_id: string;
+    external_ref: string;
+    application_type: string;
+    proposal_description: string;
+    valid_date: string | null;
+    decision_date: string | null;
+    decision: string | null;
+    decision_type: string | null;
+    status: string;
+    route_normalized: string | null;
+    units_proposed: number | null;
+    source_priority: number;
+    source_url: string | null;
+    site_geom_4326: GeometryFeature | null;
+    site_point_4326: GeometryFeature | null;
+    documents: PlanningDocument[];
+  };
+};
+
+export type BrownfieldStateRecord = {
+  id: string;
+  borough_id: string;
+  source_snapshot_id: string;
+  external_ref: string;
+  part: string;
+  pip_status: string | null;
+  tdc_status: string | null;
+  effective_from: string | null;
+  effective_to: string | null;
+  raw_record_id: string;
+  source_url: string | null;
+};
+
+export type PolicyFactRecord = {
+  id: string;
+  relation_type: string;
+  overlap_pct: number | null;
+  distance_m: number | null;
+  importance: string;
+  policy_area: {
+    id: string;
+    borough_id: string | null;
+    policy_family: string;
+    policy_code: string;
+    name: string;
+    geom_4326: GeometryFeature;
+    source_class: string;
+    source_url: string | null;
+  };
+};
+
+export type ConstraintFactRecord = {
+  id: string;
+  overlap_pct: number | null;
+  distance_m: number | null;
+  severity: string;
+  constraint_feature: {
+    id: string;
+    feature_family: string;
+    feature_subtype: string;
+    authority_level: string;
+    geom_4326: GeometryFeature;
+    legal_status: string | null;
+    source_class: string;
+    source_url: string | null;
+  };
+};
+
+export type ExtantPermissionRecord = {
+  status: string;
+  eligibility_status: string;
+  manual_review_required: boolean;
+  summary: string;
+  reasons: string[];
+  coverage_gaps: Array<{ code: string; message: string }>;
+  matched_records: Array<{
+    source_kind: string;
+    source_system: string;
+    source_label: string;
+    source_url: string | null;
+    source_snapshot_id: string | null;
+    planning_application_id: string | null;
+    brownfield_state_id: string | null;
+    overlap_pct: number | null;
+    overlap_sqm: number | null;
+    distance_m: number | null;
+    material: boolean;
+    detail: string;
+  }>;
+};
+
+export type EvidenceItem = {
+  polarity: 'FOR' | 'AGAINST' | 'UNKNOWN';
+  claim_text: string;
+  topic: string;
+  importance: string;
+  source_class: string;
+  source_label: string;
+  source_url: string | null;
+  source_snapshot_id: string | null;
+  raw_asset_id: string | null;
+  excerpt_text: string | null;
+  verified_status: string;
+};
+
+export type EvidencePack = {
+  for: EvidenceItem[];
+  against: EvidenceItem[];
+  unknown: EvidenceItem[];
+};
+
+export type BaselinePackRecord = {
+  id: string;
+  borough_id: string;
+  version: string;
+  status: string;
+  signed_off_by: string | null;
+  signed_off_at: string | null;
+  pack_json: Record<string, unknown>;
+  source_snapshot_id: string | null;
+  rulepacks: Array<{
+    id: string;
+    template_key: string;
+    effective_from: string | null;
+    effective_to: string | null;
+    rule_json: Record<string, unknown>;
+  }>;
 };
 
 export type SitesQuery = {
@@ -726,6 +900,374 @@ function mapMarketEvent(value: unknown): SiteMarketEvent {
   };
 }
 
+function mapSourceCoverageRecord(value: unknown): SourceCoverageRecord {
+  if (!isRecord(value)) {
+    throw new Error('Invalid source coverage record');
+  }
+
+  return {
+    id: toStringValue(value.id),
+    borough_id: toStringValue(value.borough_id ?? value.boroughId),
+    source_family: toStringValue(value.source_family ?? value.sourceFamily),
+    coverage_status: toStringValue(value.coverage_status ?? value.coverageStatus),
+    gap_reason:
+      value.gap_reason === null || value.gap_reason === undefined
+        ? null
+        : toStringValue(value.gap_reason),
+    freshness_status: toStringValue(value.freshness_status ?? value.freshnessStatus),
+    coverage_note:
+      value.coverage_note === null || value.coverage_note === undefined
+        ? null
+        : toStringValue(value.coverage_note),
+    source_snapshot_id:
+      value.source_snapshot_id === null || value.source_snapshot_id === undefined
+        ? null
+        : toStringValue(value.source_snapshot_id),
+    captured_at: toStringValue(value.captured_at ?? value.capturedAt)
+  };
+}
+
+function mapPlanningDocument(value: unknown): PlanningDocument {
+  if (!isRecord(value)) {
+    throw new Error('Invalid planning document');
+  }
+
+  return {
+    id: toStringValue(value.id),
+    doc_type: toStringValue(value.doc_type ?? value.docType, 'document'),
+    doc_url: toStringValue(value.doc_url ?? value.docUrl, '#'),
+    asset_id:
+      value.asset_id === null || value.asset_id === undefined ? null : toStringValue(value.asset_id)
+  };
+}
+
+function mapPlanningApplicationRecord(
+  value: unknown
+): PlanningHistoryRecord['planning_application'] {
+  if (!isRecord(value)) {
+    throw new Error('Invalid planning application');
+  }
+
+  const siteGeom = isRecord(value.site_geom_4326) ? mapGeometryFeature(value.site_geom_4326) : null;
+  const sitePoint = isRecord(value.site_point_4326)
+    ? mapGeometryFeature(value.site_point_4326)
+    : null;
+
+  return {
+    id: toStringValue(value.id),
+    borough_id:
+      value.borough_id === null || value.borough_id === undefined
+        ? null
+        : toStringValue(value.borough_id),
+    source_system: toStringValue(value.source_system ?? value.sourceSystem),
+    source_snapshot_id: toStringValue(value.source_snapshot_id ?? value.sourceSnapshotId),
+    external_ref: toStringValue(value.external_ref ?? value.externalRef),
+    application_type: toStringValue(value.application_type ?? value.applicationType),
+    proposal_description: toStringValue(
+      value.proposal_description ?? value.proposalDescription
+    ),
+    valid_date:
+      value.valid_date === null || value.valid_date === undefined
+        ? null
+        : toStringValue(value.valid_date),
+    decision_date:
+      value.decision_date === null || value.decision_date === undefined
+        ? null
+        : toStringValue(value.decision_date),
+    decision:
+      value.decision === null || value.decision === undefined
+        ? null
+        : toStringValue(value.decision),
+    decision_type:
+      value.decision_type === null || value.decision_type === undefined
+        ? null
+        : toStringValue(value.decision_type),
+    status: toStringValue(value.status, 'UNKNOWN'),
+    route_normalized:
+      value.route_normalized === null || value.route_normalized === undefined
+        ? null
+        : toStringValue(value.route_normalized),
+    units_proposed:
+      value.units_proposed === null || value.units_proposed === undefined
+        ? null
+        : toNumberValue(value.units_proposed),
+    source_priority: toNumberValue(value.source_priority) ?? 0,
+    source_url:
+      value.source_url === null || value.source_url === undefined
+        ? null
+        : toStringValue(value.source_url),
+    site_geom_4326: siteGeom,
+    site_point_4326: sitePoint,
+    documents: pickCollection(value.documents as ApiCollectionResponse<unknown>).map(
+      mapPlanningDocument
+    )
+  };
+}
+
+function mapPlanningHistoryRecord(value: unknown): PlanningHistoryRecord {
+  if (!isRecord(value)) {
+    throw new Error('Invalid planning history record');
+  }
+
+  return {
+    id: toStringValue(value.id),
+    link_type: toStringValue(value.link_type ?? value.linkType, 'UNSPECIFIED'),
+    distance_m:
+      value.distance_m === null || value.distance_m === undefined
+        ? null
+        : toNumberValue(value.distance_m),
+    overlap_pct:
+      value.overlap_pct === null || value.overlap_pct === undefined
+        ? null
+        : toNumberValue(value.overlap_pct),
+    match_confidence: toStringValue(
+      value.match_confidence ?? value.matchConfidence,
+      'LOW'
+    ) as GeometryConfidence,
+    manual_verified: Boolean(value.manual_verified ?? value.manualVerified ?? false),
+    planning_application: mapPlanningApplicationRecord(
+      value.planning_application ?? value.planningApplication
+    )
+  };
+}
+
+function mapBrownfieldStateRecord(value: unknown): BrownfieldStateRecord {
+  if (!isRecord(value)) {
+    throw new Error('Invalid brownfield state');
+  }
+
+  return {
+    id: toStringValue(value.id),
+    borough_id: toStringValue(value.borough_id ?? value.boroughId),
+    source_snapshot_id: toStringValue(value.source_snapshot_id ?? value.sourceSnapshotId),
+    external_ref: toStringValue(value.external_ref ?? value.externalRef),
+    part: toStringValue(value.part),
+    pip_status:
+      value.pip_status === null || value.pip_status === undefined ? null : toStringValue(value.pip_status),
+    tdc_status:
+      value.tdc_status === null || value.tdc_status === undefined ? null : toStringValue(value.tdc_status),
+    effective_from:
+      value.effective_from === null || value.effective_from === undefined
+        ? null
+        : toStringValue(value.effective_from),
+    effective_to:
+      value.effective_to === null || value.effective_to === undefined
+        ? null
+        : toStringValue(value.effective_to),
+    raw_record_id: toStringValue(value.raw_record_id ?? value.rawRecordId),
+    source_url:
+      value.source_url === null || value.source_url === undefined ? null : toStringValue(value.source_url)
+  };
+}
+
+function mapPolicyFactRecord(value: unknown): PolicyFactRecord {
+  if (!isRecord(value)) {
+    throw new Error('Invalid policy fact');
+  }
+
+  const policyArea = getRecord(value, 'policy_area');
+  return {
+    id: toStringValue(value.id),
+    relation_type: toStringValue(value.relation_type ?? value.relationType),
+    overlap_pct:
+      value.overlap_pct === null || value.overlap_pct === undefined
+        ? null
+        : toNumberValue(value.overlap_pct),
+    distance_m:
+      value.distance_m === null || value.distance_m === undefined
+        ? null
+        : toNumberValue(value.distance_m),
+    importance: toStringValue(value.importance, 'MEDIUM'),
+    policy_area: {
+      id: toStringValue(policyArea?.id),
+      borough_id:
+        policyArea?.borough_id === null || policyArea?.borough_id === undefined
+          ? null
+          : toStringValue(policyArea.borough_id),
+      policy_family: toStringValue(policyArea?.policy_family ?? policyArea?.policyFamily),
+      policy_code: toStringValue(policyArea?.policy_code ?? policyArea?.policyCode),
+      name: toStringValue(policyArea?.name),
+      geom_4326: mapGeometryFeature(
+        policyArea?.geom_4326 ?? { type: 'Point', coordinates: [0, 0] }
+      ),
+      source_class: toStringValue(policyArea?.source_class ?? policyArea?.sourceClass),
+      source_url:
+        policyArea?.source_url === null || policyArea?.source_url === undefined
+          ? null
+          : toStringValue(policyArea.source_url)
+    }
+  };
+}
+
+function mapConstraintFactRecord(value: unknown): ConstraintFactRecord {
+  if (!isRecord(value)) {
+    throw new Error('Invalid constraint fact');
+  }
+
+  const feature = getRecord(value, 'constraint_feature');
+  return {
+    id: toStringValue(value.id),
+    overlap_pct:
+      value.overlap_pct === null || value.overlap_pct === undefined
+        ? null
+        : toNumberValue(value.overlap_pct),
+    distance_m:
+      value.distance_m === null || value.distance_m === undefined
+        ? null
+        : toNumberValue(value.distance_m),
+    severity: toStringValue(value.severity, 'MEDIUM'),
+    constraint_feature: {
+      id: toStringValue(feature?.id),
+      feature_family: toStringValue(feature?.feature_family ?? feature?.featureFamily),
+      feature_subtype: toStringValue(feature?.feature_subtype ?? feature?.featureSubtype),
+      authority_level: toStringValue(feature?.authority_level ?? feature?.authorityLevel),
+      geom_4326: mapGeometryFeature(feature?.geom_4326 ?? { type: 'Point', coordinates: [0, 0] }),
+      legal_status:
+        feature?.legal_status === null || feature?.legal_status === undefined
+          ? null
+          : toStringValue(feature.legal_status),
+      source_class: toStringValue(feature?.source_class ?? feature?.sourceClass),
+      source_url:
+        feature?.source_url === null || feature?.source_url === undefined
+          ? null
+          : toStringValue(feature.source_url)
+    }
+  };
+}
+
+function mapExtantPermission(value: unknown): ExtantPermissionRecord | null {
+  if (!isRecord(value)) {
+    return null;
+  }
+
+  return {
+    status: toStringValue(value.status),
+    eligibility_status: toStringValue(value.eligibility_status ?? value.eligibilityStatus),
+    manual_review_required: Boolean(
+      value.manual_review_required ?? value.manualReviewRequired ?? false
+    ),
+    summary: toStringValue(value.summary),
+    reasons: pickCollection(value.reasons as ApiCollectionResponse<unknown>).map((item) =>
+      toStringValue(item)
+    ),
+    coverage_gaps: pickCollection(value.coverage_gaps as ApiCollectionResponse<unknown>).map(
+      (item) => ({
+        code: isRecord(item) ? toStringValue(item.code) : '',
+        message: isRecord(item) ? toStringValue(item.message) : toStringValue(item)
+      })
+    ),
+    matched_records: pickCollection(value.matched_records as ApiCollectionResponse<unknown>).map(
+      (item) => ({
+        source_kind: isRecord(item) ? toStringValue(item.source_kind) : '',
+        source_system: isRecord(item) ? toStringValue(item.source_system) : '',
+        source_label: isRecord(item) ? toStringValue(item.source_label) : '',
+        source_url:
+          isRecord(item) && item.source_url !== null && item.source_url !== undefined
+            ? toStringValue(item.source_url)
+            : null,
+        source_snapshot_id:
+          isRecord(item) && item.source_snapshot_id !== null && item.source_snapshot_id !== undefined
+            ? toStringValue(item.source_snapshot_id)
+            : null,
+        planning_application_id:
+          isRecord(item) && item.planning_application_id !== null && item.planning_application_id !== undefined
+            ? toStringValue(item.planning_application_id)
+            : null,
+        brownfield_state_id:
+          isRecord(item) && item.brownfield_state_id !== null && item.brownfield_state_id !== undefined
+            ? toStringValue(item.brownfield_state_id)
+            : null,
+        overlap_pct: isRecord(item) ? toNumberValue(item.overlap_pct) : null,
+        overlap_sqm: isRecord(item) ? toNumberValue(item.overlap_sqm) : null,
+        distance_m: isRecord(item) ? toNumberValue(item.distance_m) : null,
+        material: isRecord(item) ? Boolean(item.material) : false,
+        detail: isRecord(item) ? toStringValue(item.detail) : ''
+      })
+    )
+  };
+}
+
+function mapEvidenceItem(value: unknown): EvidenceItem {
+  if (!isRecord(value)) {
+    throw new Error('Invalid evidence item');
+  }
+
+  return {
+    polarity: toStringValue(value.polarity, 'UNKNOWN') as EvidenceItem['polarity'],
+    claim_text: toStringValue(value.claim_text ?? value.claimText),
+    topic: toStringValue(value.topic),
+    importance: toStringValue(value.importance, 'MEDIUM'),
+    source_class: toStringValue(value.source_class ?? value.sourceClass),
+    source_label: toStringValue(value.source_label ?? value.sourceLabel),
+    source_url:
+      value.source_url === null || value.source_url === undefined ? null : toStringValue(value.source_url),
+    source_snapshot_id:
+      value.source_snapshot_id === null || value.source_snapshot_id === undefined
+        ? null
+        : toStringValue(value.source_snapshot_id),
+    raw_asset_id:
+      value.raw_asset_id === null || value.raw_asset_id === undefined
+        ? null
+        : toStringValue(value.raw_asset_id),
+    excerpt_text:
+      value.excerpt_text === null || value.excerpt_text === undefined
+        ? null
+        : toStringValue(value.excerpt_text),
+    verified_status: toStringValue(value.verified_status ?? value.verifiedStatus)
+  };
+}
+
+function mapEvidencePack(value: unknown): EvidencePack | null {
+  if (!isRecord(value)) {
+    return null;
+  }
+
+  return {
+    for: pickCollection(value.for as ApiCollectionResponse<unknown>).map(mapEvidenceItem),
+    against: pickCollection(value.against as ApiCollectionResponse<unknown>).map(mapEvidenceItem),
+    unknown: pickCollection(value.unknown as ApiCollectionResponse<unknown>).map(mapEvidenceItem)
+  };
+}
+
+function mapBaselinePack(value: unknown): BaselinePackRecord | null {
+  if (!isRecord(value)) {
+    return null;
+  }
+
+  return {
+    id: toStringValue(value.id),
+    borough_id: toStringValue(value.borough_id ?? value.boroughId),
+    version: toStringValue(value.version),
+    status: toStringValue(value.status),
+    signed_off_by:
+      value.signed_off_by === null || value.signed_off_by === undefined
+        ? null
+        : toStringValue(value.signed_off_by),
+    signed_off_at:
+      value.signed_off_at === null || value.signed_off_at === undefined
+        ? null
+        : toStringValue(value.signed_off_at),
+    pack_json: isRecord(value.pack_json) ? value.pack_json : {},
+    source_snapshot_id:
+      value.source_snapshot_id === null || value.source_snapshot_id === undefined
+        ? null
+        : toStringValue(value.source_snapshot_id),
+    rulepacks: pickCollection(value.rulepacks as ApiCollectionResponse<unknown>).map((item) => ({
+      id: isRecord(item) ? toStringValue(item.id) : '',
+      template_key: isRecord(item) ? toStringValue(item.template_key ?? item.templateKey) : '',
+      effective_from:
+        isRecord(item) && item.effective_from !== null && item.effective_from !== undefined
+          ? toStringValue(item.effective_from)
+          : null,
+      effective_to:
+        isRecord(item) && item.effective_to !== null && item.effective_to !== undefined
+          ? toStringValue(item.effective_to)
+          : null,
+      rule_json: isRecord(item) && isRecord(item.rule_json) ? item.rule_json : {}
+    }))
+  };
+}
+
 function mapGeometryFeature(value: unknown): GeometryFeature {
   if (!isRecord(value)) {
     throw new Error('Invalid geometry feature');
@@ -881,10 +1423,32 @@ function mapSiteDetail(value: unknown): SiteDetail {
     (link, index) => mapTitleLinkWithContext(link, index)
   );
   const lpaLinksRaw = pickCollection(value.lpa_links as ApiCollectionResponse<unknown>);
+  const sourceCoverage = pickCollection(
+    value.source_coverage as ApiCollectionResponse<unknown>
+  ).map(mapSourceCoverageRecord);
+  const planningHistory = pickCollection(
+    value.planning_history as ApiCollectionResponse<unknown>
+  ).map(mapPlanningHistoryRecord);
+  const brownfieldStates = pickCollection(
+    value.brownfield_states as ApiCollectionResponse<unknown>
+  ).map(mapBrownfieldStateRecord);
+  const policyFacts = pickCollection(
+    value.policy_facts as ApiCollectionResponse<unknown>
+  ).map(mapPolicyFactRecord);
+  const constraintFacts = pickCollection(
+    value.constraint_facts as ApiCollectionResponse<unknown>
+  ).map(mapConstraintFactRecord);
+  const extantPermission = mapExtantPermission(value.extant_permission);
+  const evidence = mapEvidencePack(value.evidence);
+  const baselinePack = mapBaselinePack(value.baseline_pack);
   const materialCrossLpa = summary.review_flags.includes('CROSS_LPA_MATERIAL');
 
   return {
     ...summary,
+    revision_count: revisions.length,
+    document_count: documents.length,
+    title_link_count: titleLinks.length,
+    lpa_link_count: lpaLinksRaw.length,
     address_text: toStringValue(
       value.address_text ?? value.addressText ?? currentListing?.address_text,
       ''
@@ -943,6 +1507,15 @@ function mapSiteDetail(value: unknown): SiteDetail {
     ),
     documents,
     market_events: pickCollection(value.market_events as ApiCollectionResponse<unknown>).map(mapMarketEvent),
+    source_snapshots: sourceSnapshots
+      .filter((snapshot): snapshot is Record<string, unknown> => isRecord(snapshot))
+      .map((snapshot) => ({
+        id: toStringValue(snapshot.id),
+        source_family: toStringValue(snapshot.source_family ?? snapshot.sourceFamily),
+        source_name: toStringValue(snapshot.source_name ?? snapshot.sourceName),
+        source_uri: toStringValue(snapshot.source_uri ?? snapshot.sourceUri),
+        acquired_at: toStringValue(snapshot.acquired_at ?? snapshot.acquiredAt)
+      })),
     geometry_editor_guidance: toStringValue(
       value.geometry_editor_guidance ?? value.geometryEditorGuidance,
       'Draw conservatively, save explicit revisions, and treat indicative geometry as evidence only.'
@@ -950,7 +1523,15 @@ function mapSiteDetail(value: unknown): SiteDetail {
     last_updated_at: toStringValue(
       value.last_updated_at ?? value.lastUpdatedAt ?? revisions[0]?.created_at,
       ''
-    )
+    ),
+    source_coverage: sourceCoverage,
+    planning_history: planningHistory,
+    brownfield_states: brownfieldStates,
+    policy_facts: policyFacts,
+    constraint_facts: constraintFacts,
+    extant_permission: extantPermission,
+    evidence,
+    baseline_pack: baselinePack
   };
 }
 

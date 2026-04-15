@@ -1,0 +1,132 @@
+{
+  "meta": {
+    "coverage_note": "Pilot Camden planning-register fixture for Phase 3A local/dev. Borough register is the authority of record where available.",
+    "freshness_status": "FRESH",
+    "coverage": [
+      {
+        "borough_id": "camden",
+        "source_family": "borough_register",
+        "coverage_status": "COMPLETE",
+        "freshness_status": "FRESH",
+        "coverage_note": "Pilot Camden planning-register fixture."
+      },
+      {
+        "borough_id": "camden",
+        "source_family": "prior_approval",
+        "coverage_status": "COMPLETE",
+        "freshness_status": "FRESH",
+        "coverage_note": "Pilot Camden prior-approval coverage fixture."
+      },
+      {
+        "borough_id": "southwark",
+        "source_family": "borough_register",
+        "coverage_status": "MISSING",
+        "gap_reason": "Pilot borough coverage has not been onboarded for Southwark in Phase 3A.",
+        "freshness_status": "UNKNOWN",
+        "coverage_note": "No pilot borough-register fixture loaded."
+      },
+      {
+        "borough_id": "southwark",
+        "source_family": "prior_approval",
+        "coverage_status": "MISSING",
+        "gap_reason": "Pilot prior-approval coverage has not been onboarded for Southwark in Phase 3A.",
+        "freshness_status": "UNKNOWN",
+        "coverage_note": "No pilot prior-approval fixture loaded."
+      }
+    ]
+  },
+  "applications": [
+    {
+      "borough_id": "camden",
+      "external_ref": "CAM/2025/1100/P",
+      "application_type": "FULL",
+      "proposal_description": "Redevelopment of the yard site to provide 8 residential units with associated landscaping.",
+      "valid_date": "2025-01-09",
+      "decision_date": "2025-05-28",
+      "decision": "Approved",
+      "decision_type": "FULL_RESIDENTIAL",
+      "status": "LAPSED",
+      "route_normalized": "FULL",
+      "units_proposed": 8,
+      "geometry_4326": {
+        "type": "Polygon",
+        "coordinates": [[
+          [-0.14258, 51.53599],
+          [-0.14156, 51.53599],
+          [-0.14156, 51.53635],
+          [-0.14258, 51.53635],
+          [-0.14258, 51.53599]
+        ]]
+      },
+      "source_url": "https://camden.example/planning/CAM-2025-1100-P",
+      "documents": [
+        {
+          "doc_type": "decision_notice",
+          "doc_url": "https://camden.example/planning/CAM-2025-1100-P/decision-notice",
+          "mime_type": "text/plain",
+          "content_text": "Decision notice: full residential permission granted in 2025. Sample fixture marks the permission as lapsed."
+        }
+      ],
+      "raw_record_json": {
+        "dwelling_use": "C3",
+        "active_extant": false,
+        "lapsed": true,
+        "status_reason": "Permission implementation window expired."
+      }
+    },
+    {
+      "borough_id": "camden",
+      "external_ref": "CAM/2026/2450/F",
+      "application_type": "FULL",
+      "proposal_description": "Construction of 12 flats with active frontage at 16 Example Road.",
+      "valid_date": "2026-01-18",
+      "decision_date": "2026-03-20",
+      "decision": "Refused",
+      "decision_type": "FULL_RESIDENTIAL",
+      "status": "REFUSED",
+      "route_normalized": "FULL",
+      "units_proposed": 12,
+      "point_4326": {
+        "type": "Point",
+        "coordinates": [-0.14192, 51.53626]
+      },
+      "source_url": "https://camden.example/planning/CAM-2026-2450-F",
+      "documents": [
+        {
+          "doc_type": "committee_report",
+          "doc_url": "https://camden.example/planning/CAM-2026-2450-F/report",
+          "mime_type": "text/plain",
+          "content_text": "Committee report: refusal for massing and heritage impact."
+        }
+      ],
+      "raw_record_json": {
+        "dwelling_use": "C3",
+        "active_extant": false,
+        "refusal_reasons": ["heritage", "massing"]
+      }
+    },
+    {
+      "borough_id": "camden",
+      "external_ref": "CAM/2026/3001/PA",
+      "application_type": "PRIOR_APPROVAL",
+      "proposal_description": "Prior approval for upward extension to provide two dwellings at 12 Example Road.",
+      "valid_date": "2026-02-14",
+      "decision_date": "2026-03-11",
+      "decision": "Withdrawn",
+      "decision_type": "PRIOR_APPROVAL",
+      "status": "WITHDRAWN",
+      "route_normalized": "PRIOR_APPROVAL",
+      "units_proposed": 2,
+      "point_4326": {
+        "type": "Point",
+        "coordinates": [-0.14208, 51.53619]
+      },
+      "source_url": "https://camden.example/planning/CAM-2026-3001-PA",
+      "raw_record_json": {
+        "dwelling_use": "C3",
+        "active_extant": false,
+        "withdrawn": true
+      }
+    }
+  ]
+}

@@ -55,9 +55,9 @@ export default async function SitesPage({ searchParams }: { searchParams?: Searc
   return (
     <div className="page-stack">
       <PageHeader
-        eyebrow="Phase 2"
+        eyebrow="Phase 3A"
         title="Site candidates"
-        summary="Confirmed site records are now visible as auditable candidates. The map and detail records stay explicit about geometry confidence, borough assignment, and what is only indicative evidence."
+        summary="Confirmed site records now carry planning context, source coverage visibility, and extant-permission screening inputs. The map and detail records stay explicit about geometry confidence, borough assignment, and what is only indicative evidence."
         actions={
           selectedSite ? (
             <Link className="button button--ghost" href={`/sites/${selectedSite.site_id}`}>
@@ -70,7 +70,7 @@ export default async function SitesPage({ searchParams }: { searchParams?: Searc
       <section className="stat-grid">
         <StatCard tone="accent" label="Sites" value={String(items.length)} detail={result.apiAvailable ? 'Loaded from the API' : 'Loaded from the local fallback dataset'} />
         <StatCard tone="success" label="High confidence" value={String(highCount)} detail="Geometry source and confidence are visible on every row" />
-        <StatCard tone="warning" label="Manual review" value={String(reviewCount)} detail="Warnings stay visible when a site needs analyst attention" />
+        <StatCard tone="warning" label="Manual review" value={String(reviewCount)} detail="Coverage gaps and other warnings stay visible when a site needs analyst attention" />
         <StatCard tone="neutral" label="Warnings" value={String(warningSummary.length)} detail="Unique caveats across the visible candidate set" />
       </section>
 
@@ -78,7 +78,7 @@ export default async function SitesPage({ searchParams }: { searchParams?: Searc
         <Panel
           eyebrow="Map"
           title="Candidate map"
-          note="MapLibre shows site evidence only. It is a working map, not a declaration of legal boundary truth."
+          note="MapLibre shows site evidence only. It is a working map, not a declaration of legal boundary truth. Planning context appears on the site detail view."
         >
           <SiteMap sites={items} selectedSiteId={selectedSiteId} />
         </Panel>
