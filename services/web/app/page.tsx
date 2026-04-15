@@ -7,13 +7,16 @@ export default function HomePage() {
   return (
     <div className="page-stack">
       <PageHeader
-        eyebrow="Phase 6A"
+        eyebrow="Phase 7A"
         title="London land intelligence control room"
-        summary="Listings, sites, planning context, scenarios, frozen assessments, and hidden-only scoring are now live. The shell stays explicit about what is operational versus what remains deferred."
+        summary="Listings, sites, planning context, scenarios, frozen assessments, hidden-only scoring, and planning-first valuation/ranking are now live for internal use. The shell stays explicit about what is operational versus what remains deferred."
         actions={
           <div className="page-actions__group">
             <Link className="button button--solid" href="/listings">
               Open listings
+            </Link>
+            <Link className="button button--ghost" href="/opportunities">
+              Open opportunities
             </Link>
             <Link className="button button--ghost" href="/admin/source-runs">
               Run connector
@@ -26,10 +29,10 @@ export default function HomePage() {
       />
 
       <section className="stat-grid">
-        <StatCard tone="accent" label="Phase" value="6A" detail="Hidden-only scoring foundations live" />
+        <StatCard tone="accent" label="Phase" value="7A" detail="Hidden scoring plus valuation and ranking live for internal use" />
         <StatCard tone="success" label="Sources" value="3+" detail="Listings plus fixture-scale planning and policy families" />
         <StatCard tone="warning" label="Snapshots" value="Immutable" detail="No in-place overwrite of raw assets or source snapshots" />
-        <StatCard tone="neutral" label="Assessment" value="Hidden" detail="Replay-safe features, evidence, comparables, and hidden internal score output" />
+        <StatCard tone="neutral" label="Assessment" value="Hidden + value" detail="Replay-safe features, hidden internal score output, valuation, and planning-first ranking" />
       </section>
 
       <section className="route-grid">
@@ -46,12 +49,13 @@ export default function HomePage() {
 
       <Panel
         eyebrow="Spec guardrails"
-        title="What Phase 6A deliberately does not do"
-        note="Hidden logistic scoring is live, but visible rollout, valuation, ranking, overrides, and control-plane dashboards remain deferred."
+        title="What Phase 7A deliberately does not do"
+        note="Hidden logistic scoring, valuation, and ranking are live internally, but visible rollout, overrides, kill switches, and broader dashboards remain deferred."
       >
         <ul className="checklist">
           <li>No standard-analyst visible probability rollout.</li>
-          <li>No valuation, uplift, or ranking output.</li>
+          <li>No Phase 8 overrides control plane, kill switches, or dashboard rollout.</li>
+          <li>No parcel-only scoring or valuation path.</li>
           <li>No future-leaking feature construction or forbidden label shortcuts.</li>
           <li>No unapproved public-page connector execution.</li>
           <li>No hidden overwrite of raw source assets or snapshots.</li>

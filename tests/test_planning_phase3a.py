@@ -137,10 +137,18 @@ def _build_southwark_site(client, drain_jobs):
     processed = drain_jobs(max_iterations=8)
     assert processed >= 2
 
-    clusters = client.get("/api/listing-clusters").json()["items"]
-    cluster = clusters[0]
+    listings = client.get("/api/listings?source=csv_import").json()["items"]
+    listing = next(
+        (
+            item
+            for item in listings
+            if "peckham" in str(item.get("headline", "")).lower()
+            or "southwark" in str(item.get("borough", "")).lower()
+        ),
+        listings[0],
+    )
     build = client.post(
-        f"/api/sites/from-cluster/{cluster['id']}",
+        f"/api/sites/from-cluster/{listing['cluster_id']}",
         json={"requested_by": "pytest"},
     )
     assert build.status_code == 200

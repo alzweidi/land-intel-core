@@ -22,6 +22,7 @@ from landintel.domain.models import (
     SitePlanningLink,
     SitePolicyFact,
     SiteScenario,
+    ValuationRun,
 )
 from landintel.domain.schemas import (
     AssessmentDetailRead,
@@ -38,6 +39,7 @@ from landintel.domain.schemas import (
     PlanningApplicationDocumentRead,
     PlanningApplicationRead,
     PredictionLedgerRead,
+    ValuationResultRead,
 )
 from landintel.features.build import FEATURE_VERSION
 from landintel.planning.enrich import get_borough_baseline_pack
@@ -48,6 +50,7 @@ from landintel.planning.historical_labels import (
 from landintel.services.listings_readback import serialize_raw_asset
 from landintel.services.scenarios_readback import serialize_site_scenario_summary
 from landintel.services.sites_readback import serialize_site_summary
+from landintel.valuation.service import latest_valuation_run
 
 
 def list_assessments(
@@ -173,6 +176,7 @@ def serialize_assessment_detail(
         result=(
             _serialize_assessment_result(run.result, include_hidden=include_hidden)
         ),
+        valuation=_serialize_valuation_result(latest_valuation_run(run)),
         evidence=evidence,
         comparable_case_set=_serialize_comparable_case_set(
             run.comparable_case_set,
@@ -258,6 +262,32 @@ def _serialize_prediction_ledger(
         result_payload_hash=ledger.result_payload_hash,
         response_json=response_json,
         created_at=ledger.created_at,
+    )
+
+
+def _serialize_valuation_result(valuation_run) -> ValuationResultRead | None:
+    if valuation_run is None or valuation_run.result is None:
+        return None
+    result = valuation_run.result
+    return ValuationResultRead(
+        id=result.id,
+        valuation_run_id=valuation_run.id,
+        valuation_assumption_set_id=valuation_run.valuation_assumption_set_id,
+        valuation_assumption_version=valuation_run.valuation_assumption_set.version,
+        post_permission_value_low=result.post_permission_value_low,
+        post_permission_value_mid=result.post_permission_value_mid,
+        post_permission_value_high=result.post_permission_value_high,
+        uplift_low=result.uplift_low,
+        uplift_mid=result.uplift_mid,
+        uplift_high=result.uplift_high,
+        expected_uplift_mid=result.expected_uplift_mid,
+        valuation_quality=result.valuation_quality,
+        manual_review_required=result.manual_review_required,
+        basis_json=dict(result.basis_json or {}),
+        sense_check_json=dict(result.sense_check_json or {}),
+        result_json=dict(result.result_json or {}),
+        payload_hash=result.payload_hash,
+        created_at=result.created_at,
     )
 
 
@@ -487,4 +517,8 @@ def _assessment_load_options():
         .selectinload(PlanningApplication.documents)
         .selectinload(PlanningApplicationDocument.asset),
         selectinload(AssessmentRun.prediction_ledger),
+        selectinload(AssessmentRun.valuation_runs).selectinload(ValuationRun.result),
+        selectinload(AssessmentRun.valuation_runs).selectinload(
+            ValuationRun.valuation_assumption_set
+        ),
     )

@@ -484,6 +484,16 @@ export type AssessmentQuery = {
   scenario_id?: string;
 };
 
+export type OpportunitiesQuery = {
+  borough?: string;
+  probability_band?: 'Band A' | 'Band B' | 'Band C' | 'Band D' | 'Hold' | '';
+  valuation_quality?: 'HIGH' | 'MEDIUM' | 'LOW' | '';
+  manual_review_required?: boolean;
+  auction_deadline_days?: number;
+  min_price?: number;
+  max_price?: number;
+};
+
 export type AssessmentFeatureSnapshot = {
   id: string;
   feature_version: string;
@@ -512,6 +522,27 @@ export type AssessmentResult = {
   manual_review_required: boolean;
   result_json: Record<string, unknown>;
   published_at: string | null;
+};
+
+export type ValuationResult = {
+  id: string;
+  valuation_run_id: string;
+  valuation_assumption_set_id: string;
+  valuation_assumption_version: string;
+  post_permission_value_low: number | null;
+  post_permission_value_mid: number | null;
+  post_permission_value_high: number | null;
+  uplift_low: number | null;
+  uplift_mid: number | null;
+  uplift_high: number | null;
+  expected_uplift_mid: number | null;
+  valuation_quality: 'HIGH' | 'MEDIUM' | 'LOW';
+  manual_review_required: boolean;
+  basis_json: Record<string, unknown>;
+  sense_check_json: Record<string, unknown>;
+  result_json: Record<string, unknown>;
+  payload_hash: string;
+  created_at: string;
 };
 
 export type ComparablePlanningApplication = {
@@ -650,10 +681,43 @@ export type AssessmentSummary = {
 export type AssessmentDetail = AssessmentSummary & {
   feature_snapshot: AssessmentFeatureSnapshot | null;
   result: AssessmentResult | null;
+  valuation: ValuationResult | null;
   evidence: EvidencePack | null;
   comparable_case_set: ComparableCaseSet | null;
   prediction_ledger: PredictionLedger | null;
   note: string;
+};
+
+export type OpportunitySummary = {
+  site_id: string;
+  display_name: string;
+  borough_id: string | null;
+  borough_name: string | null;
+  assessment_id: string | null;
+  scenario_id: string | null;
+  probability_band: 'Band A' | 'Band B' | 'Band C' | 'Band D' | 'Hold';
+  hold_reason: string | null;
+  ranking_reason: string;
+  hidden_mode_only: boolean;
+  eligibility_status: string | null;
+  estimate_status: string | null;
+  manual_review_required: boolean;
+  valuation_quality: 'HIGH' | 'MEDIUM' | 'LOW' | null;
+  asking_price_gbp: number | null;
+  asking_price_basis_type: string | null;
+  auction_date: string | null;
+  post_permission_value_mid: number | null;
+  uplift_mid: number | null;
+  expected_uplift_mid: number | null;
+  same_borough_support_count: number;
+  site_summary: SiteSummary | null;
+  scenario_summary: ScenarioSummary | null;
+};
+
+export type OpportunityDetail = OpportunitySummary & {
+  assessment: AssessmentDetail | null;
+  valuation: ValuationResult | null;
+  ranking_factors: Record<string, unknown>;
 };
 
 export type AssessmentCreateInput = {
@@ -1866,6 +1930,61 @@ function mapAssessmentResult(value: unknown): AssessmentResult | null {
   };
 }
 
+function mapValuationResult(value: unknown): ValuationResult | null {
+  if (!isRecord(value)) {
+    return null;
+  }
+
+  return {
+    id: toStringValue(value.id),
+    valuation_run_id: toStringValue(value.valuation_run_id ?? value.valuationRunId),
+    valuation_assumption_set_id: toStringValue(
+      value.valuation_assumption_set_id ?? value.valuationAssumptionSetId
+    ),
+    valuation_assumption_version: toStringValue(
+      value.valuation_assumption_version ?? value.valuationAssumptionVersion
+    ),
+    post_permission_value_low:
+      value.post_permission_value_low === null || value.post_permission_value_low === undefined
+        ? null
+        : toNumberValue(value.post_permission_value_low),
+    post_permission_value_mid:
+      value.post_permission_value_mid === null || value.post_permission_value_mid === undefined
+        ? null
+        : toNumberValue(value.post_permission_value_mid),
+    post_permission_value_high:
+      value.post_permission_value_high === null || value.post_permission_value_high === undefined
+        ? null
+        : toNumberValue(value.post_permission_value_high),
+    uplift_low:
+      value.uplift_low === null || value.uplift_low === undefined
+        ? null
+        : toNumberValue(value.uplift_low),
+    uplift_mid:
+      value.uplift_mid === null || value.uplift_mid === undefined
+        ? null
+        : toNumberValue(value.uplift_mid),
+    uplift_high:
+      value.uplift_high === null || value.uplift_high === undefined
+        ? null
+        : toNumberValue(value.uplift_high),
+    expected_uplift_mid:
+      value.expected_uplift_mid === null || value.expected_uplift_mid === undefined
+        ? null
+        : toNumberValue(value.expected_uplift_mid),
+    valuation_quality: toStringValue(
+      value.valuation_quality ?? value.valuationQuality,
+      'LOW'
+    ) as ValuationResult['valuation_quality'],
+    manual_review_required: Boolean(value.manual_review_required ?? value.manualReviewRequired),
+    basis_json: isRecord(value.basis_json) ? value.basis_json : {},
+    sense_check_json: isRecord(value.sense_check_json) ? value.sense_check_json : {},
+    result_json: isRecord(value.result_json) ? value.result_json : {},
+    payload_hash: toStringValue(value.payload_hash ?? value.payloadHash),
+    created_at: toStringValue(value.created_at ?? value.createdAt)
+  };
+}
+
 function mapComparablePlanningApplication(value: unknown): ComparablePlanningApplication {
   if (!isRecord(value)) {
     throw new Error('Invalid comparable planning application');
@@ -2226,10 +2345,107 @@ function mapAssessmentDetail(value: unknown): AssessmentDetail | null {
     ...mapAssessmentSummary(value),
     feature_snapshot: mapAssessmentFeatureSnapshot(value.feature_snapshot ?? value.featureSnapshot),
     result: mapAssessmentResult(value.result),
+    valuation: mapValuationResult(value.valuation),
     evidence: mapEvidencePack(value.evidence),
     comparable_case_set: mapComparableCaseSet(value.comparable_case_set ?? value.comparableCaseSet),
     prediction_ledger: mapPredictionLedger(value.prediction_ledger ?? value.predictionLedger),
     note: toStringValue(value.note)
+  };
+}
+
+function mapOpportunitySummary(value: unknown): OpportunitySummary {
+  if (!isRecord(value)) {
+    throw new Error('Invalid opportunity summary');
+  }
+
+  const siteSummary = getRecord(value, 'site_summary');
+  const scenarioSummary = getRecord(value, 'scenario_summary');
+
+  return {
+    site_id: toStringValue(value.site_id ?? value.siteId),
+    display_name: toStringValue(value.display_name ?? value.displayName, 'Untitled site'),
+    borough_id:
+      value.borough_id === null || value.borough_id === undefined
+        ? null
+        : toStringValue(value.borough_id),
+    borough_name:
+      value.borough_name === null || value.borough_name === undefined
+        ? null
+        : toStringValue(value.borough_name),
+    assessment_id:
+      value.assessment_id === null || value.assessment_id === undefined
+        ? null
+        : toStringValue(value.assessment_id),
+    scenario_id:
+      value.scenario_id === null || value.scenario_id === undefined
+        ? null
+        : toStringValue(value.scenario_id),
+    probability_band: toStringValue(
+      value.probability_band ?? value.probabilityBand,
+      'Hold'
+    ) as OpportunitySummary['probability_band'],
+    hold_reason:
+      value.hold_reason === null || value.hold_reason === undefined
+        ? null
+        : toStringValue(value.hold_reason),
+    ranking_reason: toStringValue(value.ranking_reason ?? value.rankingReason),
+    hidden_mode_only: Boolean(value.hidden_mode_only ?? value.hiddenModeOnly ?? true),
+    eligibility_status:
+      value.eligibility_status === null || value.eligibility_status === undefined
+        ? null
+        : toStringValue(value.eligibility_status),
+    estimate_status:
+      value.estimate_status === null || value.estimate_status === undefined
+        ? null
+        : toStringValue(value.estimate_status),
+    manual_review_required: Boolean(value.manual_review_required ?? value.manualReviewRequired),
+    valuation_quality:
+      value.valuation_quality === null || value.valuation_quality === undefined
+        ? null
+        : (toStringValue(value.valuation_quality) as OpportunitySummary['valuation_quality']),
+    asking_price_gbp:
+      value.asking_price_gbp === null || value.asking_price_gbp === undefined
+        ? null
+        : toNumberValue(value.asking_price_gbp),
+    asking_price_basis_type:
+      value.asking_price_basis_type === null || value.asking_price_basis_type === undefined
+        ? null
+        : toStringValue(value.asking_price_basis_type),
+    auction_date:
+      value.auction_date === null || value.auction_date === undefined
+        ? null
+        : toStringValue(value.auction_date),
+    post_permission_value_mid:
+      value.post_permission_value_mid === null || value.post_permission_value_mid === undefined
+        ? null
+        : toNumberValue(value.post_permission_value_mid),
+    uplift_mid:
+      value.uplift_mid === null || value.uplift_mid === undefined
+        ? null
+        : toNumberValue(value.uplift_mid),
+    expected_uplift_mid:
+      value.expected_uplift_mid === null || value.expected_uplift_mid === undefined
+        ? null
+        : toNumberValue(value.expected_uplift_mid),
+    same_borough_support_count:
+      toNumberValue(value.same_borough_support_count ?? value.sameBoroughSupportCount) ?? 0,
+    site_summary: siteSummary ? mapSiteSummary(siteSummary) : null,
+    scenario_summary: scenarioSummary ? mapScenarioSummary(scenarioSummary) : null
+  };
+}
+
+function mapOpportunityDetail(value: unknown): OpportunityDetail | null {
+  if (!isRecord(value)) {
+    return null;
+  }
+
+  return {
+    ...mapOpportunitySummary(value),
+    assessment: mapAssessmentDetail(value.assessment),
+    valuation: mapValuationResult(value.valuation),
+    ranking_factors: isRecord(value.ranking_factors ?? value.rankingFactors)
+      ? ((value.ranking_factors ?? value.rankingFactors) as Record<string, unknown>)
+      : {}
   };
 }
 
@@ -2994,6 +3210,38 @@ export async function createAssessment(
   return {
     apiAvailable: payload !== null,
     item: payload ? mapAssessmentDetail(payload) : null
+  };
+}
+
+export async function getOpportunities(
+  query: OpportunitiesQuery = {}
+): Promise<{ items: OpportunitySummary[]; total: number; apiAvailable: boolean }> {
+  const payload = await requestJson(`/api/opportunities/${buildQueryString(query)}`);
+  if (payload && isRecord(payload)) {
+    const items = pickCollection(payload.items as ApiCollectionResponse<unknown>).map(
+      mapOpportunitySummary
+    );
+    return {
+      items,
+      total: toNumberValue(payload.total) ?? items.length,
+      apiAvailable: true
+    };
+  }
+
+  return {
+    items: [],
+    total: 0,
+    apiAvailable: false
+  };
+}
+
+export async function getOpportunity(
+  siteId: string
+): Promise<{ item: OpportunityDetail | null; apiAvailable: boolean }> {
+  const payload = await requestJson(`/api/opportunities/${encodeURIComponent(siteId)}`);
+  return {
+    apiAvailable: payload !== null,
+    item: payload ? mapOpportunityDetail(payload) : null
   };
 }
 

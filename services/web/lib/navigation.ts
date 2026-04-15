@@ -56,7 +56,12 @@ export const navGroups: NavGroup[] = [
       {
         href: '/assessments',
         label: 'Assessments',
-        description: 'Frozen assessments with hidden internal scoring'
+        description: 'Frozen assessments with hidden scoring and valuation'
+      },
+      {
+        href: '/opportunities',
+        label: 'Opportunities',
+        description: 'Planning-first ranking with hidden internal valuation'
       }
     ]
   },
@@ -132,8 +137,14 @@ export const surfaceCatalog = [
   {
     href: '/assessments',
     title: 'Assessment view',
-    summary: 'Inspect frozen runs with evidence, comparables, provenance, replay metadata, and hidden internal scoring mode.',
+    summary: 'Inspect frozen runs with evidence, comparables, provenance, replay metadata, hidden internal scoring, and valuation.',
     tag: 'hidden score'
+  },
+  {
+    href: '/opportunities',
+    title: 'Opportunity ranking',
+    summary: 'Review planning-first opportunity bands, valuation quality, uplift, and honest HOLD states.',
+    tag: 'ranking'
   },
   {
     href: '/review-queue',

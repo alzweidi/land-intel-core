@@ -32,6 +32,8 @@ class JobType(StrEnum):
     COMPARABLE_RETRIEVAL_BUILD = "COMPARABLE_RETRIEVAL_BUILD"
     REPLAY_VERIFICATION_BATCH = "REPLAY_VERIFICATION_BATCH"
     GOLD_SET_REFRESH = "GOLD_SET_REFRESH"
+    VALUATION_DATA_REFRESH = "VALUATION_DATA_REFRESH"
+    VALUATION_RUN_BUILD = "VALUATION_RUN_BUILD"
 
 
 class SourceFreshnessStatus(StrEnum):
@@ -297,3 +299,29 @@ class AppRoleName(StrEnum):
 class StorageBackend(StrEnum):
     LOCAL = "local"
     SUPABASE = "supabase"
+
+
+class ValuationRunState(StrEnum):
+    PENDING = "PENDING"
+    READY = "READY"
+    FAILED = "FAILED"
+
+
+class ValuationQuality(StrEnum):
+    HIGH = "HIGH"
+    MEDIUM = "MEDIUM"
+    LOW = "LOW"
+
+
+class MarketLandCompSourceType(StrEnum):
+    PERMISSIONED_LISTING = "PERMISSIONED_LISTING"
+    AUCTION = "AUCTION"
+    ANALYST_BENCHMARK = "ANALYST_BENCHMARK"
+
+
+class OpportunityBand(StrEnum):
+    BAND_A = "Band A"
+    BAND_B = "Band B"
+    BAND_C = "Band C"
+    BAND_D = "Band D"
+    HOLD = "Hold"

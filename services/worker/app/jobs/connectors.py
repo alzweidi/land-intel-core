@@ -28,6 +28,7 @@ from .site_build import (
     run_site_lpa_refresh_job,
     run_site_title_refresh_job,
 )
+from .valuation import run_valuation_data_refresh_job, run_valuation_run_build_job
 
 
 def dispatch_connector_job(session, job, settings, storage: StorageAdapter) -> bool:
@@ -127,6 +128,16 @@ def dispatch_connector_job(session, job, settings, storage: StorageAdapter) -> b
 
     if job.job_type == JobType.GOLD_SET_REFRESH:
         run_gold_set_refresh_job(session=session, job=job)
+        mark_job_succeeded(session=session, job=job)
+        return True
+
+    if job.job_type == JobType.VALUATION_DATA_REFRESH:
+        run_valuation_data_refresh_job(session=session, job=job, storage=storage)
+        mark_job_succeeded(session=session, job=job)
+        return True
+
+    if job.job_type == JobType.VALUATION_RUN_BUILD:
+        run_valuation_run_build_job(session=session, job=job, storage=storage)
         mark_job_succeeded(session=session, job=job)
         return True
 

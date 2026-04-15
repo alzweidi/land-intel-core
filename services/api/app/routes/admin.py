@@ -100,12 +100,14 @@ def get_listing_sources(
 def get_phase_status() -> PlaceholderResponse:
     return PlaceholderResponse(
         detail=(
-            "Phase 6A hidden scoring foundations are active. Historical labels, frozen "
-            "assessments, release registry, hidden-only probabilities, and replay-safe "
-            "ledger rows are in scope. Visible rollout, valuation, and ranking remain deferred."
+            "Phase 7A hidden scoring, valuation, and planning-first ranking are active for "
+            "internal use. Historical labels, frozen assessments, release registry, hidden-only "
+            "probabilities, immutable valuation runs, and replay-safe ledger rows are in scope. "
+            "Visible rollout, overrides control plane, kill switches, and broader dashboards "
+            "remain deferred."
         ),
         surface="admin.phase-status",
-        spec_phase="Phase 6A",
+        spec_phase="Phase 7A",
     )
 
 

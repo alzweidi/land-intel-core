@@ -5,8 +5,8 @@
 - `services/api`: FastAPI routes for listings, clusters, sites, scenarios, assessments, admin, and later-phase stubs
 - `services/worker`: Postgres-backed worker loop with connector, cluster rebuild, site refresh/linkage, planning enrichment, scenario refresh, historical-label, comparable, replay, and gold-set jobs
 - `services/scheduler`: recurring enqueue loop for approved automated listing sources with explicit intervals
-- `services/web`: Next.js analyst UI focused on listings, clusters, sites, planning context, scenario editing, hidden-mode assessments, gold-set review, and admin release inspection
-- `python/landintel`: shared config, ORM models, connector framework, listing parsing/clustering, geospatial/site services, planning enrichment, evidence assembly, scenarios, assessments, historical labels, storage, and readback
+- `services/web`: Next.js analyst UI focused on listings, clusters, sites, planning context, scenario editing, hidden-mode assessments, valuation/ranking surfaces, gold-set review, and admin release inspection
+- `python/landintel`: shared config, ORM models, connector framework, listing parsing/clustering, geospatial/site services, planning enrichment, evidence assembly, scenarios, assessments, scoring, valuation, storage, and readback
 - `db/migrations`: Alembic revisions
 - `infra/compose`: local/VPS compose assets
 - `docs`: controlling spec and implementation notes
@@ -17,6 +17,7 @@
 - Backend migrations: `alembic upgrade head`
 - Reference bootstrap: `python -m landintel.geospatial.bootstrap --dataset all --requested-by local-dev`
 - Planning bootstrap: `python -m landintel.planning.bootstrap --dataset all --requested-by local-dev`
+- Valuation bootstrap: `python -m landintel.valuation.bootstrap --dataset all --requested-by local-dev`
 - API: `uvicorn services.api.app.main:create_app --factory --host 0.0.0.0 --port 8000`
 - Worker: `python -m services.worker.app.main`
 - Scheduler: `python -m services.scheduler.app.main`
@@ -32,7 +33,7 @@
 
 ## Non-Negotiable Rules From The Spec
 
-- Stop at Phase 6A. Do not start Phase 7 valuation / uplift / ranking or Phase 8 overrides / kill switches / visible release controls / broader dashboards.
+- Stop at Phase 7A. Do not start Phase 8 overrides / kill switches / visible release controls / broader dashboards.
 - No AWS, Kubernetes, Redis, vector DB, domain microservices, or separate model-serving service.
 - Use the Postgres-backed `job_run` queue with `FOR UPDATE SKIP LOCKED`.
 - Every connector run must create one `source_snapshot`, one or more `raw_asset` rows, a coverage note, and a parse status.
@@ -53,7 +54,12 @@
 - Scenarios are hypotheses, not facts.
 - No standard-analyst visible probability output exists in this phase.
 - Hidden scoring is internal-only and must resolve only through `model_release` / `active_release_scope`.
-- No valuation or ranking logic belongs in this phase.
+- Ranking stays planning-first: economics never outrank planning state.
+- If acquisition basis is missing, valuation may still return post-permission values but uplift stays null and valuation quality is downgraded.
+- If no active hidden release exists, do not fabricate planning bands or expected uplift.
+- All valuation assumptions must live in a versioned `valuation_assumption_set`.
+- Valuation runs/results must be immutable and tied to the frozen `assessment_run`.
+- Use HMLR Price Paid + UKHPI as the mandatory official valuation sources in this phase.
 - No future leakage in historical labels or point-in-time features.
 - Assessment runs require a confirmed scenario and always freeze PIT artifacts before any hidden scoring.
 - Preserve provenance for every frozen feature and replay-safe assessment artifact.
@@ -62,7 +68,7 @@
 - Do not downgrade an abstain/manual-review condition just because a scenario exists.
 - If strong nearest historical support cannot be shown honestly, default to `ANALYST_REQUIRED`.
 
-## Phase 6A Done Means
+## Phase 7A Done Means
 
 - `docker compose up --build` boots `api`, `worker`, `scheduler`, `web`, and local PostGIS
 - `alembic upgrade head` succeeds
@@ -85,8 +91,11 @@
 - hidden mode can surface rounded hidden probability, estimate quality, OOD state, drivers, and release metadata without turning the standard UI into a visible-probability surface
 - comparable fallback path is visible and replay verification stays stable for the same frozen inputs
 - replay of the same scored assessment reproduces the same feature hash and result payload hash
+- fixture-scale valuation data bootstrap works with immutable provenance
+- assessment detail returns a valuation block with assumption version, quality, and sense-check warnings
+- `GET /api/opportunities` returns a planning-first ranked opportunity list with honest `Hold` behavior when probability is not honestly available
 - the web app renders the site list/detail, MapLibre geometry editor, planning-context panels, scenario editor, assessment view, and gold-set review surface locally
-- the web app also exposes hidden assessment mode and the admin model-release registry locally
+- the web app also exposes hidden assessment mode, opportunity ranking, and the admin model-release registry locally
 - tests and lint/build checks pass
 
 ## Source Approval Notes

@@ -356,6 +356,36 @@ def enqueue_gold_set_refresh_job(
     )
 
 
+def enqueue_valuation_data_refresh_job(
+    session: Session,
+    *,
+    dataset: str = "all",
+    requested_by: str | None,
+) -> JobRun:
+    return _deduplicated_job(
+        session=session,
+        job_type=JobType.VALUATION_DATA_REFRESH,
+        dedupe_key=f"valuation-dataset:{dataset}",
+        payload_json={"dataset": dataset},
+        requested_by=requested_by,
+    )
+
+
+def enqueue_valuation_run_build_job(
+    session: Session,
+    *,
+    assessment_id: str,
+    requested_by: str | None,
+) -> JobRun:
+    return _deduplicated_job(
+        session=session,
+        job_type=JobType.VALUATION_RUN_BUILD,
+        dedupe_key=f"assessment:{assessment_id}",
+        payload_json={"assessment_id": assessment_id},
+        requested_by=requested_by,
+    )
+
+
 def _create_job(
     *,
     session: Session,

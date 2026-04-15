@@ -27,7 +27,7 @@ export function AssessmentRunBuilder({
   const [scenarioId, setScenarioId] = useState(initialScenarioId);
   const [asOfDate, setAsOfDate] = useState(initialAsOfDate ?? todayIsoDate());
   const [message, setMessage] = useState(
-    'A confirmed scenario is required. Phase 6A freezes the run and may execute a hidden internal score if an active hidden release exists.'
+    'A confirmed scenario is required. Phase 7A freezes the run, may execute a hidden internal score if an active hidden release exists, and can build an immutable valuation result from the frozen artifacts.'
   );
   const [loading, setLoading] = useState(false);
 
@@ -63,7 +63,7 @@ export function AssessmentRunBuilder({
     <Panel
       eyebrow="Assessment run"
       title="Create frozen assessment artifact"
-      note="Phase 6A may compute a hidden internal score, but standard analyst reads stay non-speaking."
+      note="Phase 7A may compute a hidden internal score and valuation, but standard analyst reads stay non-speaking."
     >
       <div className="form-stack" style={{ display: 'grid', gap: 12 }}>
         <label className="field">

@@ -46,6 +46,7 @@ from landintel.domain.enums import (
     ListingClusterStatus,
     ListingStatus,
     ListingType,
+    MarketLandCompSourceType,
     ModelReleaseStatus,
     PriceBasisType,
     ProposalForm,
@@ -59,6 +60,8 @@ from landintel.domain.enums import (
     SourceCoverageStatus,
     SourceFreshnessStatus,
     SourceParseStatus,
+    ValuationQuality,
+    ValuationRunState,
     VerifiedStatus,
 )
 
@@ -1566,6 +1569,11 @@ class AssessmentRun(Base):
         cascade="all, delete-orphan",
         uselist=False,
     )
+    valuation_runs: Mapped[list["ValuationRun"]] = relationship(
+        back_populates="assessment_run",
+        cascade="all, delete-orphan",
+        order_by="ValuationRun.created_at.desc()",
+    )
 
 
 class AssessmentFeatureSnapshot(Base):
@@ -1783,6 +1791,10 @@ class PredictionLedger(Base):
     )
     release_scope_key: Mapped[str | None] = mapped_column(String(255))
     calibration_hash: Mapped[str | None] = mapped_column(String(64))
+    valuation_run_id: Mapped[uuid.UUID | None] = mapped_column(
+        Uuid,
+        ForeignKey("valuation_run.id", ondelete="SET NULL"),
+    )
     response_mode: Mapped[str] = mapped_column(String(32), nullable=False, default="PRE_SCORE")
     source_snapshot_ids_json: Mapped[list[str]] = mapped_column(
         JSON,
@@ -1805,6 +1817,236 @@ class PredictionLedger(Base):
 
     assessment_run: Mapped[AssessmentRun] = relationship(back_populates="prediction_ledger")
     model_release: Mapped[ModelRelease | None] = relationship(back_populates="prediction_ledgers")
+    valuation_run: Mapped["ValuationRun | None"] = relationship()
+
+
+class MarketSaleComp(Base):
+    __tablename__ = "market_sale_comp"
+    __table_args__ = (UniqueConstraint("transaction_ref"),)
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
+    transaction_ref: Mapped[str] = mapped_column(String(120), nullable=False, unique=True)
+    borough_id: Mapped[str | None] = mapped_column(
+        String(100),
+        ForeignKey("lpa_boundary.id", ondelete="SET NULL"),
+    )
+    source_snapshot_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid,
+        ForeignKey("source_snapshot.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    raw_asset_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid,
+        ForeignKey("raw_asset.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    sale_date: Mapped[date] = mapped_column(Date, nullable=False)
+    price_gbp: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    property_type: Mapped[str] = mapped_column(String(50), nullable=False)
+    tenure: Mapped[str | None] = mapped_column(String(50))
+    postcode_district: Mapped[str | None] = mapped_column(String(16))
+    address_text: Mapped[str | None] = mapped_column(Text)
+    floor_area_sqm: Mapped[float | None] = mapped_column(Float)
+    rebased_price_per_sqm_hint: Mapped[float | None] = mapped_column(Float)
+    raw_record_json: Mapped[dict[str, object]] = mapped_column(JSON, nullable=False, default=dict)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        default=utc_now,
+        server_default=func.now(),
+    )
+
+    source_snapshot: Mapped[SourceSnapshot] = relationship()
+    raw_asset: Mapped[RawAsset] = relationship()
+
+
+class MarketIndexSeries(Base):
+    __tablename__ = "market_index_series"
+    __table_args__ = (UniqueConstraint("borough_id", "index_key", "period_month"),)
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
+    borough_id: Mapped[str | None] = mapped_column(
+        String(100),
+        ForeignKey("lpa_boundary.id", ondelete="SET NULL"),
+    )
+    index_key: Mapped[str] = mapped_column(String(50), nullable=False)
+    period_month: Mapped[date] = mapped_column(Date, nullable=False)
+    index_value: Mapped[float] = mapped_column(Float, nullable=False)
+    source_snapshot_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid,
+        ForeignKey("source_snapshot.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    raw_asset_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid,
+        ForeignKey("raw_asset.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    raw_record_json: Mapped[dict[str, object]] = mapped_column(JSON, nullable=False, default=dict)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        default=utc_now,
+        server_default=func.now(),
+    )
+
+    source_snapshot: Mapped[SourceSnapshot] = relationship()
+    raw_asset: Mapped[RawAsset] = relationship()
+
+
+class MarketLandComp(Base):
+    __tablename__ = "market_land_comp"
+    __table_args__ = (UniqueConstraint("comp_ref"),)
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
+    comp_ref: Mapped[str] = mapped_column(String(120), nullable=False, unique=True)
+    borough_id: Mapped[str | None] = mapped_column(
+        String(100),
+        ForeignKey("lpa_boundary.id", ondelete="SET NULL"),
+    )
+    template_key: Mapped[str | None] = mapped_column(String(100))
+    proposal_form: Mapped[ProposalForm | None] = mapped_column(
+        Enum(ProposalForm, name="proposal_form", create_type=False),
+    )
+    comp_source_type: Mapped[MarketLandCompSourceType] = mapped_column(
+        Enum(MarketLandCompSourceType, name="market_land_comp_source_type"),
+        nullable=False,
+    )
+    evidence_date: Mapped[date | None] = mapped_column(Date)
+    unit_count: Mapped[int | None] = mapped_column(Integer)
+    site_area_sqm: Mapped[float | None] = mapped_column(Float)
+    post_permission_value_low: Mapped[float | None] = mapped_column(Float)
+    post_permission_value_mid: Mapped[float | None] = mapped_column(Float)
+    post_permission_value_high: Mapped[float | None] = mapped_column(Float)
+    source_url: Mapped[str | None] = mapped_column(Text)
+    source_snapshot_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid,
+        ForeignKey("source_snapshot.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    raw_asset_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid,
+        ForeignKey("raw_asset.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    raw_record_json: Mapped[dict[str, object]] = mapped_column(JSON, nullable=False, default=dict)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        default=utc_now,
+        server_default=func.now(),
+    )
+
+    source_snapshot: Mapped[SourceSnapshot] = relationship()
+    raw_asset: Mapped[RawAsset] = relationship()
+
+
+class ValuationAssumptionSet(Base):
+    __tablename__ = "valuation_assumption_set"
+    __table_args__ = (UniqueConstraint("version"),)
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
+    version: Mapped[str] = mapped_column(String(100), nullable=False, unique=True)
+    cost_json: Mapped[dict[str, object]] = mapped_column(JSON, nullable=False, default=dict)
+    policy_burden_json: Mapped[dict[str, object]] = mapped_column(
+        JSON,
+        nullable=False,
+        default=dict,
+    )
+    discount_json: Mapped[dict[str, object]] = mapped_column(JSON, nullable=False, default=dict)
+    effective_from: Mapped[date] = mapped_column(Date, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        default=utc_now,
+        server_default=func.now(),
+    )
+
+    valuation_runs: Mapped[list["ValuationRun"]] = relationship(
+        back_populates="valuation_assumption_set"
+    )
+
+
+class ValuationRun(Base):
+    __tablename__ = "valuation_run"
+    __table_args__ = (UniqueConstraint("assessment_run_id", "valuation_assumption_set_id"),)
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
+    assessment_run_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid,
+        ForeignKey("assessment_run.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    valuation_assumption_set_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid,
+        ForeignKey("valuation_assumption_set.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    state: Mapped[ValuationRunState] = mapped_column(
+        Enum(ValuationRunState, name="valuation_run_state"),
+        nullable=False,
+        default=ValuationRunState.PENDING,
+    )
+    input_hash: Mapped[str] = mapped_column(String(64), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        default=utc_now,
+        server_default=func.now(),
+    )
+    finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    error_text: Mapped[str | None] = mapped_column(Text)
+
+    assessment_run: Mapped[AssessmentRun] = relationship(back_populates="valuation_runs")
+    valuation_assumption_set: Mapped[ValuationAssumptionSet] = relationship(
+        back_populates="valuation_runs"
+    )
+    result: Mapped["ValuationResult | None"] = relationship(
+        back_populates="valuation_run",
+        cascade="all, delete-orphan",
+        uselist=False,
+    )
+
+
+class ValuationResult(Base):
+    __tablename__ = "valuation_result"
+    __table_args__ = (UniqueConstraint("valuation_run_id"),)
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
+    valuation_run_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid,
+        ForeignKey("valuation_run.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    post_permission_value_low: Mapped[float | None] = mapped_column(Float)
+    post_permission_value_mid: Mapped[float | None] = mapped_column(Float)
+    post_permission_value_high: Mapped[float | None] = mapped_column(Float)
+    uplift_low: Mapped[float | None] = mapped_column(Float)
+    uplift_mid: Mapped[float | None] = mapped_column(Float)
+    uplift_high: Mapped[float | None] = mapped_column(Float)
+    expected_uplift_mid: Mapped[float | None] = mapped_column(Float)
+    valuation_quality: Mapped[ValuationQuality] = mapped_column(
+        Enum(ValuationQuality, name="valuation_quality"),
+        nullable=False,
+        default=ValuationQuality.LOW,
+    )
+    manual_review_required: Mapped[bool] = mapped_column(
+        Boolean,
+        nullable=False,
+        default=False,
+    )
+    basis_json: Mapped[dict[str, object]] = mapped_column(JSON, nullable=False, default=dict)
+    sense_check_json: Mapped[dict[str, object]] = mapped_column(JSON, nullable=False, default=dict)
+    result_json: Mapped[dict[str, object]] = mapped_column(JSON, nullable=False, default=dict)
+    payload_hash: Mapped[str] = mapped_column(String(64), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        default=utc_now,
+        server_default=func.now(),
+    )
+
+    valuation_run: Mapped[ValuationRun] = relationship(back_populates="result")
 
 
 class AuthUser(Base):
@@ -2028,3 +2270,25 @@ Index(
     EvidenceItem.polarity,
 )
 Index("ix_prediction_ledger_run_id", PredictionLedger.assessment_run_id)
+Index("ix_market_sale_comp_borough_sale_date", MarketSaleComp.borough_id, MarketSaleComp.sale_date)
+Index("ix_market_sale_comp_postcode_district", MarketSaleComp.postcode_district)
+Index(
+    "ix_market_index_series_borough_period",
+    MarketIndexSeries.borough_id,
+    MarketIndexSeries.period_month,
+)
+Index(
+    "ix_market_land_comp_borough_template_date",
+    MarketLandComp.borough_id,
+    MarketLandComp.template_key,
+    MarketLandComp.evidence_date,
+)
+Index("ix_market_land_comp_source_type", MarketLandComp.comp_source_type)
+Index("ix_valuation_assumption_set_effective_from", ValuationAssumptionSet.effective_from)
+Index("ix_valuation_run_assessment_id", ValuationRun.assessment_run_id)
+Index(
+    "ix_valuation_run_assessment_assumptions",
+    ValuationRun.assessment_run_id,
+    ValuationRun.valuation_assumption_set_id,
+)
+Index("ix_valuation_result_run_id", ValuationResult.valuation_run_id)

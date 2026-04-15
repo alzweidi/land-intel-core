@@ -32,6 +32,7 @@ from landintel.domain.enums import (
     ListingStatus,
     ListingType,
     ModelReleaseStatus,
+    OpportunityBand,
     PriceBasisType,
     ProposalForm,
     ReleaseChannel,
@@ -43,6 +44,7 @@ from landintel.domain.enums import (
     SourceCoverageStatus,
     SourceFreshnessStatus,
     SourceParseStatus,
+    ValuationQuality,
     VerifiedStatus,
 )
 
@@ -663,6 +665,27 @@ class AssessmentResultRead(BaseModel):
     published_at: datetime | None
 
 
+class ValuationResultRead(BaseModel):
+    id: UUID
+    valuation_run_id: UUID
+    valuation_assumption_set_id: UUID
+    valuation_assumption_version: str
+    post_permission_value_low: float | None
+    post_permission_value_mid: float | None
+    post_permission_value_high: float | None
+    uplift_low: float | None
+    uplift_mid: float | None
+    uplift_high: float | None
+    expected_uplift_mid: float | None
+    valuation_quality: ValuationQuality
+    manual_review_required: bool
+    basis_json: dict[str, Any]
+    sense_check_json: dict[str, Any]
+    result_json: dict[str, Any]
+    payload_hash: str
+    created_at: datetime
+
+
 class ComparablePlanningApplicationRead(BaseModel):
     id: UUID
     external_ref: str
@@ -790,10 +813,48 @@ class AssessmentSummaryRead(BaseModel):
 class AssessmentDetailRead(AssessmentSummaryRead):
     feature_snapshot: AssessmentFeatureSnapshotRead | None = None
     result: AssessmentResultRead | None = None
+    valuation: ValuationResultRead | None = None
     evidence: EvidencePackRead
     comparable_case_set: ComparableCaseSetRead | None = None
     prediction_ledger: PredictionLedgerRead | None = None
     note: str
+
+
+class OpportunitySummaryRead(BaseModel):
+    site_id: UUID
+    display_name: str
+    borough_id: str | None
+    borough_name: str | None
+    assessment_id: UUID | None
+    scenario_id: UUID | None
+    probability_band: OpportunityBand
+    hold_reason: str | None
+    ranking_reason: str
+    hidden_mode_only: bool = True
+    eligibility_status: EligibilityStatus | None
+    estimate_status: EstimateStatus | None
+    manual_review_required: bool
+    valuation_quality: ValuationQuality | None
+    asking_price_gbp: int | None
+    asking_price_basis_type: PriceBasisType | None
+    auction_date: date | None
+    post_permission_value_mid: float | None
+    uplift_mid: float | None
+    expected_uplift_mid: float | None
+    same_borough_support_count: int
+    site_summary: SiteSummaryRead | None = None
+    scenario_summary: SiteScenarioSummaryRead | None = None
+
+
+class OpportunityDetailRead(OpportunitySummaryRead):
+    assessment: AssessmentDetailRead | None = None
+    valuation: ValuationResultRead | None = None
+    ranking_factors: dict[str, Any] = Field(default_factory=dict)
+
+
+class OpportunityListResponse(BaseModel):
+    items: list[OpportunitySummaryRead]
+    total: int
 
 
 class ActiveReleaseScopeRead(BaseModel):

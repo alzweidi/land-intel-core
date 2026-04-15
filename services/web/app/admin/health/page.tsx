@@ -9,7 +9,7 @@ export default function AdminHealthPage() {
       <PageHeader
         eyebrow="Admin / health"
         title="Operational health shell"
-        summary="The admin health route is still intentionally small, but hidden model releases and assessment replay are now live. Broader dashboards remain deferred."
+        summary="The admin health route is still intentionally small, but hidden model releases, assessment replay, valuation, and planning-first ranking are now live for internal use. Broader dashboards remain deferred."
         actions={
           <div className="page-actions__group">
             <Link className="button button--solid" href="/admin/source-runs">
@@ -36,7 +36,7 @@ export default function AdminHealthPage() {
         <div className="stat-card">
           <Badge tone="warning">Models</Badge>
           <div className="stat-value">Hidden-only</div>
-          <p className="stat-detail">Release registry and replay-safe hidden scoring are active in Phase 6A.</p>
+          <p className="stat-detail">Release registry and replay-safe hidden scoring remain active in Phase 7A.</p>
         </div>
       </section>
 

@@ -37,13 +37,16 @@ export default async function AssessmentsPage({
   return (
     <div className="page-stack">
       <PageHeader
-        eyebrow="Phase 6A"
+        eyebrow="Phase 7A"
         title="Frozen hidden-score assessments"
-        summary="Assessment runs now freeze point-in-time features, provenance, evidence, comparables, replay metadata, and hidden-only scoring when a valid release exists. Standard analyst reads remain non-speaking."
+        summary="Assessment runs now freeze point-in-time features, provenance, evidence, comparables, replay metadata, hidden-only scoring when a valid release exists, and immutable valuation results tied to a versioned assumption set. Standard analyst reads remain non-speaking."
         actions={
           <div className="page-actions__group">
             <Link className="button button--ghost" href="/sites">
               Back to sites
+            </Link>
+            <Link className="button button--ghost" href="/opportunities">
+              Opportunities
             </Link>
             <Link className="button button--ghost" href="/review-queue">
               Open gold-set review
@@ -69,7 +72,7 @@ export default async function AssessmentsPage({
         title="Assessment history"
         note={
           result.apiAvailable
-            ? 'Live API. Open an assessment and add ?mode=hidden for internal evaluation mode.'
+            ? 'Live API. Open an assessment and add ?mode=hidden for internal evaluation mode and valuation-backed readback.'
             : 'API unavailable, showing current query result only'
         }
       >
@@ -87,6 +90,7 @@ export default async function AssessmentsPage({
                   <th>Scenario</th>
                   <th>As of</th>
                   <th>Estimate</th>
+                  <th>Valuation</th>
                   <th>Review</th>
                 </tr>
               </thead>
@@ -118,6 +122,12 @@ export default async function AssessmentsPage({
                     <td>{item.as_of_date}</td>
                     <td>
                       <Badge tone="danger">{item.estimate_status}</Badge>
+                    </td>
+                    <td>
+                      <div className="table-primary">
+                        {item.estimate_status === 'NONE' ? 'Pre-score only' : 'See detail'}
+                      </div>
+                      <div className="table-secondary">Valuation block available on ready detail</div>
                     </td>
                     <td>
                       <Badge tone={toneForReview(item.review_status)}>{item.review_status}</Badge>

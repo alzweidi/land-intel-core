@@ -7,6 +7,7 @@ from landintel.assessments.comparables import build_comparable_case_set
 from landintel.domain.enums import (
     AssessmentRunState,
     BaselinePackStatus,
+    EligibilityStatus,
     EstimateQuality,
     EstimateStatus,
     EvidenceImportance,
@@ -33,6 +34,7 @@ from landintel.domain.models import (
     SitePlanningLink,
     SitePolicyFact,
     SiteScenario,
+    ValuationRun,
 )
 from landintel.domain.schemas import EvidenceItemRead, EvidencePackRead
 from landintel.evidence.assemble import assemble_scenario_evidence, assemble_site_evidence
@@ -46,6 +48,11 @@ from landintel.scoring.release import (
 )
 from landintel.scoring.score import score_frozen_assessment
 from landintel.storage.base import StorageAdapter
+from landintel.valuation.assumptions import resolve_active_assumption_set
+from landintel.valuation.service import (
+    build_or_refresh_valuation_for_assessment,
+    latest_valuation_run,
+)
 from sqlalchemy import select
 from sqlalchemy.orm import Session, selectinload
 
@@ -105,7 +112,18 @@ def create_or_refresh_assessment_run(
         .options(*_assessment_load_options())
     ).scalar_one_or_none()
     if existing is not None and existing.state == AssessmentRunState.READY:
-        return existing
+        active_assumption_set = resolve_active_assumption_set(
+            session,
+            as_of_date=as_of_date,
+        )
+        has_current_valuation = any(
+            row.valuation_assumption_set_id == active_assumption_set.id
+            and row.result is not None
+            and row.state.value == "READY"
+            for row in existing.valuation_runs
+        )
+        if has_current_valuation:
+            return existing
 
     run = existing or AssessmentRun(
         id=uuid.uuid5(ASSESSMENT_NAMESPACE, idempotency_key),
@@ -248,12 +266,20 @@ def create_or_refresh_assessment_run(
             score_execution_status=score_execution_status,
             note_text=note_text,
         )
+        valuation_run = None
+        if extant_permission.eligibility_status == EligibilityStatus.PASS:
+            valuation_run = build_or_refresh_valuation_for_assessment(
+                session=session,
+                assessment_run=run,
+                requested_by=requested_by or "assessment-run",
+            )
         stable_payload = _stable_result_payload(
             run=run,
             site=site,
             scenario=scenario,
             feature_snapshot=feature_snapshot,
             result=result,
+            valuation_run=valuation_run,
             evidence=assessment_evidence,
             comparables=comparable_payload,
             note_text=note_text,
@@ -266,6 +292,7 @@ def create_or_refresh_assessment_run(
             evidence=assessment_evidence,
             stable_payload=stable_payload,
             model_release=active_release,
+            valuation_run=valuation_run,
             release_scope_key=release_scope_key,
             response_mode="HIDDEN_SCORE" if scored_result else "PRE_SCORE",
         )
@@ -393,6 +420,12 @@ def verify_assessment_replay(
         red_line_geom_hash=assessment_run.scenario.red_line_geom_hash,
         feature_snapshot=assessment_run.feature_snapshot,
         result=assessment_run.result,
+        valuation_payload=(
+            None
+            if latest_valuation_run(assessment_run) is None
+            or latest_valuation_run(assessment_run).result is None
+            else _serialize_valuation_payload(latest_valuation_run(assessment_run))
+        ),
         evidence=evidence,
         comparables=comparable_payload,
         note_text=_note_for_result(assessment_run.result),
@@ -502,6 +535,7 @@ def _upsert_feature_snapshot(
     row.coverage_json = feature_result.coverage_json
     session.add(row)
     session.flush()
+    run.feature_snapshot = row
     return row
 
 
@@ -650,6 +684,7 @@ def _upsert_assessment_result(
         result.published_at = datetime.now(UTC)
     session.add(result)
     session.flush()
+    run.result = result
     return result
 
 
@@ -660,6 +695,7 @@ def _stable_result_payload(
     scenario: SiteScenario,
     feature_snapshot: AssessmentFeatureSnapshot,
     result: AssessmentResult,
+    valuation_run,
     evidence: EvidencePackRead,
     comparables: dict[str, object],
     note_text: str,
@@ -671,6 +707,7 @@ def _stable_result_payload(
         red_line_geom_hash=scenario.red_line_geom_hash,
         feature_snapshot=feature_snapshot,
         result=result,
+        valuation_payload=_serialize_valuation_payload(valuation_run),
         evidence=evidence,
         comparables=comparables,
         note_text=note_text,
@@ -686,6 +723,7 @@ def _upsert_prediction_ledger(
     evidence: EvidencePackRead,
     stable_payload: dict[str, object],
     model_release: ModelRelease | None,
+    valuation_run,
     release_scope_key: str,
     response_mode: str,
 ) -> PredictionLedger:
@@ -713,6 +751,7 @@ def _upsert_prediction_ledger(
         if response_mode != "HIDDEN_SCORE" or model_release is None
         else model_release.calibration_artifact_hash
     )
+    ledger.valuation_run_id = None if valuation_run is None else valuation_run.id
     ledger.response_mode = response_mode
     ledger.source_snapshot_ids_json = sorted(source_snapshot_ids)
     ledger.raw_asset_ids_json = sorted(raw_asset_ids)
@@ -762,6 +801,30 @@ def _stable_comparable_payload(run: AssessmentRun) -> dict[str, object]:
     }
 
 
+def _serialize_valuation_payload(valuation_run: ValuationRun | None) -> dict[str, object] | None:
+    if valuation_run is None or valuation_run.result is None:
+        return None
+    result = valuation_run.result
+    return {
+        "valuation_run_id": str(valuation_run.id),
+        "valuation_assumption_set_id": str(valuation_run.valuation_assumption_set_id),
+        "valuation_assumption_version": valuation_run.valuation_assumption_set.version,
+        "post_permission_value_low": result.post_permission_value_low,
+        "post_permission_value_mid": result.post_permission_value_mid,
+        "post_permission_value_high": result.post_permission_value_high,
+        "uplift_low": result.uplift_low,
+        "uplift_mid": result.uplift_mid,
+        "uplift_high": result.uplift_high,
+        "expected_uplift_mid": result.expected_uplift_mid,
+        "valuation_quality": result.valuation_quality.value,
+        "manual_review_required": result.manual_review_required,
+        "basis_json": result.basis_json,
+        "sense_check_json": result.sense_check_json,
+        "result_json": result.result_json,
+        "payload_hash": result.payload_hash,
+    }
+
+
 def _build_stable_result_payload(
     *,
     site_id: uuid.UUID,
@@ -770,6 +833,7 @@ def _build_stable_result_payload(
     red_line_geom_hash: str | None,
     feature_snapshot: AssessmentFeatureSnapshot,
     result: AssessmentResult,
+    valuation_payload: dict[str, object] | None,
     evidence: EvidencePackRead,
     comparables: dict[str, object],
     note_text: str,
@@ -804,6 +868,7 @@ def _build_stable_result_payload(
         "release_scope_key": result.release_scope_key,
         "model_release_sentinel": PRE_SCORE_MODEL_SENTINEL,
         "result_json": result.result_json if result_json_override is None else result_json_override,
+        "valuation": valuation_payload,
         "evidence": evidence.model_dump(by_alias=True, mode="json"),
         "comparables": comparables,
     }
@@ -857,4 +922,8 @@ def _assessment_load_options():
         .selectinload(ComparableCaseSet.members)
         .selectinload(ComparableCaseMember.planning_application),
         selectinload(AssessmentRun.prediction_ledger),
+        selectinload(AssessmentRun.valuation_runs).selectinload(ValuationRun.result),
+        selectinload(AssessmentRun.valuation_runs).selectinload(
+            ValuationRun.valuation_assumption_set
+        ),
     )

@@ -21,6 +21,14 @@ function formatList(items: string[]): string {
   return items.length > 0 ? items.join(', ') : 'None recorded';
 }
 
+function formatCurrency(value: number | null | undefined): string {
+  if (value === null || value === undefined) {
+    return 'Unavailable';
+  }
+
+  return `£${Math.round(value).toLocaleString('en-GB')}`;
+}
+
 export default async function AssessmentDetailPage({
   params,
   searchParams
@@ -39,7 +47,7 @@ export default async function AssessmentDetailPage({
     return (
       <div className="page-stack">
         <PageHeader
-          eyebrow="Phase 6A"
+          eyebrow="Phase 7A"
           title="Assessment not found"
           summary={`No frozen assessment run is available for ${params.assessmentId}.`}
           actions={
@@ -73,7 +81,7 @@ export default async function AssessmentDetailPage({
   return (
     <div className="page-stack">
       <PageHeader
-        eyebrow="Phase 6A"
+        eyebrow="Phase 7A"
         title={`Assessment ${assessment.id}`}
         summary={assessment.note}
         actions={
@@ -116,6 +124,22 @@ export default async function AssessmentDetailPage({
         />
         <StatCard tone={reviewTone(assessment.review_status)} label="Review" value={assessment.review_status} detail={assessment.manual_review_required ? 'Analyst review is currently required' : 'No additional review flags are set'} />
         <StatCard tone="accent" label="Comparables" value={String((comparables?.approved_count ?? 0) + (comparables?.refused_count ?? 0))} detail="Explanation infrastructure only, not a substitute model" />
+        <StatCard
+          tone={
+            assessment.valuation?.valuation_quality === 'HIGH'
+              ? 'success'
+              : assessment.valuation?.valuation_quality === 'MEDIUM'
+                ? 'accent'
+                : 'warning'
+          }
+          label="Valuation"
+          value={assessment.valuation?.valuation_quality ?? 'Unavailable'}
+          detail={
+            assessment.valuation
+              ? 'Immutable valuation run tied to the frozen assessment and assumption set'
+              : 'No valuation block was built for this assessment'
+          }
+        />
         <StatCard tone="success" label="Replay hash" value={assessment.prediction_ledger?.result_payload_hash.slice(0, 12) ?? 'Unavailable'} detail="Stable payload hash for replay verification" />
       </section>
 
@@ -123,7 +147,7 @@ export default async function AssessmentDetailPage({
         <Panel
           eyebrow="Hidden mode"
           title="Internal evaluation only"
-          note="This surface exposes the hidden Phase 6A score path. Standard analyst workflows remain non-speaking."
+          note="This surface exposes the hidden Phase 7A score and valuation path. Standard analyst workflows remain non-speaking."
         >
           <DefinitionList
             items={[
@@ -150,6 +174,10 @@ export default async function AssessmentDetailPage({
               {
                 label: 'Release scope',
                 value: assessment.result?.release_scope_key ?? 'Unavailable'
+              },
+              {
+                label: 'Expected uplift',
+                value: formatCurrency(assessment.valuation?.expected_uplift_mid)
               }
             ]}
           />
@@ -245,6 +273,70 @@ export default async function AssessmentDetailPage({
           </pre>
         </Panel>
       </div>
+
+      <Panel
+        eyebrow="Valuation"
+        title="Residual valuation summary"
+        note={
+          assessment.valuation
+            ? `Assumption set ${assessment.valuation.valuation_assumption_version}`
+            : 'Valuation is unavailable for this run'
+        }
+      >
+        <DefinitionList
+          items={[
+            {
+              label: 'Post-permission low',
+              value: formatCurrency(assessment.valuation?.post_permission_value_low)
+            },
+            {
+              label: 'Post-permission mid',
+              value: formatCurrency(assessment.valuation?.post_permission_value_mid)
+            },
+            {
+              label: 'Post-permission high',
+              value: formatCurrency(assessment.valuation?.post_permission_value_high)
+            },
+            {
+              label: 'Uplift mid',
+              value: formatCurrency(assessment.valuation?.uplift_mid)
+            },
+            {
+              label: 'Expected uplift mid',
+              value: formatCurrency(assessment.valuation?.expected_uplift_mid)
+            },
+            {
+              label: 'Valuation quality',
+              value: assessment.valuation?.valuation_quality ?? 'Unavailable'
+            },
+            {
+              label: 'Manual review',
+              value: assessment.valuation?.manual_review_required ? 'Required' : 'Not required'
+            },
+            {
+              label: 'Basis type',
+              value:
+                typeof assessment.valuation?.basis_json?.basis_type === 'string'
+                  ? assessment.valuation.basis_json.basis_type
+                  : 'Unavailable'
+            }
+          ]}
+        />
+        <div className="split-grid" style={{ marginTop: 16 }}>
+          <div>
+            <div className="eyebrow">Basis</div>
+            <pre className="code-block" style={{ marginTop: 8, whiteSpace: 'pre-wrap' }}>
+              {JSON.stringify(assessment.valuation?.basis_json ?? {}, null, 2)}
+            </pre>
+          </div>
+          <div>
+            <div className="eyebrow">Sense check</div>
+            <pre className="code-block" style={{ marginTop: 8, whiteSpace: 'pre-wrap' }}>
+              {JSON.stringify(assessment.valuation?.sense_check_json ?? {}, null, 2)}
+            </pre>
+          </div>
+        </div>
+      </Panel>
 
       {hiddenMode ? (
         <div className="split-grid">

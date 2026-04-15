@@ -2,7 +2,7 @@
 
 London-first land intelligence monorepo. The controlling spec for this repo is [docs/london_land_intelligence_implementation_spec_v1 (2).md](/Users/atta/land-intel-core/docs/london_land_intelligence_implementation_spec_v1%20(2).md).
 
-Phase 6A is implemented here. The repo now covers the Phase 1A listing pipeline, Phase 2 site geometry, Phase 3A planning context, Phase 4A scenario foundations, Phase 5A assessment foundations, and the Phase 6A hidden-only scoring layer:
+Phase 7A is implemented here. The repo now covers the Phase 1A listing pipeline, Phase 2 site geometry, Phase 3A planning context, Phase 4A scenario foundations, Phase 5A assessment foundations, Phase 6A hidden-only scoring, and the Phase 7A valuation/ranking layer:
 - compliant connector framework and immutable listing snapshots
 - listing parsing, normalization, and deterministic clustering
 - site creation from listing clusters
@@ -21,8 +21,11 @@ Phase 6A is implemented here. The repo now covers the Phase 1A listing pipeline,
 - frozen assessment runs with deterministic comparable retrieval and replay-safe prediction-ledger rows
 - minimal gold-set review APIs and internal review surface
 - hidden-only logistic-regression releases with calibration artifacts, OOD logic, estimate quality, explanation payloads, and replay-safe release resolution
+- versioned valuation assumption sets with fixture-scale HMLR Price Paid, UKHPI rebasing, and supplementary land comp evidence
+- immutable valuation runs/results with residual land value, uplift, sense-check divergence handling, and valuation-quality logic
+- planning-first opportunity ranking with honest HOLD states when no active hidden release or sufficient valuation basis exists
 
-Phase 5B historical expansion plus Phase 7/8 visible rollout, valuation, ranking, overrides, and broader control-plane dashboards remain deferred.
+Phase 5B historical expansion plus Phase 8 overrides/control-plane/dashboard work remain deferred.
 
 ## Repo Layout
 
@@ -74,7 +77,7 @@ source .venv/bin/activate
 python -m landintel.geospatial.bootstrap --dataset all --requested-by local-dev
 ```
 
-6. Bootstrap the local Phase 3A through Phase 6A planning fixtures:
+6. Bootstrap the local Phase 3A through Phase 7A planning fixtures:
 
 ```bash
 source .venv/bin/activate
@@ -89,7 +92,14 @@ curl -X POST http://localhost:8000/api/admin/model-releases/rebuild \
   -d '{"requested_by":"local-dev","auto_activate_hidden":true}'
 ```
 
-8. Run services locally in separate terminals:
+8. Bootstrap fixture-scale valuation data and seeded assumption sets:
+
+```bash
+source .venv/bin/activate
+python -m landintel.valuation.bootstrap --dataset all --requested-by local-dev
+```
+
+9. Run services locally in separate terminals:
 
 ```bash
 source .venv/bin/activate
@@ -111,7 +121,7 @@ cd services/web
 npm run dev
 ```
 
-9. Or boot the full stack with Docker:
+10. Or boot the full stack with Docker:
 
 ```bash
 docker compose up --build
@@ -209,6 +219,13 @@ curl 'http://localhost:8000/api/assessments/<assessment_uuid>?hidden_mode=true'
 curl http://localhost:8000/api/admin/model-releases
 ```
 
+Inspect planning-first opportunity ranking:
+
+```bash
+curl http://localhost:8000/api/opportunities
+curl http://localhost:8000/api/opportunities/<site_uuid>
+```
+
 Inspect and review gold-set cases:
 
 ```bash
@@ -294,7 +311,12 @@ Minimal `refresh_policy_json` for an automated source:
 - `python -m landintel.planning.bootstrap --dataset policy --requested-by local-dev` imports London DataMap / borough policy area fixtures.
 - `python -m landintel.planning.bootstrap --dataset constraints --requested-by local-dev` imports Planning Data, flood, heritage, and Article 4 fixtures.
 - `python -m landintel.planning.bootstrap --dataset baseline --requested-by local-dev` imports cited pilot-borough baseline packs and machine-readable rulepacks.
-- `python -m landintel.planning.bootstrap --dataset all --requested-by local-dev` runs the full Phase 3A through Phase 6A fixture bootstrap.
+- `python -m landintel.planning.bootstrap --dataset all --requested-by local-dev` runs the full Phase 3A through Phase 7A planning fixture bootstrap.
+- `python -m landintel.valuation.bootstrap --dataset hmlr-price-paid --requested-by local-dev` imports fixture-scale HMLR Price Paid evidence with provenance.
+- `python -m landintel.valuation.bootstrap --dataset ukhpi --requested-by local-dev` imports fixture-scale UKHPI rebasing series.
+- `python -m landintel.valuation.bootstrap --dataset land-comps --requested-by local-dev` imports supplementary permissioned land/auction/benchmark fixture evidence.
+- `python -m landintel.valuation.bootstrap --dataset assumptions --requested-by local-dev` seeds the default versioned valuation assumption set.
+- `python -m landintel.valuation.bootstrap --dataset all --requested-by local-dev` runs the full Phase 7A valuation fixture bootstrap.
 - local/dev uses fixture-scale coverage only; this phase does not attempt national bulk ingestion.
 
 ## Geometry Confidence Meanings
@@ -353,7 +375,7 @@ All canonical calculations run in EPSG:27700. EPSG:4326 is stored only for displ
 - a release is activatable only when validation completes honestly for that template family; otherwise it remains `NOT_READY` with stored reasons
 - replay uses the frozen feature snapshot, resolved release metadata, and ledger payload hash to verify the same assessment can be reproduced exactly
 
-## Phase 6A Rules
+## Phase 7A Rules
 
 - the assessed object is the site geometry, not an individual title polygon
 - title polygons are indicative evidence only and can support multi-title linkage
@@ -368,7 +390,10 @@ All canonical calculations run in EPSG:27700. EPSG:4326 is stored only for displ
 - scenarios are hypotheses, not facts
 - no standard-analyst visible probability rollout is implemented in this phase
 - hidden scoring is allowed only for confirmed scenarios through an active hidden release scope
-- no valuation or ranking is implemented in this phase
+- valuation runs are immutable and tied to the frozen assessment plus a versioned valuation assumption set
+- if acquisition basis is missing, post-permission value may still be produced but uplift stays null and valuation quality is downgraded
+- if no active hidden release exists, do not fabricate a planning band or expected uplift; keep the case in `Hold`
+- ranking is planning-first: economics never leapfrog a stronger planning band
 - do not downgrade an `ABSTAIN` / manual-review condition just because a scenario exists
 - if strong nearest historical support cannot be shown honestly, default to `ANALYST_REQUIRED`
 - if support is insufficient for a template, register an explicit `NOT_READY` release instead of pretending validation passed
@@ -433,17 +458,20 @@ docker compose ps
 - Phase 3A planning imports stay fixture-scale for local/dev and focus on deterministic site enrichment, not citywide production ingest
 - Phase 4A scenario suggestions stay deterministic, testable, and config-driven; they are not predictions
 - Phase 6A hidden releases stay honest: supported templates can score in hidden mode, unsupported templates remain `NOT_READY`
+- Phase 7A valuation stays honest: missing acquisition basis keeps uplift null, and missing active hidden release keeps opportunities in `Hold`
 - hidden-mode scoring is internal only and standard assessment reads stay non-speaking by default
 - pilot borough rulepacks are usable operational summaries for fixture boroughs, but they are not a substitute for analyst judgment or legal advice
+- fixture-scale valuation evidence uses HMLR Price Paid and UKHPI as mandatory official sources, with land comps as supplementary evidence only
 
-## Deferred To Phase 5B And Phase 7/8
+## Deferred To Phase 5B And Phase 8
 
 - broader gold-set tooling and larger review workflow UX
 - richer historical backfill and point-in-time reconstruction coverage
 - feature snapshots for model training beyond the frozen Phase 5A artifact path
-- valuation
-- ranking
 - standard-analyst visible probability rollout
 - broader hidden-mode operations and visible release controls
+- overrides UI and overrides control plane
+- data-health and model-health dashboards
+- kill switches, incident console, and audit exports
 - comparable-case ranking logic
 - broader historical backfill and richer release operations

@@ -36,7 +36,7 @@ export default async function AdminModelReleasesPage() {
       <PageHeader
         eyebrow="Admin / model releases"
         title="Hidden release registry"
-        summary="Phase 6A keeps release selection explicit and immutable. Hidden scoring resolves only through the registry and active scope records."
+        summary="Phase 7A keeps release selection explicit and immutable. Hidden scoring, valuation integration, and ranking still resolve only through the registry and active scope records."
         actions={
           <div className="page-actions__group">
             <Link className="button button--ghost" href="/admin/health">
@@ -53,7 +53,7 @@ export default async function AdminModelReleasesPage() {
         <StatCard tone="accent" label="Releases" value={String(items.length)} detail="Immutable hidden release records" />
         <StatCard tone="success" label="Active" value={String(activeCount)} detail="Currently resolved hidden scopes" />
         <StatCard tone="warning" label="Not ready" value={String(notReadyCount)} detail="Honest insufficient-data states remain visible" />
-        <StatCard tone="danger" label="Visibility" value="Hidden only" detail="No standard-analyst visible probability rollout in Phase 6A" />
+        <StatCard tone="danger" label="Visibility" value="Hidden only" detail="No standard-analyst visible probability rollout in Phase 7A" />
       </section>
 
       <Panel

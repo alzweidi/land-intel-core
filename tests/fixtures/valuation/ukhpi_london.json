@@ -1,0 +1,41 @@
+{
+  "meta": {
+    "coverage_note": "Fixture-scale UKHPI rebasing data for Phase 7A local/dev.",
+    "coverage": [
+      {
+        "borough_id": "camden",
+        "source_family": "UKHPI",
+        "coverage_status": "COMPLETE",
+        "freshness_status": "FRESH",
+        "coverage_note": "Camden monthly UKHPI fixture support."
+      },
+      {
+        "borough_id": "southwark",
+        "source_family": "UKHPI",
+        "coverage_status": "COMPLETE",
+        "freshness_status": "FRESH",
+        "coverage_note": "Southwark monthly UKHPI fixture support."
+      }
+    ]
+  },
+  "index_rows": [
+    { "borough_id": null, "index_key": "UKHPI", "period_month": "2024-05-01", "index_value": 121.4 },
+    { "borough_id": null, "index_key": "UKHPI", "period_month": "2024-08-01", "index_value": 122.6 },
+    { "borough_id": null, "index_key": "UKHPI", "period_month": "2025-01-01", "index_value": 124.8 },
+    { "borough_id": null, "index_key": "UKHPI", "period_month": "2025-06-01", "index_value": 127.1 },
+    { "borough_id": null, "index_key": "UKHPI", "period_month": "2025-11-01", "index_value": 129.4 },
+    { "borough_id": null, "index_key": "UKHPI", "period_month": "2026-04-01", "index_value": 131.0 },
+    { "borough_id": "camden", "index_key": "UKHPI", "period_month": "2024-05-01", "index_value": 128.2 },
+    { "borough_id": "camden", "index_key": "UKHPI", "period_month": "2024-08-01", "index_value": 129.5 },
+    { "borough_id": "camden", "index_key": "UKHPI", "period_month": "2025-01-01", "index_value": 131.8 },
+    { "borough_id": "camden", "index_key": "UKHPI", "period_month": "2025-06-01", "index_value": 134.1 },
+    { "borough_id": "camden", "index_key": "UKHPI", "period_month": "2025-11-01", "index_value": 136.0 },
+    { "borough_id": "camden", "index_key": "UKHPI", "period_month": "2026-04-01", "index_value": 137.7 },
+    { "borough_id": "southwark", "index_key": "UKHPI", "period_month": "2024-05-01", "index_value": 119.5 },
+    { "borough_id": "southwark", "index_key": "UKHPI", "period_month": "2024-08-01", "index_value": 120.2 },
+    { "borough_id": "southwark", "index_key": "UKHPI", "period_month": "2025-01-01", "index_value": 121.7 },
+    { "borough_id": "southwark", "index_key": "UKHPI", "period_month": "2025-06-01", "index_value": 123.8 },
+    { "borough_id": "southwark", "index_key": "UKHPI", "period_month": "2025-11-01", "index_value": 125.0 },
+    { "borough_id": "southwark", "index_key": "UKHPI", "period_month": "2026-04-01", "index_value": 126.4 }
+  ]
+}

@@ -1,12 +1,16 @@
-from sqlalchemy import select, text
+from sqlalchemy import func, select, text
 from sqlalchemy.orm import Session, selectinload
 
 from landintel.domain.enums import ModelReleaseStatus
 from landintel.domain.models import (
     ActiveReleaseScope,
+    AssessmentRun,
     BoroughBaselinePack,
     ModelRelease,
+    SiteCandidate,
     SourceCoverageSnapshot,
+    ValuationResult,
+    ValuationRun,
 )
 
 
@@ -35,6 +39,7 @@ def build_data_health(session: Session) -> dict[str, object]:
     status = "ok"
     if any(row.coverage_status.value != "COMPLETE" for row in latest.values()):
         status = "warning"
+    valuation_metrics = _build_valuation_metrics(session)
 
     return {
         "status": status,
@@ -75,6 +80,7 @@ def build_data_health(session: Session) -> dict[str, object]:
             }
             for pack in baseline_packs
         ],
+        "valuation_metrics": valuation_metrics,
     }
 
 
@@ -121,4 +127,41 @@ def build_model_health(session: Session) -> dict[str, object]:
             }
             for scope in active_scopes
         ],
+    }
+
+
+def _build_valuation_metrics(session: Session) -> dict[str, object]:
+    valuation_rows = session.execute(
+        select(ValuationResult)
+        .join(ValuationRun, ValuationRun.id == ValuationResult.valuation_run_id)
+        .join(AssessmentRun, AssessmentRun.id == ValuationRun.assessment_run_id)
+        .join(SiteCandidate, SiteCandidate.id == AssessmentRun.site_id)
+    ).scalars().all()
+    total = len(valuation_rows)
+    if total == 0:
+        return {
+            "total": 0,
+            "uplift_null_rate": None,
+            "asking_price_missing_rate": None,
+            "valuation_quality_distribution": {},
+        }
+
+    uplift_null_count = sum(1 for row in valuation_rows if row.uplift_mid is None)
+    asking_price_missing_count = session.execute(
+        select(func.count())
+        .select_from(AssessmentRun)
+        .join(ValuationRun, ValuationRun.assessment_run_id == AssessmentRun.id)
+        .join(SiteCandidate, SiteCandidate.id == AssessmentRun.site_id)
+        .where(SiteCandidate.current_price_gbp.is_(None))
+    ).scalar_one()
+    quality_distribution: dict[str, int] = {}
+    for row in valuation_rows:
+        quality_distribution[row.valuation_quality.value] = (
+            quality_distribution.get(row.valuation_quality.value, 0) + 1
+        )
+    return {
+        "total": total,
+        "uplift_null_rate": round(uplift_null_count / total, 4),
+        "asking_price_missing_rate": round(asking_price_missing_count / total, 4),
+        "valuation_quality_distribution": quality_distribution,
     }

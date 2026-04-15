@@ -21,6 +21,12 @@ from landintel.planning.reference_layers import (
     import_policy_area_fixture,
 )
 from landintel.storage.local import LocalFileStorageAdapter
+from landintel.valuation.assumptions import ensure_default_assumption_set
+from landintel.valuation.market import (
+    import_hmlr_price_paid_fixture,
+    import_land_comp_fixture,
+    import_ukhpi_fixture,
+)
 from sqlalchemy.orm import Session
 
 from services.api.app.main import create_app
@@ -209,6 +215,40 @@ def seed_planning_data(
             session=db_session,
             storage=storage,
             fixture_path=fixtures_root / "baseline_packs.json",
+            requested_by="pytest",
+        ),
+    }
+    db_session.commit()
+    return results
+
+
+@pytest.fixture()
+def seed_valuation_data(
+    db_session: Session,
+    storage: LocalFileStorageAdapter,
+    seed_reference_data,
+) -> dict[str, object]:
+    del seed_reference_data
+    fixtures_root = Path(__file__).parent / "fixtures" / "valuation"
+    assumption_set = ensure_default_assumption_set(db_session)
+    results = {
+        "assumptions": assumption_set.version,
+        "hmlr_price_paid": import_hmlr_price_paid_fixture(
+            session=db_session,
+            storage=storage,
+            fixture_path=fixtures_root / "hmlr_price_paid_london.json",
+            requested_by="pytest",
+        ),
+        "ukhpi": import_ukhpi_fixture(
+            session=db_session,
+            storage=storage,
+            fixture_path=fixtures_root / "ukhpi_london.json",
+            requested_by="pytest",
+        ),
+        "land_comps": import_land_comp_fixture(
+            session=db_session,
+            storage=storage,
+            fixture_path=fixtures_root / "land_comps_london.json",
             requested_by="pytest",
         ),
     }
