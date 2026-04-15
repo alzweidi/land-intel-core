@@ -449,7 +449,10 @@ def _evaluate_template_candidate(
 
     if baseline_pack is None:
         missing_data_flags.append("BASELINE_PACK_MISSING")
-    elif baseline_pack.status != BaselinePackStatus.PILOT_READY:
+    elif baseline_pack.status not in {
+        BaselinePackStatus.PILOT_READY,
+        BaselinePackStatus.SIGNED_OFF,
+    }:
         warning_codes.append("RULEPACK_NOT_PILOT_READY")
 
     if extant_permission.eligibility_status == EligibilityStatus.ABSTAIN:

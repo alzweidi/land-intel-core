@@ -495,6 +495,8 @@ export type AssessmentFeatureSnapshot = {
 
 export type AssessmentResult = {
   id: string;
+  model_release_id: string | null;
+  release_scope_key: string | null;
   eligibility_status: string;
   estimate_status: string;
   review_status: string;
@@ -504,6 +506,8 @@ export type AssessmentResult = {
   source_coverage_quality: string | null;
   geometry_quality: string | null;
   support_quality: string | null;
+  scenario_quality: string | null;
+  ood_quality: string | null;
   ood_status: string | null;
   manual_review_required: boolean;
   result_json: Record<string, unknown>;
@@ -612,7 +616,9 @@ export type PredictionLedger = {
   site_geom_hash: string;
   feature_hash: string;
   model_release_id: string | null;
+  release_scope_key: string | null;
   calibration_hash: string | null;
+  response_mode: string;
   source_snapshot_ids_json: string[];
   raw_asset_ids_json: string[];
   result_payload_hash: string;
@@ -655,6 +661,57 @@ export type AssessmentCreateInput = {
   scenario_id: string;
   as_of_date: string;
   requested_by?: string;
+  hidden_mode?: boolean;
+};
+
+export type ActiveReleaseScope = {
+  id: string;
+  scope_key: string;
+  template_key: string;
+  release_channel: string;
+  borough_id: string | null;
+  model_release_id: string;
+  activated_by: string | null;
+  activated_at: string;
+};
+
+export type ModelReleaseSummary = {
+  id: string;
+  template_key: string;
+  release_channel: string;
+  scope_key: string;
+  scope_borough_id: string | null;
+  status: string;
+  model_kind: string;
+  transform_version: string;
+  feature_version: string;
+  calibration_method: string;
+  support_count: number;
+  positive_count: number;
+  negative_count: number;
+  reason_text: string | null;
+  activated_by: string | null;
+  activated_at: string | null;
+  retired_by: string | null;
+  retired_at: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+export type ModelReleaseDetail = ModelReleaseSummary & {
+  model_artifact_path: string | null;
+  model_artifact_hash: string | null;
+  calibration_artifact_path: string | null;
+  calibration_artifact_hash: string | null;
+  validation_artifact_path: string | null;
+  validation_artifact_hash: string | null;
+  model_card_path: string | null;
+  model_card_hash: string | null;
+  train_window_start: string | null;
+  train_window_end: string | null;
+  metrics_json: Record<string, unknown>;
+  manifest_json: Record<string, unknown>;
+  active_scopes: ActiveReleaseScope[];
 };
 
 export type HistoricalLabelReviewInput = {
@@ -1753,6 +1810,14 @@ function mapAssessmentResult(value: unknown): AssessmentResult | null {
 
   return {
     id: toStringValue(value.id),
+    model_release_id:
+      value.model_release_id === null || value.model_release_id === undefined
+        ? null
+        : toStringValue(value.model_release_id),
+    release_scope_key:
+      value.release_scope_key === null || value.release_scope_key === undefined
+        ? null
+        : toStringValue(value.release_scope_key),
     eligibility_status: toStringValue(value.eligibility_status ?? value.eligibilityStatus),
     estimate_status: toStringValue(value.estimate_status ?? value.estimateStatus, 'NONE'),
     review_status: toStringValue(value.review_status ?? value.reviewStatus),
@@ -1780,6 +1845,14 @@ function mapAssessmentResult(value: unknown): AssessmentResult | null {
       value.support_quality === null || value.support_quality === undefined
         ? null
         : toStringValue(value.support_quality),
+    scenario_quality:
+      value.scenario_quality === null || value.scenario_quality === undefined
+        ? null
+        : toStringValue(value.scenario_quality),
+    ood_quality:
+      value.ood_quality === null || value.ood_quality === undefined
+        ? null
+        : toStringValue(value.ood_quality),
     ood_status:
       value.ood_status === null || value.ood_status === undefined
         ? null
@@ -2081,10 +2154,15 @@ function mapPredictionLedger(value: unknown): PredictionLedger | null {
       value.model_release_id === null || value.model_release_id === undefined
         ? null
         : toStringValue(value.model_release_id),
+    release_scope_key:
+      value.release_scope_key === null || value.release_scope_key === undefined
+        ? null
+        : toStringValue(value.release_scope_key),
     calibration_hash:
       value.calibration_hash === null || value.calibration_hash === undefined
         ? null
         : toStringValue(value.calibration_hash),
+    response_mode: toStringValue(value.response_mode ?? value.responseMode),
     source_snapshot_ids_json: pickCollection(
       value.source_snapshot_ids_json as ApiCollectionResponse<unknown>
     ).map((item) => toStringValue(item)),
@@ -2152,6 +2230,131 @@ function mapAssessmentDetail(value: unknown): AssessmentDetail | null {
     comparable_case_set: mapComparableCaseSet(value.comparable_case_set ?? value.comparableCaseSet),
     prediction_ledger: mapPredictionLedger(value.prediction_ledger ?? value.predictionLedger),
     note: toStringValue(value.note)
+  };
+}
+
+function mapActiveReleaseScope(value: unknown): ActiveReleaseScope {
+  if (!isRecord(value)) {
+    throw new Error('Invalid active release scope');
+  }
+
+  return {
+    id: toStringValue(value.id),
+    scope_key: toStringValue(value.scope_key ?? value.scopeKey),
+    template_key: toStringValue(value.template_key ?? value.templateKey),
+    release_channel: toStringValue(value.release_channel ?? value.releaseChannel),
+    borough_id:
+      value.borough_id === null || value.borough_id === undefined
+        ? null
+        : toStringValue(value.borough_id),
+    model_release_id: toStringValue(value.model_release_id ?? value.modelReleaseId),
+    activated_by:
+      value.activated_by === null || value.activated_by === undefined
+        ? null
+        : toStringValue(value.activated_by),
+    activated_at: toStringValue(value.activated_at ?? value.activatedAt)
+  };
+}
+
+function mapModelReleaseSummary(value: unknown): ModelReleaseSummary {
+  if (!isRecord(value)) {
+    throw new Error('Invalid model release summary');
+  }
+
+  return {
+    id: toStringValue(value.id),
+    template_key: toStringValue(value.template_key ?? value.templateKey),
+    release_channel: toStringValue(value.release_channel ?? value.releaseChannel),
+    scope_key: toStringValue(value.scope_key ?? value.scopeKey),
+    scope_borough_id:
+      value.scope_borough_id === null || value.scope_borough_id === undefined
+        ? null
+        : toStringValue(value.scope_borough_id),
+    status: toStringValue(value.status),
+    model_kind: toStringValue(value.model_kind ?? value.modelKind),
+    transform_version: toStringValue(value.transform_version ?? value.transformVersion),
+    feature_version: toStringValue(value.feature_version ?? value.featureVersion),
+    calibration_method: toStringValue(value.calibration_method ?? value.calibrationMethod),
+    support_count: toNumberValue(value.support_count ?? value.supportCount) ?? 0,
+    positive_count: toNumberValue(value.positive_count ?? value.positiveCount) ?? 0,
+    negative_count: toNumberValue(value.negative_count ?? value.negativeCount) ?? 0,
+    reason_text:
+      value.reason_text === null || value.reason_text === undefined
+        ? null
+        : toStringValue(value.reason_text),
+    activated_by:
+      value.activated_by === null || value.activated_by === undefined
+        ? null
+        : toStringValue(value.activated_by),
+    activated_at:
+      value.activated_at === null || value.activated_at === undefined
+        ? null
+        : toStringValue(value.activated_at),
+    retired_by:
+      value.retired_by === null || value.retired_by === undefined
+        ? null
+        : toStringValue(value.retired_by),
+    retired_at:
+      value.retired_at === null || value.retired_at === undefined
+        ? null
+        : toStringValue(value.retired_at),
+    created_at: toStringValue(value.created_at ?? value.createdAt),
+    updated_at: toStringValue(value.updated_at ?? value.updatedAt)
+  };
+}
+
+function mapModelReleaseDetail(value: unknown): ModelReleaseDetail | null {
+  if (!isRecord(value)) {
+    return null;
+  }
+
+  return {
+    ...mapModelReleaseSummary(value),
+    model_artifact_path:
+      value.model_artifact_path === null || value.model_artifact_path === undefined
+        ? null
+        : toStringValue(value.model_artifact_path),
+    model_artifact_hash:
+      value.model_artifact_hash === null || value.model_artifact_hash === undefined
+        ? null
+        : toStringValue(value.model_artifact_hash),
+    calibration_artifact_path:
+      value.calibration_artifact_path === null || value.calibration_artifact_path === undefined
+        ? null
+        : toStringValue(value.calibration_artifact_path),
+    calibration_artifact_hash:
+      value.calibration_artifact_hash === null || value.calibration_artifact_hash === undefined
+        ? null
+        : toStringValue(value.calibration_artifact_hash),
+    validation_artifact_path:
+      value.validation_artifact_path === null || value.validation_artifact_path === undefined
+        ? null
+        : toStringValue(value.validation_artifact_path),
+    validation_artifact_hash:
+      value.validation_artifact_hash === null || value.validation_artifact_hash === undefined
+        ? null
+        : toStringValue(value.validation_artifact_hash),
+    model_card_path:
+      value.model_card_path === null || value.model_card_path === undefined
+        ? null
+        : toStringValue(value.model_card_path),
+    model_card_hash:
+      value.model_card_hash === null || value.model_card_hash === undefined
+        ? null
+        : toStringValue(value.model_card_hash),
+    train_window_start:
+      value.train_window_start === null || value.train_window_start === undefined
+        ? null
+        : toStringValue(value.train_window_start),
+    train_window_end:
+      value.train_window_end === null || value.train_window_end === undefined
+        ? null
+        : toStringValue(value.train_window_end),
+    metrics_json: isRecord(value.metrics_json) ? value.metrics_json : {},
+    manifest_json: isRecord(value.manifest_json) ? value.manifest_json : {},
+    active_scopes: pickCollection(value.active_scopes as ApiCollectionResponse<unknown>).map(
+      mapActiveReleaseScope
+    )
   };
 }
 
@@ -2757,9 +2960,14 @@ export async function getAssessments(
 }
 
 export async function getAssessment(
-  assessmentId: string
+  assessmentId: string,
+  options: { hidden_mode?: boolean } = {}
 ): Promise<{ item: AssessmentDetail | null; apiAvailable: boolean }> {
-  const payload = await requestJson(`/api/assessments/${encodeURIComponent(assessmentId)}`);
+  const payload = await requestJson(
+    `/api/assessments/${encodeURIComponent(assessmentId)}${buildQueryString({
+      hidden_mode: options.hidden_mode ? true : undefined
+    })}`
+  );
   return {
     apiAvailable: payload !== null,
     item: payload ? mapAssessmentDetail(payload) : null
@@ -2774,7 +2982,8 @@ export async function createAssessment(
       site_id: input.site_id,
       scenario_id: input.scenario_id,
       as_of_date: input.as_of_date,
-      requested_by: input.requested_by ?? 'web-ui'
+      requested_by: input.requested_by ?? 'web-ui',
+      hidden_mode: input.hidden_mode ?? false
     }),
     headers: {
       'Content-Type': 'application/json'
@@ -2809,6 +3018,29 @@ export async function getGoldSetCase(
   return {
     apiAvailable: payload !== null,
     item: payload ? mapHistoricalLabelCase(payload) : null
+  };
+}
+
+export async function getModelReleases(query: {
+  template_key?: string;
+} = {}): Promise<{ items: ModelReleaseSummary[]; apiAvailable: boolean }> {
+  const result = await queryApiCollection(
+    `/api/admin/model-releases${buildQueryString(query)}`,
+    mapModelReleaseSummary
+  );
+  return {
+    items: result.items,
+    apiAvailable: result.apiAvailable
+  };
+}
+
+export async function getModelRelease(
+  releaseId: string
+): Promise<{ item: ModelReleaseDetail | null; apiAvailable: boolean }> {
+  const payload = await requestJson(`/api/admin/model-releases/${encodeURIComponent(releaseId)}`);
+  return {
+    apiAvailable: payload !== null,
+    item: payload ? mapModelReleaseDetail(payload) : null
   };
 }
 

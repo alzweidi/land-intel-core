@@ -314,7 +314,10 @@ def assemble_scenario_evidence(
                 )
             )
 
-            if baseline_pack.status != BaselinePackStatus.PILOT_READY:
+            if baseline_pack.status not in {
+                BaselinePackStatus.PILOT_READY,
+                BaselinePackStatus.SIGNED_OFF,
+            }:
                 unknown_items.append(
                     EvidenceItemRead(
                         polarity=EvidencePolarity.UNKNOWN,

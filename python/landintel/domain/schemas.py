@@ -9,6 +9,7 @@ from pydantic import AnyHttpUrl, BaseModel, ConfigDict, Field
 from landintel.domain.enums import (
     AssessmentRunState,
     BaselinePackStatus,
+    CalibrationMethod,
     ComparableOutcome,
     ComplianceMode,
     ConnectorType,
@@ -30,8 +31,10 @@ from landintel.domain.enums import (
     ListingClusterStatus,
     ListingStatus,
     ListingType,
+    ModelReleaseStatus,
     PriceBasisType,
     ProposalForm,
+    ReleaseChannel,
     ReviewStatus,
     ScenarioSource,
     ScenarioStatus,
@@ -627,6 +630,7 @@ class AssessmentRequest(BaseModel):
     scenario_id: UUID
     as_of_date: date
     requested_by: str | None = Field(default=None, max_length=255)
+    hidden_mode: bool = False
 
 
 class AssessmentFeatureSnapshotRead(BaseModel):
@@ -640,6 +644,8 @@ class AssessmentFeatureSnapshotRead(BaseModel):
 
 class AssessmentResultRead(BaseModel):
     id: UUID
+    model_release_id: UUID | None = None
+    release_scope_key: str | None = None
     eligibility_status: EligibilityStatus
     estimate_status: EstimateStatus
     review_status: ReviewStatus
@@ -649,6 +655,8 @@ class AssessmentResultRead(BaseModel):
     source_coverage_quality: str | None
     geometry_quality: str | None
     support_quality: str | None
+    scenario_quality: str | None
+    ood_quality: str | None
     ood_status: str | None
     manual_review_required: bool
     result_json: dict[str, Any]
@@ -748,7 +756,9 @@ class PredictionLedgerRead(BaseModel):
     site_geom_hash: str
     feature_hash: str
     model_release_id: UUID | None
+    release_scope_key: str | None = None
     calibration_hash: str | None
+    response_mode: str
     source_snapshot_ids_json: list[str]
     raw_asset_ids_json: list[str]
     result_payload_hash: str
@@ -784,6 +794,75 @@ class AssessmentDetailRead(AssessmentSummaryRead):
     comparable_case_set: ComparableCaseSetRead | None = None
     prediction_ledger: PredictionLedgerRead | None = None
     note: str
+
+
+class ActiveReleaseScopeRead(BaseModel):
+    id: UUID
+    scope_key: str
+    template_key: str
+    release_channel: ReleaseChannel
+    borough_id: str | None
+    model_release_id: UUID
+    activated_by: str | None
+    activated_at: datetime
+
+
+class ModelReleaseSummaryRead(BaseModel):
+    id: UUID
+    template_key: str
+    release_channel: ReleaseChannel
+    scope_key: str
+    scope_borough_id: str | None
+    status: ModelReleaseStatus
+    model_kind: str
+    transform_version: str
+    feature_version: str
+    calibration_method: CalibrationMethod
+    support_count: int
+    positive_count: int
+    negative_count: int
+    reason_text: str | None
+    activated_by: str | None
+    activated_at: datetime | None
+    retired_by: str | None
+    retired_at: datetime | None
+    created_at: datetime
+    updated_at: datetime
+
+
+class ModelReleaseDetailRead(ModelReleaseSummaryRead):
+    model_artifact_path: str | None
+    model_artifact_hash: str | None
+    calibration_artifact_path: str | None
+    calibration_artifact_hash: str | None
+    validation_artifact_path: str | None
+    validation_artifact_hash: str | None
+    model_card_path: str | None
+    model_card_hash: str | None
+    train_window_start: date | None
+    train_window_end: date | None
+    metrics_json: dict[str, Any]
+    manifest_json: dict[str, Any]
+    active_scopes: list[ActiveReleaseScopeRead] = Field(default_factory=list)
+
+
+class ModelReleaseListResponse(BaseModel):
+    items: list[ModelReleaseSummaryRead]
+    total: int
+
+
+class ModelReleaseRebuildRequest(BaseModel):
+    requested_by: str | None = Field(default=None, max_length=255)
+    template_keys: list[str] | None = None
+    auto_activate_hidden: bool = False
+
+
+class ModelReleaseActivateRequest(BaseModel):
+    requested_by: str | None = Field(default=None, max_length=255)
+
+
+class ModelReleaseRetireRequest(BaseModel):
+    requested_by: str | None = Field(default=None, max_length=255)
 
 
 class AssessmentListResponse(BaseModel):

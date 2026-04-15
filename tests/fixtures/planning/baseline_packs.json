@@ -23,10 +23,10 @@
     {
       "borough_id": "camden",
       "version": "phase4a-fixture-v1",
-      "status": "PILOT_READY",
+      "status": "SIGNED_OFF",
       "freshness_status": "FRESH",
-      "signed_off_by": null,
-      "signed_off_at": null,
+      "signed_off_by": "fixture-planning-lead",
+      "signed_off_at": "2026-04-15T09:00:00Z",
       "pack_json": {
         "borough_name": "London Borough of Camden",
         "scenario_phase": "Phase 4A",
@@ -47,7 +47,7 @@
       "rulepacks": [
         {
           "template_key": "resi_1_4_full",
-          "status": "PILOT_READY",
+          "status": "SIGNED_OFF",
           "freshness_status": "FRESH",
           "effective_from": "2026-04-15",
           "effective_to": null,
@@ -84,7 +84,7 @@
         },
         {
           "template_key": "resi_5_9_full",
-          "status": "PILOT_READY",
+          "status": "SIGNED_OFF",
           "freshness_status": "FRESH",
           "effective_from": "2026-04-15",
           "effective_to": null,
@@ -121,7 +121,7 @@
         },
         {
           "template_key": "resi_10_49_outline",
-          "status": "PILOT_READY",
+          "status": "SIGNED_OFF",
           "freshness_status": "FRESH",
           "effective_from": "2026-04-15",
           "effective_to": null,

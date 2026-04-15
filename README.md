@@ -2,7 +2,7 @@
 
 London-first land intelligence monorepo. The controlling spec for this repo is [docs/london_land_intelligence_implementation_spec_v1 (2).md](/Users/atta/land-intel-core/docs/london_land_intelligence_implementation_spec_v1%20(2).md).
 
-Phase 5A is implemented here. The repo now covers the Phase 1A listing pipeline, Phase 2 site geometry, Phase 3A planning context, Phase 4A scenario foundations, and the Phase 5A pre-score assessment foundation:
+Phase 6A is implemented here. The repo now covers the Phase 1A listing pipeline, Phase 2 site geometry, Phase 3A planning context, Phase 4A scenario foundations, Phase 5A assessment foundations, and the Phase 6A hidden-only scoring layer:
 - compliant connector framework and immutable listing snapshots
 - listing parsing, normalization, and deterministic clustering
 - site creation from listing clusters
@@ -20,8 +20,9 @@ Phase 5A is implemented here. The repo now covers the Phase 1A listing pipeline,
 - point-in-time feature snapshots with provenance, missingness flags, and stable feature hashing
 - frozen assessment runs with deterministic comparable retrieval and replay-safe prediction-ledger rows
 - minimal gold-set review APIs and internal review surface
+- hidden-only logistic-regression releases with calibration artifacts, OOD logic, estimate quality, explanation payloads, and replay-safe release resolution
 
-Phase 5B and Phase 6+ model work, calibration, OOD logic, scoring, valuation, ranking, visible probability, and hidden probability remain deferred.
+Phase 5B historical expansion plus Phase 7/8 visible rollout, valuation, ranking, overrides, and broader control-plane dashboards remain deferred.
 
 ## Repo Layout
 
@@ -73,14 +74,22 @@ source .venv/bin/activate
 python -m landintel.geospatial.bootstrap --dataset all --requested-by local-dev
 ```
 
-6. Bootstrap the local Phase 3A through Phase 5A planning fixtures:
+6. Bootstrap the local Phase 3A through Phase 6A planning fixtures:
 
 ```bash
 source .venv/bin/activate
 python -m landintel.planning.bootstrap --dataset all --requested-by local-dev
 ```
 
-7. Run services locally in separate terminals:
+7. Rebuild hidden model releases for the current fixture corpus:
+
+```bash
+curl -X POST http://localhost:8000/api/admin/model-releases/rebuild \
+  -H 'Content-Type: application/json' \
+  -d '{"requested_by":"local-dev","auto_activate_hidden":true}'
+```
+
+8. Run services locally in separate terminals:
 
 ```bash
 source .venv/bin/activate
@@ -102,7 +111,7 @@ cd services/web
 npm run dev
 ```
 
-8. Or boot the full stack with Docker:
+9. Or boot the full stack with Docker:
 
 ```bash
 docker compose up --build
@@ -187,7 +196,7 @@ curl -X POST http://localhost:8000/api/scenarios/<scenario_uuid>/confirm \
   -d '{"action":"confirm","reviewed_by":"local-smoke","review_notes":"Analyst confirmed after reviewing rulepack fit."}'
 ```
 
-Create and inspect a frozen pre-score assessment:
+Create and inspect a frozen assessment, then open hidden mode explicitly:
 
 ```bash
 curl -X POST http://localhost:8000/api/assessments \
@@ -196,6 +205,8 @@ curl -X POST http://localhost:8000/api/assessments \
 
 curl http://localhost:8000/api/assessments
 curl http://localhost:8000/api/assessments/<assessment_uuid>
+curl 'http://localhost:8000/api/assessments/<assessment_uuid>?hidden_mode=true'
+curl http://localhost:8000/api/admin/model-releases
 ```
 
 Inspect and review gold-set cases:
@@ -264,6 +275,12 @@ Minimal `refresh_policy_json` for an automated source:
 - `GET /api/admin/gold-set/cases`
 - `GET /api/admin/gold-set/cases/{case_id}`
 - `POST /api/admin/gold-set/cases/{case_id}/review`
+- `GET /api/admin/model-releases`
+- `GET /api/admin/model-releases/{release_id}`
+- `POST /api/admin/model-releases/rebuild`
+- `POST /api/admin/model-releases/{release_id}/activate`
+- `POST /api/admin/model-releases/{release_id}/retire`
+- `GET /api/health/model`
 - `GET /api/health/data`
 
 ## Reference Data Bootstrap
@@ -277,7 +294,7 @@ Minimal `refresh_policy_json` for an automated source:
 - `python -m landintel.planning.bootstrap --dataset policy --requested-by local-dev` imports London DataMap / borough policy area fixtures.
 - `python -m landintel.planning.bootstrap --dataset constraints --requested-by local-dev` imports Planning Data, flood, heritage, and Article 4 fixtures.
 - `python -m landintel.planning.bootstrap --dataset baseline --requested-by local-dev` imports cited pilot-borough baseline packs and machine-readable rulepacks.
-- `python -m landintel.planning.bootstrap --dataset all --requested-by local-dev` runs the full Phase 3A through Phase 5A fixture bootstrap.
+- `python -m landintel.planning.bootstrap --dataset all --requested-by local-dev` runs the full Phase 3A through Phase 6A fixture bootstrap.
 - local/dev uses fixture-scale coverage only; this phase does not attempt national bulk ingestion.
 
 ## Geometry Confidence Meanings
@@ -323,10 +340,20 @@ All canonical calculations run in EPSG:27700. EPSG:4326 is stored only for displ
 - borough register data remains the authority of record where available; PLD is supplemental only
 - point-in-time features use only information available on or before the frozen `as_of_date`
 - replay of the same frozen assessment input must reproduce the same feature hash and payload hash
-- assessment runs require a confirmed scenario and stay pre-score with `estimate_status = NONE`
+- assessment runs require a confirmed scenario and always freeze the same PIT artifacts for the same inputs
+- hidden scoring resolves only through `model_release` and `active_release_scope`
+- hidden probability stays redacted on standard reads and is only exposed via explicit hidden mode
 - comparable retrieval is deterministic explanation infrastructure only, not a substitute model
 
-## Phase 5A Rules
+## Hidden Release Behavior
+
+- hidden releases are rebuilt from deterministic historical labels and frozen PIT feature snapshots only
+- the champion model is a regularized logistic regression over explicit, versioned, interpretable features
+- each release stores immutable model, calibration, validation, and model-card artifacts through the storage abstraction
+- a release is activatable only when validation completes honestly for that template family; otherwise it remains `NOT_READY` with stored reasons
+- replay uses the frozen feature snapshot, resolved release metadata, and ledger payload hash to verify the same assessment can be reproduced exactly
+
+## Phase 6A Rules
 
 - the assessed object is the site geometry, not an individual title polygon
 - title polygons are indicative evidence only and can support multi-title linkage
@@ -339,10 +366,12 @@ All canonical calculations run in EPSG:27700. EPSG:4326 is stored only for displ
 - do not infer planning truth, policy truth, or parcel-only scoring signals from listing text
 - do not use brochure OCR/CV, speculative polygon inference, or LLM-generated planning facts in this phase
 - scenarios are hypotheses, not facts
-- no visible or hidden probability is implemented in this phase
-- no valuation, ranking, or model training is implemented in this phase
+- no standard-analyst visible probability rollout is implemented in this phase
+- hidden scoring is allowed only for confirmed scenarios through an active hidden release scope
+- no valuation or ranking is implemented in this phase
 - do not downgrade an `ABSTAIN` / manual-review condition just because a scenario exists
 - if strong nearest historical support cannot be shown honestly, default to `ANALYST_REQUIRED`
+- if support is insufficient for a template, register an explicit `NOT_READY` release instead of pretending validation passed
 
 ## Implemented Source Families
 
@@ -403,20 +432,18 @@ docker compose ps
 - missing fields stay null; the parser does not invent planning claims or geometry
 - Phase 3A planning imports stay fixture-scale for local/dev and focus on deterministic site enrichment, not citywide production ingest
 - Phase 4A scenario suggestions stay deterministic, testable, and config-driven; they are not predictions
-- Phase 5A assessment runs stay pre-score only and use deterministic comparable fallback rules with stable replay hashes
+- Phase 6A hidden releases stay honest: supported templates can score in hidden mode, unsupported templates remain `NOT_READY`
+- hidden-mode scoring is internal only and standard assessment reads stay non-speaking by default
 - pilot borough rulepacks are usable operational summaries for fixture boroughs, but they are not a substitute for analyst judgment or legal advice
 
-## Deferred To Phase 5B And Phase 6+
+## Deferred To Phase 5B And Phase 7/8
 
 - broader gold-set tooling and larger review workflow UX
 - richer historical backfill and point-in-time reconstruction coverage
 - feature snapshots for model training beyond the frozen Phase 5A artifact path
-- scoring
-- calibration
-- OOD logic
 - valuation
 - ranking
-- visible probability
-- hidden probability
+- standard-analyst visible probability rollout
+- broader hidden-mode operations and visible release controls
 - comparable-case ranking logic
-- model training and release management
+- broader historical backfill and richer release operations

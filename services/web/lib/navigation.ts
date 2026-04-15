@@ -56,7 +56,7 @@ export const navGroups: NavGroup[] = [
       {
         href: '/assessments',
         label: 'Assessments',
-        description: 'Frozen pre-score assessment runs'
+        description: 'Frozen assessments with hidden internal scoring'
       }
     ]
   },
@@ -82,6 +82,11 @@ export const navGroups: NavGroup[] = [
         href: '/admin/health',
         label: 'Admin health',
         description: 'Jobs, auth, and service checks'
+      },
+      {
+        href: '/admin/model-releases',
+        label: 'Model releases',
+        description: 'Hidden release registry and activation state'
       }
     ]
   }
@@ -127,8 +132,8 @@ export const surfaceCatalog = [
   {
     href: '/assessments',
     title: 'Assessment view',
-    summary: 'Inspect frozen pre-score runs with evidence, comparables, provenance, and replay metadata.',
-    tag: 'pre-score'
+    summary: 'Inspect frozen runs with evidence, comparables, provenance, replay metadata, and hidden internal scoring mode.',
+    tag: 'hidden score'
   },
   {
     href: '/review-queue',

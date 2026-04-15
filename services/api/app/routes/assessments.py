@@ -11,9 +11,10 @@ from landintel.domain.schemas import (
     PlaceholderResponse,
 )
 from landintel.services.assessments_readback import get_assessment, list_assessments
+from landintel.storage.base import StorageAdapter
 from sqlalchemy.orm import Session
 
-from ..dependencies import get_db_session
+from ..dependencies import get_db_session, get_storage_adapter
 
 router = APIRouter(tags=["assessments"])
 
@@ -22,6 +23,7 @@ router = APIRouter(tags=["assessments"])
 def create_assessment(
     request: AssessmentRequest,
     session: Session = Depends(get_db_session),
+    storage: StorageAdapter = Depends(get_storage_adapter),
 ) -> AssessmentDetailRead:
     try:
         run = create_or_refresh_assessment_run(
@@ -30,6 +32,7 @@ def create_assessment(
             scenario_id=request.scenario_id,
             as_of_date=request.as_of_date,
             requested_by=request.requested_by,
+            storage=storage,
         )
         session.commit()
         session.expire_all()
@@ -40,7 +43,11 @@ def create_assessment(
             detail=str(exc),
         ) from exc
 
-    detail = get_assessment(session=session, assessment_id=run.id)
+    detail = get_assessment(
+        session=session,
+        assessment_id=run.id,
+        include_hidden=request.hidden_mode,
+    )
     if detail is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -69,9 +76,14 @@ def get_assessment_runs(
 @router.get("/api/assessments/{assessment_id}", response_model=AssessmentDetailRead)
 def get_assessment_detail(
     assessment_id: UUID,
+    hidden_mode: bool = Query(default=False),
     session: Session = Depends(get_db_session),
 ) -> AssessmentDetailRead:
-    detail = get_assessment(session=session, assessment_id=assessment_id)
+    detail = get_assessment(
+        session=session,
+        assessment_id=assessment_id,
+        include_hidden=hidden_mode,
+    )
     if detail is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,

@@ -32,13 +32,14 @@ export default async function AssessmentsPage({
   const items = result.items;
   const manualReviewCount = items.filter((item) => item.manual_review_required).length;
   const readyCount = items.filter((item) => item.state === 'READY').length;
+  const hiddenReadyCount = items.filter((item) => item.estimate_status !== 'NONE').length;
 
   return (
     <div className="page-stack">
       <PageHeader
-        eyebrow="Phase 5A"
-        title="Frozen pre-score assessments"
-        summary="Assessment runs now freeze point-in-time features, provenance, evidence, comparables, and replay metadata. Probability, scoring, valuation, and ranking remain unavailable."
+        eyebrow="Phase 6A"
+        title="Frozen hidden-score assessments"
+        summary="Assessment runs now freeze point-in-time features, provenance, evidence, comparables, replay metadata, and hidden-only scoring when a valid release exists. Standard analyst reads remain non-speaking."
         actions={
           <div className="page-actions__group">
             <Link className="button button--ghost" href="/sites">
@@ -47,15 +48,18 @@ export default async function AssessmentsPage({
             <Link className="button button--ghost" href="/review-queue">
               Open gold-set review
             </Link>
+            <Link className="button button--ghost" href="/admin/model-releases">
+              Model releases
+            </Link>
           </div>
         }
       />
 
       <section className="stat-grid">
         <StatCard tone="accent" label="Runs" value={String(items.length)} detail="Frozen artifacts available for replay-safe inspection" />
-        <StatCard tone="success" label="Ready" value={String(readyCount)} detail="Assessment runs completed without model execution" />
+        <StatCard tone="success" label="Ready" value={String(readyCount)} detail="Assessment runs built successfully" />
         <StatCard tone="warning" label="Manual review" value={String(manualReviewCount)} detail="Coverage gaps and analyst-required states stay visible" />
-        <StatCard tone="danger" label="Probability" value="Hidden" detail="Phase 5A never computes visible or hidden probability" />
+        <StatCard tone="danger" label="Hidden scored" value={String(hiddenReadyCount)} detail="Hidden-only estimates exist when an active release is available" />
       </section>
 
       <AssessmentRunBuilder initialScenarioId={scenarioId} initialSiteId={siteId} />
@@ -63,7 +67,11 @@ export default async function AssessmentsPage({
       <Panel
         eyebrow="Runs"
         title="Assessment history"
-        note={result.apiAvailable ? 'Live API' : 'API unavailable, showing current query result only'}
+        note={
+          result.apiAvailable
+            ? 'Live API. Open an assessment and add ?mode=hidden for internal evaluation mode.'
+            : 'API unavailable, showing current query result only'
+        }
       >
         {items.length === 0 ? (
           <p className="empty-note">

@@ -189,7 +189,7 @@ def test_assessment_api_returns_stable_pre_score_payload_and_replay_hashes(
     assert first_payload["result"]["estimate_status"] == "NONE"
     assert first_payload["result"]["approval_probability_raw"] is None
     assert first_payload["result"]["approval_probability_display"] is None
-    assert "Phase 5A" in first_payload["note"]
+    assert "Assessment artifacts are frozen" in first_payload["note"]
     assert first_payload["comparable_case_set"]["approved_count"] >= 1
     assert first_payload["comparable_case_set"]["refused_count"] >= 1
     assert first_payload["prediction_ledger"]["result_payload_hash"]

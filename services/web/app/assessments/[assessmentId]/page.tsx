@@ -22,18 +22,24 @@ function formatList(items: string[]): string {
 }
 
 export default async function AssessmentDetailPage({
-  params
+  params,
+  searchParams
 }: {
   params: { assessmentId: string };
+  searchParams?: Record<string, string | string[] | undefined>;
 }) {
-  const result = await getAssessment(params.assessmentId);
+  const hiddenMode =
+    typeof searchParams?.mode === 'string' && searchParams.mode.toLowerCase() === 'hidden';
+  const result = await getAssessment(params.assessmentId, {
+    hidden_mode: hiddenMode
+  });
   const assessment = result.item;
 
   if (!assessment) {
     return (
       <div className="page-stack">
         <PageHeader
-          eyebrow="Phase 5A"
+          eyebrow="Phase 6A"
           title="Assessment not found"
           summary={`No frozen assessment run is available for ${params.assessmentId}.`}
           actions={
@@ -53,17 +59,40 @@ export default async function AssessmentDetailPage({
     unknown
   >;
   const sourceCoverage = assessment.feature_snapshot?.coverage_json.source_coverage;
+  const hiddenExplanation = assessment.result?.result_json?.explanation as
+    | Record<string, unknown>
+    | undefined;
+  const topPositiveDrivers = Array.isArray(hiddenExplanation?.top_positive_drivers)
+    ? hiddenExplanation.top_positive_drivers
+    : [];
+  const topNegativeDrivers = Array.isArray(hiddenExplanation?.top_negative_drivers)
+    ? hiddenExplanation.top_negative_drivers
+    : [];
+  const unknowns = Array.isArray(hiddenExplanation?.unknowns) ? hiddenExplanation.unknowns : [];
 
   return (
     <div className="page-stack">
       <PageHeader
-        eyebrow="Phase 5A"
+        eyebrow="Phase 6A"
         title={`Assessment ${assessment.id}`}
         summary={assessment.note}
         actions={
           <div className="page-actions__group">
             <Link className="button button--ghost" href="/assessments">
               Back to assessments
+            </Link>
+            <Link
+              className="button button--ghost"
+              href={
+                hiddenMode
+                  ? `/assessments/${assessment.id}`
+                  : `/assessments/${assessment.id}?mode=hidden`
+              }
+            >
+              {hiddenMode ? 'Open standard view' : 'Open hidden evaluation mode'}
+            </Link>
+            <Link className="button button--ghost" href="/admin/model-releases">
+              Model releases
             </Link>
             {assessment.site_summary ? (
               <Link className="button button--ghost" href={`/sites/${assessment.site_summary.site_id}`}>
@@ -75,11 +104,57 @@ export default async function AssessmentDetailPage({
       />
 
       <section className="stat-grid">
-        <StatCard tone="danger" label="Estimate" value={assessment.estimate_status} detail="Probability and scoring remain disabled in Phase 5A" />
+        <StatCard
+          tone={hiddenMode ? 'danger' : 'accent'}
+          label="Estimate"
+          value={assessment.estimate_status}
+          detail={
+            hiddenMode
+              ? 'Hidden internal estimate mode. The result remains non-speaking and not for standard analyst use.'
+              : 'Standard view stays redacted even when a hidden internal estimate exists.'
+          }
+        />
         <StatCard tone={reviewTone(assessment.review_status)} label="Review" value={assessment.review_status} detail={assessment.manual_review_required ? 'Analyst review is currently required' : 'No additional review flags are set'} />
         <StatCard tone="accent" label="Comparables" value={String((comparables?.approved_count ?? 0) + (comparables?.refused_count ?? 0))} detail="Explanation infrastructure only, not a substitute model" />
         <StatCard tone="success" label="Replay hash" value={assessment.prediction_ledger?.result_payload_hash.slice(0, 12) ?? 'Unavailable'} detail="Stable payload hash for replay verification" />
       </section>
+
+      {hiddenMode ? (
+        <Panel
+          eyebrow="Hidden mode"
+          title="Internal evaluation only"
+          note="This surface exposes the hidden Phase 6A score path. Standard analyst workflows remain non-speaking."
+        >
+          <DefinitionList
+            items={[
+              {
+                label: 'Rounded hidden probability',
+                value: assessment.result?.approval_probability_display ?? 'Unavailable'
+              },
+              {
+                label: 'Estimate quality',
+                value: assessment.result?.estimate_quality ?? 'Unavailable'
+              },
+              {
+                label: 'OOD status',
+                value: assessment.result?.ood_status ?? 'Unavailable'
+              },
+              {
+                label: 'Manual review',
+                value: assessment.manual_review_required ? 'Required' : 'Not required'
+              },
+              {
+                label: 'Model release',
+                value: assessment.result?.model_release_id ?? 'No active hidden release'
+              },
+              {
+                label: 'Release scope',
+                value: assessment.result?.release_scope_key ?? 'Unavailable'
+              }
+            ]}
+          />
+        </Panel>
+      ) : null}
 
       <div className="split-grid">
         <Panel eyebrow="Run" title="Frozen metadata">
@@ -154,13 +229,15 @@ export default async function AssessmentDetailPage({
           </pre>
         </Panel>
 
-        <Panel eyebrow="Result" title="Pre-score status">
+        <Panel eyebrow="Result" title={hiddenMode ? 'Hidden estimate status' : 'Standard result view'}>
           <DefinitionList
             items={[
               { label: 'Estimate status', value: assessment.result?.estimate_status ?? 'NONE' },
               { label: 'Coverage quality', value: assessment.result?.source_coverage_quality ?? 'Unknown' },
               { label: 'Geometry quality', value: assessment.result?.geometry_quality ?? 'Unknown' },
-              { label: 'Support quality', value: assessment.result?.support_quality ?? 'Unknown' }
+              { label: 'Support quality', value: assessment.result?.support_quality ?? 'Unknown' },
+              { label: 'Scenario quality', value: assessment.result?.scenario_quality ?? 'Unknown' },
+              { label: 'OOD quality', value: assessment.result?.ood_quality ?? 'Unknown' }
             ]}
           />
           <pre className="code-block" style={{ marginTop: 16, whiteSpace: 'pre-wrap' }}>
@@ -168,6 +245,76 @@ export default async function AssessmentDetailPage({
           </pre>
         </Panel>
       </div>
+
+      {hiddenMode ? (
+        <div className="split-grid">
+          <Panel eyebrow="Drivers" title="Top positive drivers">
+            <div className="card-stack">
+              {topPositiveDrivers.length === 0 ? (
+                <p className="empty-note">No positive driver detail is available for this hidden run.</p>
+              ) : (
+                topPositiveDrivers.map((item, index) => {
+                  const driver = item as Record<string, unknown>;
+                  return (
+                    <article className="mini-card" key={`positive-${index}`}>
+                      <div className="mini-card__top">
+                        <div>
+                          <div className="table-primary">{String(driver.label ?? driver.feature ?? 'Driver')}</div>
+                          <div className="table-secondary">{String(driver.feature ?? 'Unknown feature')}</div>
+                        </div>
+                        <Badge tone="success">{String(driver.contribution ?? 'n/a')}</Badge>
+                      </div>
+                    </article>
+                  );
+                })
+              )}
+            </div>
+          </Panel>
+
+          <Panel eyebrow="Drivers" title="Top negative drivers">
+            <div className="card-stack">
+              {topNegativeDrivers.length === 0 ? (
+                <p className="empty-note">No negative driver detail is available for this hidden run.</p>
+              ) : (
+                topNegativeDrivers.map((item, index) => {
+                  const driver = item as Record<string, unknown>;
+                  return (
+                    <article className="mini-card" key={`negative-${index}`}>
+                      <div className="mini-card__top">
+                        <div>
+                          <div className="table-primary">{String(driver.label ?? driver.feature ?? 'Driver')}</div>
+                          <div className="table-secondary">{String(driver.feature ?? 'Unknown feature')}</div>
+                        </div>
+                        <Badge tone="danger">{String(driver.contribution ?? 'n/a')}</Badge>
+                      </div>
+                    </article>
+                  );
+                })
+              )}
+            </div>
+          </Panel>
+        </div>
+      ) : null}
+
+      {hiddenMode ? (
+        <Panel eyebrow="Unknowns" title="Missing evidence and unresolved inputs">
+          <div className="card-stack">
+            {unknowns.length === 0 ? (
+              <p className="empty-note">No missing model inputs were emitted for this hidden run.</p>
+            ) : (
+              unknowns.map((item, index) => {
+                const unknown = item as Record<string, unknown>;
+                return (
+                  <article className="mini-card" key={`unknown-${index}`}>
+                    <div className="table-primary">{String(unknown.label ?? unknown.feature ?? 'Unknown')}</div>
+                    <div className="table-secondary">{String(unknown.feature ?? 'Unknown feature')}</div>
+                  </article>
+                );
+              })
+            )}
+          </div>
+        </Panel>
+      ) : null}
 
       <div className="split-grid">
         <Panel eyebrow="Evidence FOR" title="Supporting evidence">

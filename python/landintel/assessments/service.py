@@ -6,6 +6,8 @@ from datetime import UTC, date, datetime
 from landintel.assessments.comparables import build_comparable_case_set
 from landintel.domain.enums import (
     AssessmentRunState,
+    BaselinePackStatus,
+    EstimateQuality,
     EstimateStatus,
     EvidenceImportance,
     EvidencePolarity,
@@ -22,6 +24,7 @@ from landintel.domain.models import (
     ComparableCaseMember,
     ComparableCaseSet,
     EvidenceItem,
+    ModelRelease,
     PlanningApplication,
     PlanningApplicationDocument,
     PredictionLedger,
@@ -37,14 +40,25 @@ from landintel.features.build import build_feature_snapshot, canonical_json_hash
 from landintel.planning.enrich import get_borough_baseline_pack
 from landintel.planning.extant_permission import evaluate_site_extant_permission
 from landintel.planning.historical_labels import rebuild_historical_case_labels
+from landintel.scoring.release import (
+    load_release_artifact_json,
+    resolve_active_release,
+)
+from landintel.scoring.score import score_frozen_assessment
+from landintel.storage.base import StorageAdapter
 from sqlalchemy import select
 from sqlalchemy.orm import Session, selectinload
 
 ASSESSMENT_NAMESPACE = uuid.UUID("6f8c2b84-0ef7-4c40-891f-f1d54ef4f7ef")
 PRE_SCORE_MODEL_SENTINEL = "PHASE5A_PRE_SCORE"
 PRE_SCORE_NOTE = (
-    "Assessment scoring, calibration, and probability remain intentionally disabled in Phase 5A. "
-    "This run freezes features, evidence, comparables, and replay metadata only."
+    "Assessment artifacts are frozen as of the requested date. Hidden scoring is only applied "
+    "when an active hidden release exists, the relevant borough baseline pack is signed off, "
+    "and no abstain rule blocks execution."
+)
+HIDDEN_SCORE_NOTE = (
+    "Hidden score mode is active for this assessment. The probability remains non-speaking and "
+    "internal-only in Phase 6A."
 )
 
 
@@ -59,6 +73,7 @@ def create_or_refresh_assessment_run(
     scenario_id: uuid.UUID,
     as_of_date: date,
     requested_by: str | None,
+    storage: StorageAdapter | None = None,
 ) -> AssessmentRun:
     scenario = _load_scenario(session=session, scenario_id=scenario_id)
     site = scenario.site
@@ -66,7 +81,7 @@ def create_or_refresh_assessment_run(
         raise AssessmentBuildError("Scenario does not belong to the requested site.")
     if scenario.status not in {ScenarioStatus.AUTO_CONFIRMED, ScenarioStatus.ANALYST_CONFIRMED}:
         raise AssessmentBuildError(
-            "Assessment runs require a current confirmed scenario in Phase 5A."
+            "Assessment runs require a current confirmed scenario in Phase 6A."
         )
     if not scenario.is_current:
         raise AssessmentBuildError("Scenario is superseded and cannot anchor a new assessment run.")
@@ -157,6 +172,66 @@ def create_or_refresh_assessment_run(
             as_of_date=as_of_date,
             feature_json=feature_snapshot.feature_json,
         )
+        comparable_payload = {
+            "strategy": comparable_result.comparable_case_set.strategy,
+            "approved": _serialize_comparable_members(comparable_result.approved_members),
+            "refused": _serialize_comparable_members(comparable_result.refused_members),
+        }
+
+        active_release, release_scope_key = resolve_active_release(
+            session=session,
+            template_key=scenario.template_key,
+            borough_id=site.borough_id,
+        )
+        scored_result = None
+        score_execution_status = "NOT_IMPLEMENTED"
+        note_text = PRE_SCORE_NOTE
+        if (
+            active_release is not None
+            and storage is not None
+            and extant_permission.eligibility_status.value == "PASS"
+            and baseline_pack is not None
+            and baseline_pack.status == BaselinePackStatus.SIGNED_OFF
+        ):
+            model_artifact = load_release_artifact_json(
+                storage=storage,
+                release=active_release,
+                artifact="model",
+            )
+            calibration_artifact = load_release_artifact_json(
+                storage=storage,
+                release=active_release,
+                artifact="calibration",
+            )
+            validation_artifact = load_release_artifact_json(
+                storage=storage,
+                release=active_release,
+                artifact="validation",
+            )
+            if model_artifact and validation_artifact:
+                scored_result = score_frozen_assessment(
+                    model_artifact=model_artifact,
+                    calibration_artifact=calibration_artifact,
+                    validation_artifact=validation_artifact,
+                    release_id=str(active_release.id),
+                    feature_json=feature_snapshot.feature_json,
+                    coverage_json=feature_snapshot.coverage_json,
+                    site=site,
+                    scenario=scenario,
+                    evidence=assessment_evidence,
+                    comparable_case_set=comparable_result.comparable_case_set,
+                    comparable_payload=comparable_payload,
+                )
+                score_execution_status = "HIDDEN_ESTIMATE_AVAILABLE"
+                note_text = HIDDEN_SCORE_NOTE
+        elif active_release is None:
+            score_execution_status = "NO_ACTIVE_HIDDEN_RELEASE"
+        elif storage is None:
+            score_execution_status = "STORAGE_UNAVAILABLE"
+        elif baseline_pack is None or baseline_pack.status != BaselinePackStatus.SIGNED_OFF:
+            score_execution_status = "BASELINE_PACK_NOT_SIGNED_OFF"
+        elif extant_permission.eligibility_status.value != "PASS":
+            score_execution_status = "ABSTAIN"
 
         result = _upsert_assessment_result(
             session=session,
@@ -167,6 +242,11 @@ def create_or_refresh_assessment_run(
                 len(comparable_result.approved_members) + len(comparable_result.refused_members)
             ),
             coverage_json=feature_snapshot.coverage_json,
+            model_release=active_release,
+            release_scope_key=release_scope_key,
+            scored_result=scored_result,
+            score_execution_status=score_execution_status,
+            note_text=note_text,
         )
         stable_payload = _stable_result_payload(
             run=run,
@@ -175,7 +255,8 @@ def create_or_refresh_assessment_run(
             feature_snapshot=feature_snapshot,
             result=result,
             evidence=assessment_evidence,
-            comparable_result=comparable_result,
+            comparables=comparable_payload,
+            note_text=note_text,
         )
         ledger = _upsert_prediction_ledger(
             session=session,
@@ -184,6 +265,9 @@ def create_or_refresh_assessment_run(
             comparable_result=comparable_result,
             evidence=assessment_evidence,
             stable_payload=stable_payload,
+            model_release=active_release,
+            release_scope_key=release_scope_key,
+            response_mode="HIDDEN_SCORE" if scored_result else "PRE_SCORE",
         )
         run.state = AssessmentRunState.READY
         run.finished_at = datetime.now(UTC)
@@ -219,6 +303,7 @@ def build_assessment_artifacts_for_run(
     session: Session,
     assessment_run_id: uuid.UUID,
     requested_by: str | None,
+    storage: StorageAdapter | None = None,
 ) -> AssessmentRun:
     run = session.execute(
         select(AssessmentRun)
@@ -233,6 +318,7 @@ def build_assessment_artifacts_for_run(
         scenario_id=run.scenario_id,
         as_of_date=run.as_of_date,
         requested_by=requested_by or run.requested_by,
+        storage=storage,
     )
 
 
@@ -240,6 +326,7 @@ def verify_assessment_replay(
     *,
     session: Session,
     assessment_run: AssessmentRun,
+    storage: StorageAdapter | None = None,
 ) -> dict[str, object]:
     if (
         assessment_run.feature_snapshot is None
@@ -250,6 +337,55 @@ def verify_assessment_replay(
 
     evidence = _pack_from_rows(assessment_run.evidence_items)
     comparable_payload = _stable_comparable_payload(assessment_run)
+    scored_fields_match = True
+    if assessment_run.result.model_release_id and storage is not None:
+        release = session.get(ModelRelease, assessment_run.result.model_release_id)
+        if release is None:
+            raise AssessmentBuildError("Stored model release could not be loaded for replay.")
+        model_artifact = load_release_artifact_json(
+            storage=storage,
+            release=release,
+            artifact="model",
+        )
+        validation_artifact = load_release_artifact_json(
+            storage=storage,
+            release=release,
+            artifact="validation",
+        )
+        calibration_artifact = load_release_artifact_json(
+            storage=storage,
+            release=release,
+            artifact="calibration",
+        )
+        if model_artifact and validation_artifact:
+            replay_score = score_frozen_assessment(
+                model_artifact=model_artifact,
+                calibration_artifact=calibration_artifact,
+                validation_artifact=validation_artifact,
+                release_id=str(release.id),
+                feature_json=assessment_run.feature_snapshot.feature_json,
+                coverage_json=assessment_run.feature_snapshot.coverage_json,
+                site=assessment_run.site,
+                scenario=assessment_run.scenario,
+                evidence=evidence,
+                comparable_case_set=assessment_run.comparable_case_set,
+                comparable_payload=comparable_payload,
+            )
+            scored_fields_match = (
+                float(assessment_run.result.approval_probability_raw or 0.0)
+                == float(replay_score["approval_probability_raw"])
+                and (assessment_run.result.approval_probability_display or "")
+                == str(replay_score["approval_probability_display"])
+                and (
+                    assessment_run.result.estimate_quality.value
+                    if assessment_run.result.estimate_quality
+                    else None
+                )
+                == str(replay_score["estimate_quality"])
+                and (assessment_run.result.ood_status or "") == str(replay_score["ood_status"])
+                and dict((assessment_run.result.result_json or {}).get("explanation") or {})
+                == dict(replay_score["explanation"] or {})
+            )
     stable_payload = _build_stable_result_payload(
         site_id=assessment_run.site_id,
         scenario_id=assessment_run.scenario_id,
@@ -259,6 +395,7 @@ def verify_assessment_replay(
         result=assessment_run.result,
         evidence=evidence,
         comparables=comparable_payload,
+        note_text=_note_for_result(assessment_run.result),
     )
     payload_hash = canonical_json_hash(stable_payload)
     return {
@@ -272,10 +409,15 @@ def verify_assessment_replay(
         "feature_hash": assessment_run.feature_snapshot.feature_hash,
         "recomputed_payload_hash": payload_hash,
         "stored_payload_hash": assessment_run.prediction_ledger.result_payload_hash,
+        "scored_fields_match": scored_fields_match,
     }
 
 
-def replay_verify_all_assessments(session: Session) -> dict[str, object]:
+def replay_verify_all_assessments(
+    session: Session,
+    *,
+    storage: StorageAdapter | None = None,
+) -> dict[str, object]:
     runs = (
         session.execute(
             select(AssessmentRun)
@@ -286,7 +428,10 @@ def replay_verify_all_assessments(session: Session) -> dict[str, object]:
         .scalars()
         .all()
     )
-    checks = [verify_assessment_replay(session=session, assessment_run=run) for run in runs]
+    checks = [
+        verify_assessment_replay(session=session, assessment_run=run, storage=storage)
+        for run in runs
+    ]
     failures = [
         check
         for check in checks
@@ -373,7 +518,7 @@ def _build_assessment_evidence(
             topic="assessment_state",
             importance=EvidenceImportance.HIGH,
             source_class=SourceClass.ANALYST_DERIVED,
-            source_label="Phase 5A assessment foundation",
+            source_label="Phase 6A hidden scoring foundation",
             source_url=None,
             source_snapshot_id=None,
             raw_asset_id=None,
@@ -423,6 +568,11 @@ def _upsert_assessment_result(
     extant_permission,
     comparable_count: int,
     coverage_json: dict[str, object],
+    model_release: ModelRelease | None,
+    release_scope_key: str,
+    scored_result: dict[str, object] | None,
+    score_execution_status: str,
+    note_text: str,
 ) -> AssessmentResult:
     coverage_rows = list(coverage_json.get("source_coverage") or [])
     coverage_gap_count = sum(
@@ -439,26 +589,65 @@ def _upsert_assessment_result(
     review_status = ReviewStatus.REQUIRED if manual_review_required else ReviewStatus.NOT_REQUIRED
     result = run.result or AssessmentResult(assessment_run_id=run.id)
     result.eligibility_status = extant_permission.eligibility_status
-    result.estimate_status = EstimateStatus.NONE
-    result.review_status = review_status
-    result.approval_probability_raw = None
-    result.approval_probability_display = None
-    result.estimate_quality = None
-    result.source_coverage_quality = "GAPPED" if coverage_gap_count > 0 else "SUFFICIENT"
-    result.geometry_quality = run.site.geom_confidence.value
-    result.support_quality = "COMPARABLES_PRESENT" if comparable_count > 0 else "SPARSE"
-    result.ood_status = None
-    result.manual_review_required = manual_review_required
-    result.result_json = {
-        "phase": "Phase 5A",
-        "score_execution_status": "NOT_IMPLEMENTED",
-        "estimate_status": EstimateStatus.NONE.value,
-        "model_release_sentinel": PRE_SCORE_MODEL_SENTINEL,
-        "coverage_gap_count": coverage_gap_count,
-        "comparable_count": comparable_count,
-        "note": PRE_SCORE_NOTE,
-    }
-    result.published_at = None
+    if scored_result is None:
+        result.model_release_id = None
+        result.release_scope_key = None
+        result.estimate_status = EstimateStatus.NONE
+        result.review_status = review_status
+        result.approval_probability_raw = None
+        result.approval_probability_display = None
+        result.estimate_quality = None
+        result.source_coverage_quality = "LOW" if coverage_gap_count > 0 else "MEDIUM"
+        result.geometry_quality = run.site.geom_confidence.value
+        result.support_quality = "COMPARABLES_PRESENT" if comparable_count > 0 else "SPARSE"
+        result.scenario_quality = "MEDIUM" if scenario.manual_review_required else "HIGH"
+        result.ood_quality = None
+        result.ood_status = None
+        result.manual_review_required = manual_review_required
+        result.result_json = {
+            "phase": "Phase 6A",
+            "score_execution_status": score_execution_status,
+            "estimate_status": EstimateStatus.NONE.value,
+            "model_release_sentinel": PRE_SCORE_MODEL_SENTINEL,
+            "coverage_gap_count": coverage_gap_count,
+            "comparable_count": comparable_count,
+            "note": note_text,
+            "hidden_mode_only": False,
+        }
+        result.published_at = None
+    else:
+        result.model_release_id = None if model_release is None else model_release.id
+        result.release_scope_key = release_scope_key
+        result.estimate_status = (
+            EstimateStatus.ESTIMATE_AVAILABLE_MANUAL_REVIEW_REQUIRED
+            if scored_result["manual_review_required"]
+            else EstimateStatus.ESTIMATE_AVAILABLE
+        )
+        result.review_status = (
+            ReviewStatus.REQUIRED
+            if scored_result["manual_review_required"]
+            else ReviewStatus.NOT_REQUIRED
+        )
+        result.approval_probability_raw = float(scored_result["approval_probability_raw"])
+        result.approval_probability_display = str(scored_result["approval_probability_display"])
+        result.estimate_quality = EstimateQuality(str(scored_result["estimate_quality"]))
+        result.source_coverage_quality = str(scored_result["source_coverage_quality"])
+        result.geometry_quality = str(scored_result["geometry_quality"])
+        result.support_quality = str(scored_result["support_quality"])
+        result.scenario_quality = str(scored_result["scenario_quality"])
+        result.ood_quality = str(scored_result["ood_quality"])
+        result.ood_status = str(scored_result["ood_status"])
+        result.manual_review_required = bool(scored_result["manual_review_required"])
+        result.result_json = {
+            "phase": "Phase 6A",
+            "score_execution_status": score_execution_status,
+            "hidden_mode_only": True,
+            "support_summary": scored_result["support_summary"],
+            "validation_summary": scored_result["validation_summary"],
+            "explanation": scored_result["explanation"],
+            "note": note_text,
+        }
+        result.published_at = datetime.now(UTC)
     session.add(result)
     session.flush()
     return result
@@ -472,7 +661,8 @@ def _stable_result_payload(
     feature_snapshot: AssessmentFeatureSnapshot,
     result: AssessmentResult,
     evidence: EvidencePackRead,
-    comparable_result,
+    comparables: dict[str, object],
+    note_text: str,
 ) -> dict[str, object]:
     return _build_stable_result_payload(
         site_id=site.id,
@@ -482,11 +672,8 @@ def _stable_result_payload(
         feature_snapshot=feature_snapshot,
         result=result,
         evidence=evidence,
-        comparables={
-            "strategy": comparable_result.comparable_case_set.strategy,
-            "approved": _serialize_comparable_members(comparable_result.approved_members),
-            "refused": _serialize_comparable_members(comparable_result.refused_members),
-        },
+        comparables=comparables,
+        note_text=note_text,
     )
 
 
@@ -498,6 +685,9 @@ def _upsert_prediction_ledger(
     comparable_result,
     evidence: EvidencePackRead,
     stable_payload: dict[str, object],
+    model_release: ModelRelease | None,
+    release_scope_key: str,
+    response_mode: str,
 ) -> PredictionLedger:
     source_snapshot_ids = set(feature_snapshot.coverage_json.get("source_snapshot_ids") or [])
     raw_asset_ids = set(feature_snapshot.coverage_json.get("raw_asset_ids") or [])
@@ -512,8 +702,18 @@ def _upsert_prediction_ledger(
     ledger = run.prediction_ledger or PredictionLedger(assessment_run_id=run.id)
     ledger.site_geom_hash = run.scenario.red_line_geom_hash
     ledger.feature_hash = feature_snapshot.feature_hash
-    ledger.model_release_id = None
-    ledger.calibration_hash = None
+    ledger.model_release_id = (
+        None
+        if response_mode != "HIDDEN_SCORE" or model_release is None
+        else model_release.id
+    )
+    ledger.release_scope_key = release_scope_key if response_mode == "HIDDEN_SCORE" else None
+    ledger.calibration_hash = (
+        None
+        if response_mode != "HIDDEN_SCORE" or model_release is None
+        else model_release.calibration_artifact_hash
+    )
+    ledger.response_mode = response_mode
     ledger.source_snapshot_ids_json = sorted(source_snapshot_ids)
     ledger.raw_asset_ids_json = sorted(raw_asset_ids)
     ledger.result_payload_hash = canonical_json_hash(stable_payload)
@@ -572,6 +772,8 @@ def _build_stable_result_payload(
     result: AssessmentResult,
     evidence: EvidencePackRead,
     comparables: dict[str, object],
+    note_text: str,
+    result_json_override: dict[str, object] | None = None,
 ) -> dict[str, object]:
     return {
         "site_id": str(site_id),
@@ -584,12 +786,33 @@ def _build_stable_result_payload(
         "eligibility_status": result.eligibility_status.value,
         "review_status": result.review_status.value,
         "manual_review_required": result.manual_review_required,
-        "pre_score_note": PRE_SCORE_NOTE,
+        "approval_probability_raw": result.approval_probability_raw,
+        "approval_probability_display": result.approval_probability_display,
+        "estimate_quality": (
+            None if result.estimate_quality is None else result.estimate_quality.value
+        ),
+        "source_coverage_quality": result.source_coverage_quality,
+        "geometry_quality": result.geometry_quality,
+        "support_quality": result.support_quality,
+        "scenario_quality": result.scenario_quality,
+        "ood_quality": result.ood_quality,
+        "ood_status": result.ood_status,
+        "note": note_text,
+        "model_release_id": (
+            None if result.model_release_id is None else str(result.model_release_id)
+        ),
+        "release_scope_key": result.release_scope_key,
         "model_release_sentinel": PRE_SCORE_MODEL_SENTINEL,
-        "result_json": result.result_json,
+        "result_json": result.result_json if result_json_override is None else result_json_override,
         "evidence": evidence.model_dump(by_alias=True, mode="json"),
         "comparables": comparables,
     }
+
+
+def _note_for_result(result: AssessmentResult) -> str:
+    if result.approval_probability_raw is not None:
+        return HIDDEN_SCORE_NOTE
+    return str((result.result_json or {}).get("note") or PRE_SCORE_NOTE)
 
 
 def _serialize_comparable_members(

@@ -6,12 +6,14 @@ import math
 import statistics
 from dataclasses import dataclass
 from datetime import date
+from types import SimpleNamespace
 from typing import Any
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from landintel.domain.enums import (
+    GeomConfidence,
     GeomSourceType,
     HistoricalLabelClass,
     PriceBasisType,
@@ -32,6 +34,11 @@ from landintel.geospatial.geometry import load_wkt_geometry
 from landintel.planning.enrich import match_generic_geometry
 
 FEATURE_VERSION = "phase5a_v1"
+DEFAULT_TEMPLATE_NET_DEVELOPABLE_AREA_PCT = {
+    "resi_1_4_full": 0.68,
+    "resi_5_9_full": 0.72,
+    "resi_10_49_outline": 0.78,
+}
 NEARBY_DISTANCE_WINDOWS = (
     ("adjacent", 0.0, 50.0),
     ("local_precedent", 50.0, 250.0),
@@ -397,7 +404,10 @@ def build_feature_snapshot(
                 on_site_negative += 1
                 if application.units_proposed is not None:
                     on_site_units_negative.append(application.units_proposed)
-        if (application.decision or "").strip().upper() == "WITHDRAWN":
+        if (
+            (application.decision or "").strip().upper() == "WITHDRAWN"
+            and _decision_on_or_before(application=application, as_of_date=as_of_date)
+        ):
             on_site_withdrawn += 1
         if bool(
             (application.raw_record_json or {}).get("active_extant")
@@ -651,6 +661,79 @@ def build_feature_snapshot(
         coverage_json=coverage_json,
         source_snapshot_ids=sorted(all_source_snapshot_ids),
         raw_asset_ids=sorted(all_raw_asset_ids),
+    )
+
+
+def build_historical_feature_snapshot(
+    *,
+    session: Session,
+    historical_label: HistoricalCaseLabel,
+) -> FeatureBuildResult:
+    application = historical_label.planning_application
+    geometry_wkt = application.site_geom_27700 or application.site_point_27700
+    if not geometry_wkt:
+        raise ValueError(
+            f"Historical case '{historical_label.id}' does not have a site geometry or point."
+        )
+
+    area_sqm = historical_label.site_area_sqm or planning_application_area_sqm(application)
+    geometry = planning_application_geometry(application)
+    if geometry is None:
+        raise ValueError(
+            f"Historical case '{historical_label.id}' does not have a usable planning geometry."
+        )
+
+    geom_type = (
+        GeomSourceType.SOURCE_POLYGON
+        if geometry.geom_type in {"Polygon", "MultiPolygon"}
+        else GeomSourceType.POINT_ONLY
+    )
+    geom_confidence = (
+        GeomConfidence.MEDIUM
+        if geometry.geom_type in {"Polygon", "MultiPolygon"}
+        else GeomConfidence.LOW
+    )
+    scenario = SimpleNamespace(
+        template_key=historical_label.template_key,
+        units_assumed=historical_label.units_proposed or 0,
+        proposal_form=historical_label.proposal_form or ProposalForm.REDEVELOPMENT,
+        scenario_source=ScenarioSource.AUTO,
+        route_assumed=application.route_normalized or "FULL",
+        net_developable_area_pct=DEFAULT_TEMPLATE_NET_DEVELOPABLE_AREA_PCT.get(
+            historical_label.template_key or "",
+            0.7,
+        ),
+        access_assumption=None,
+    )
+    site = SimpleNamespace(
+        id=historical_label.id,
+        geom_27700=geometry_wkt,
+        site_area_sqm=area_sqm or 0.0,
+        geom_source_type=geom_type,
+        geom_confidence=geom_confidence,
+        borough_id=historical_label.borough_id,
+        current_price_gbp=None,
+        current_price_basis_type=PriceBasisType.UNKNOWN,
+        planning_links=[
+            SimpleNamespace(
+                planning_application_id=application.id,
+                planning_application=application,
+                overlap_pct=1.0,
+                distance_m=0.0,
+            )
+        ],
+        manual_review_required=False,
+    )
+    as_of_date = application.valid_date or historical_label.valid_date or application.decision_date
+    if as_of_date is None:
+        raise ValueError(
+            f"Historical case '{historical_label.id}' does not have a stable as_of_date."
+        )
+    return build_feature_snapshot(
+        session=session,
+        site=site,
+        scenario=scenario,
+        as_of_date=as_of_date,
     )
 
 

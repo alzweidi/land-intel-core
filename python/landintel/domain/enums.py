@@ -272,6 +272,22 @@ class GoldSetReviewStatus(StrEnum):
     EXCLUDED = "EXCLUDED"
 
 
+class ReleaseChannel(StrEnum):
+    HIDDEN = "HIDDEN"
+
+
+class ModelReleaseStatus(StrEnum):
+    NOT_READY = "NOT_READY"
+    VALIDATED = "VALIDATED"
+    ACTIVE = "ACTIVE"
+    RETIRED = "RETIRED"
+
+
+class CalibrationMethod(StrEnum):
+    NONE = "NONE"
+    PLATT = "PLATT"
+
+
 class AppRoleName(StrEnum):
     ANALYST = "analyst"
     REVIEWER = "reviewer"

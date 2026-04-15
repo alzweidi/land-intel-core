@@ -7,9 +7,9 @@ export default function HomePage() {
   return (
     <div className="page-stack">
       <PageHeader
-        eyebrow="Phase 5A"
+        eyebrow="Phase 6A"
         title="London land intelligence control room"
-        summary="Listings, sites, planning context, scenarios, and frozen pre-score assessments are now live. The current shell stays explicit about what is operational versus what remains deferred."
+        summary="Listings, sites, planning context, scenarios, frozen assessments, and hidden-only scoring are now live. The shell stays explicit about what is operational versus what remains deferred."
         actions={
           <div className="page-actions__group">
             <Link className="button button--solid" href="/listings">
@@ -18,15 +18,18 @@ export default function HomePage() {
             <Link className="button button--ghost" href="/admin/source-runs">
               Run connector
             </Link>
+            <Link className="button button--ghost" href="/admin/model-releases">
+              Model releases
+            </Link>
           </div>
         }
       />
 
       <section className="stat-grid">
-        <StatCard tone="accent" label="Phase" value="5A" detail="Pre-score assessment foundations only" />
+        <StatCard tone="accent" label="Phase" value="6A" detail="Hidden-only scoring foundations live" />
         <StatCard tone="success" label="Sources" value="3+" detail="Listings plus fixture-scale planning and policy families" />
         <StatCard tone="warning" label="Snapshots" value="Immutable" detail="No in-place overwrite of raw assets or source snapshots" />
-        <StatCard tone="neutral" label="Assessment" value="Frozen" detail="Replay-safe features, evidence, and comparables with no score output" />
+        <StatCard tone="neutral" label="Assessment" value="Hidden" detail="Replay-safe features, evidence, comparables, and hidden internal score output" />
       </section>
 
       <section className="route-grid">
@@ -43,12 +46,12 @@ export default function HomePage() {
 
       <Panel
         eyebrow="Spec guardrails"
-        title="What Phase 5A deliberately does not do"
-        note="Frozen assessment artifacts are live. Model training, scoring, valuation, ranking, and overrides remain deferred."
+        title="What Phase 6A deliberately does not do"
+        note="Hidden logistic scoring is live, but visible rollout, valuation, ranking, overrides, and control-plane dashboards remain deferred."
       >
         <ul className="checklist">
-          <li>No model training, calibration, OOD logic, or hidden-score mode.</li>
-          <li>No probability, valuation, uplift, or ranking output.</li>
+          <li>No standard-analyst visible probability rollout.</li>
+          <li>No valuation, uplift, or ranking output.</li>
           <li>No future-leaking feature construction or forbidden label shortcuts.</li>
           <li>No unapproved public-page connector execution.</li>
           <li>No hidden overwrite of raw source assets or snapshots.</li>

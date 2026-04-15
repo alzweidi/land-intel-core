@@ -111,17 +111,17 @@ def dispatch_connector_job(session, job, settings, storage: StorageAdapter) -> b
         return True
 
     if job.job_type == JobType.ASSESSMENT_FEATURE_SNAPSHOT_BUILD:
-        run_assessment_feature_snapshot_build_job(session=session, job=job)
+        run_assessment_feature_snapshot_build_job(session=session, job=job, storage=storage)
         mark_job_succeeded(session=session, job=job)
         return True
 
     if job.job_type == JobType.COMPARABLE_RETRIEVAL_BUILD:
-        run_comparable_retrieval_build_job(session=session, job=job)
+        run_comparable_retrieval_build_job(session=session, job=job, storage=storage)
         mark_job_succeeded(session=session, job=job)
         return True
 
     if job.job_type == JobType.REPLAY_VERIFICATION_BATCH:
-        run_replay_verification_batch_job(session=session, job=job)
+        run_replay_verification_batch_job(session=session, job=job, storage=storage)
         mark_job_succeeded(session=session, job=job)
         return True
 

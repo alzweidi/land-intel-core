@@ -5,7 +5,7 @@
 - `services/api`: FastAPI routes for listings, clusters, sites, scenarios, assessments, admin, and later-phase stubs
 - `services/worker`: Postgres-backed worker loop with connector, cluster rebuild, site refresh/linkage, planning enrichment, scenario refresh, historical-label, comparable, replay, and gold-set jobs
 - `services/scheduler`: recurring enqueue loop for approved automated listing sources with explicit intervals
-- `services/web`: Next.js analyst UI focused on listings, clusters, sites, planning context, scenario editing, pre-score assessments, and gold-set review
+- `services/web`: Next.js analyst UI focused on listings, clusters, sites, planning context, scenario editing, hidden-mode assessments, gold-set review, and admin release inspection
 - `python/landintel`: shared config, ORM models, connector framework, listing parsing/clustering, geospatial/site services, planning enrichment, evidence assembly, scenarios, assessments, historical labels, storage, and readback
 - `db/migrations`: Alembic revisions
 - `infra/compose`: local/VPS compose assets
@@ -32,7 +32,7 @@
 
 ## Non-Negotiable Rules From The Spec
 
-- Stop at Phase 5A. Do not start Phase 6 model training / calibration / hidden-score mode, Phase 7 valuation / uplift / ranking, or Phase 8 overrides / kill switches / model-health dashboards.
+- Stop at Phase 6A. Do not start Phase 7 valuation / uplift / ranking or Phase 8 overrides / kill switches / visible release controls / broader dashboards.
 - No AWS, Kubernetes, Redis, vector DB, domain microservices, or separate model-serving service.
 - Use the Postgres-backed `job_run` queue with `FOR UPDATE SKIP LOCKED`.
 - Every connector run must create one `source_snapshot`, one or more `raw_asset` rows, a coverage note, and a parse status.
@@ -51,17 +51,18 @@
 - If a mandatory source family is missing for a critical permission conclusion, return manual review or abstain.
 - LLMs may help summarize evidence, but they must not create authoritative planning facts.
 - Scenarios are hypotheses, not facts.
-- No visible or hidden probability output exists in this phase.
-- No valuation, ranking, or scoring logic belongs in this phase.
+- No standard-analyst visible probability output exists in this phase.
+- Hidden scoring is internal-only and must resolve only through `model_release` / `active_release_scope`.
+- No valuation or ranking logic belongs in this phase.
 - No future leakage in historical labels or point-in-time features.
-- Assessment runs require a confirmed scenario and stay pre-score only.
+- Assessment runs require a confirmed scenario and always freeze PIT artifacts before any hidden scoring.
 - Preserve provenance for every frozen feature and replay-safe assessment artifact.
 - Every operational borough rulepack rule must cite source provenance.
 - Confirmed scenarios must freeze the current geometry hash and become stale/review-required after later geometry changes.
 - Do not downgrade an abstain/manual-review condition just because a scenario exists.
 - If strong nearest historical support cannot be shown honestly, default to `ANALYST_REQUIRED`.
 
-## Phase 5A Done Means
+## Phase 6A Done Means
 
 - `docker compose up --build` boots `api`, `worker`, `scheduler`, `web`, and local PostGIS
 - `alembic upgrade head` succeeds
@@ -78,10 +79,14 @@
 - scenario-conditioned evidence is visible in the API and web UI
 - confirmed scenarios freeze the current geometry hash and become stale when geometry later changes
 - historical labels rebuild deterministically on fixture-scale data with explicit exclusion/censoring reasons
-- `POST /api/assessments` creates a frozen pre-score assessment artifact from a confirmed scenario
-- `GET /api/assessments/{id}` returns stable features, evidence, comparables, provenance, and replay metadata with no probability
+- `POST /api/assessments` creates a frozen assessment artifact from a confirmed scenario
+- supported templates produce hidden-only scored assessments through an active release scope; unsupported templates remain honest `NOT_READY` releases
+- `GET /api/assessments/{id}` returns stable features, evidence, comparables, provenance, replay metadata, and redacted standard reads by default
+- hidden mode can surface rounded hidden probability, estimate quality, OOD state, drivers, and release metadata without turning the standard UI into a visible-probability surface
 - comparable fallback path is visible and replay verification stays stable for the same frozen inputs
+- replay of the same scored assessment reproduces the same feature hash and result payload hash
 - the web app renders the site list/detail, MapLibre geometry editor, planning-context panels, scenario editor, assessment view, and gold-set review surface locally
+- the web app also exposes hidden assessment mode and the admin model-release registry locally
 - tests and lint/build checks pass
 
 ## Source Approval Notes

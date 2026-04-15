@@ -9,11 +9,16 @@ export default function AdminHealthPage() {
       <PageHeader
         eyebrow="Admin / health"
         title="Operational health shell"
-        summary="The admin health route is a placeholder control surface for jobs, auth, and service checks. It is designed to be obviously unfinished."
+        summary="The admin health route is still intentionally small, but hidden model releases and assessment replay are now live. Broader dashboards remain deferred."
         actions={
-          <Link className="button button--solid" href="/admin/source-runs">
-            Open source runs
-          </Link>
+          <div className="page-actions__group">
+            <Link className="button button--solid" href="/admin/source-runs">
+              Open source runs
+            </Link>
+            <Link className="button button--ghost" href="/admin/model-releases">
+              Model releases
+            </Link>
+          </div>
         }
       />
 
@@ -29,9 +34,9 @@ export default function AdminHealthPage() {
           <p className="stat-detail">Frontend env vars are scaffolded for later auth wiring.</p>
         </div>
         <div className="stat-card">
-          <Badge tone="warning">Metrics</Badge>
-          <div className="stat-value">Stubbed</div>
-          <p className="stat-detail">No live health telemetry is implemented here.</p>
+          <Badge tone="warning">Models</Badge>
+          <div className="stat-value">Hidden-only</div>
+          <p className="stat-detail">Release registry and replay-safe hidden scoring are active in Phase 6A.</p>
         </div>
       </section>
 

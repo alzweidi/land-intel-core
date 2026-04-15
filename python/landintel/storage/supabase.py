@@ -31,3 +31,18 @@ class SupabaseStorageAdapter(StorageAdapter):
             )
         return StoredObject(storage_path=storage_path, size_bytes=len(payload))
 
+    def get_bytes(self, storage_path: str) -> bytes:
+        url = f"{self.base_url}/storage/v1/object/{self.bucket}/{storage_path}"
+        response = httpx.get(
+            url,
+            headers={
+                "Authorization": f"Bearer {self.service_role_key}",
+                "apikey": self.service_role_key,
+            },
+            timeout=30.0,
+        )
+        if response.status_code != 200:
+            raise RuntimeError(
+                f"Supabase Storage download failed: {response.status_code} {response.text[:300]}"
+            )
+        return response.content

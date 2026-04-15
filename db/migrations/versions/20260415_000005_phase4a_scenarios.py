@@ -109,7 +109,8 @@ def upgrade() -> None:
         )
         """
     )
-    op.alter_column("borough_baseline_pack", "freshness_status", server_default=None)
+    if is_postgres:
+        op.alter_column("borough_baseline_pack", "freshness_status", server_default=None)
 
     op.add_column(
         "borough_rulepack",
@@ -174,9 +175,10 @@ def upgrade() -> None:
             updated_at = CURRENT_TIMESTAMP
         """
     )
-    op.alter_column("borough_rulepack", "status", server_default=None)
-    op.alter_column("borough_rulepack", "freshness_status", server_default=None)
-    op.alter_column("borough_rulepack", "updated_at", server_default=None)
+    if is_postgres:
+        op.alter_column("borough_rulepack", "status", server_default=None)
+        op.alter_column("borough_rulepack", "freshness_status", server_default=None)
+        op.alter_column("borough_rulepack", "updated_at", server_default=None)
     op.create_index(
         "ix_borough_baseline_pack_freshness",
         "borough_baseline_pack",

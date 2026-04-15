@@ -25,6 +25,7 @@ from landintel.domain.enums import (
     AppRoleName,
     AssessmentRunState,
     BaselinePackStatus,
+    CalibrationMethod,
     ComparableOutcome,
     ComplianceMode,
     ConnectorType,
@@ -45,8 +46,10 @@ from landintel.domain.enums import (
     ListingClusterStatus,
     ListingStatus,
     ListingType,
+    ModelReleaseStatus,
     PriceBasisType,
     ProposalForm,
+    ReleaseChannel,
     ReviewStatus,
     ScenarioSource,
     ScenarioStatus,
@@ -1372,6 +1375,130 @@ class HistoricalCaseLabel(Base):
     )
 
 
+class ModelRelease(Base):
+    __tablename__ = "model_release"
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
+    template_key: Mapped[str] = mapped_column(String(100), nullable=False)
+    release_channel: Mapped[ReleaseChannel] = mapped_column(
+        Enum(ReleaseChannel, name="release_channel"),
+        nullable=False,
+        default=ReleaseChannel.HIDDEN,
+    )
+    scope_key: Mapped[str] = mapped_column(String(255), nullable=False)
+    scope_borough_id: Mapped[str | None] = mapped_column(String(100))
+    status: Mapped[ModelReleaseStatus] = mapped_column(
+        Enum(ModelReleaseStatus, name="model_release_status"),
+        nullable=False,
+        default=ModelReleaseStatus.NOT_READY,
+    )
+    model_kind: Mapped[str] = mapped_column(String(100), nullable=False)
+    transform_version: Mapped[str] = mapped_column(String(100), nullable=False)
+    feature_version: Mapped[str] = mapped_column(String(100), nullable=False)
+    calibration_method: Mapped[CalibrationMethod] = mapped_column(
+        Enum(CalibrationMethod, name="calibration_method"),
+        nullable=False,
+        default=CalibrationMethod.NONE,
+    )
+    model_artifact_path: Mapped[str | None] = mapped_column(Text)
+    model_artifact_hash: Mapped[str | None] = mapped_column(String(64))
+    calibration_artifact_path: Mapped[str | None] = mapped_column(Text)
+    calibration_artifact_hash: Mapped[str | None] = mapped_column(String(64))
+    validation_artifact_path: Mapped[str | None] = mapped_column(Text)
+    validation_artifact_hash: Mapped[str | None] = mapped_column(String(64))
+    model_card_path: Mapped[str | None] = mapped_column(Text)
+    model_card_hash: Mapped[str | None] = mapped_column(String(64))
+    train_window_start: Mapped[date | None] = mapped_column(Date)
+    train_window_end: Mapped[date | None] = mapped_column(Date)
+    support_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    positive_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    negative_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    metrics_json: Mapped[dict[str, object]] = mapped_column(JSON, nullable=False, default=dict)
+    manifest_json: Mapped[dict[str, object]] = mapped_column(JSON, nullable=False, default=dict)
+    reason_text: Mapped[str | None] = mapped_column(Text)
+    supersedes_release_id: Mapped[uuid.UUID | None] = mapped_column(
+        Uuid,
+        ForeignKey("model_release.id", ondelete="SET NULL"),
+    )
+    activated_by: Mapped[str | None] = mapped_column(String(255))
+    activated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    retired_by: Mapped[str | None] = mapped_column(String(255))
+    retired_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        default=utc_now,
+        server_default=func.now(),
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        default=utc_now,
+        onupdate=utc_now,
+        server_default=func.now(),
+    )
+
+    supersedes_release: Mapped["ModelRelease | None"] = relationship(
+        remote_side="ModelRelease.id",
+        back_populates="superseded_by_releases",
+    )
+    superseded_by_releases: Mapped[list["ModelRelease"]] = relationship(
+        back_populates="supersedes_release"
+    )
+    active_scopes: Mapped[list["ActiveReleaseScope"]] = relationship(
+        back_populates="model_release",
+        cascade="all, delete-orphan",
+    )
+    assessment_results: Mapped[list["AssessmentResult"]] = relationship(
+        back_populates="model_release"
+    )
+    prediction_ledgers: Mapped[list["PredictionLedger"]] = relationship(
+        back_populates="model_release"
+    )
+
+
+class ActiveReleaseScope(Base):
+    __tablename__ = "active_release_scope"
+    __table_args__ = (UniqueConstraint("scope_key"),)
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
+    scope_key: Mapped[str] = mapped_column(String(255), nullable=False, unique=True)
+    template_key: Mapped[str] = mapped_column(String(100), nullable=False)
+    release_channel: Mapped[ReleaseChannel] = mapped_column(
+        Enum(ReleaseChannel, name="release_channel", create_type=False),
+        nullable=False,
+        default=ReleaseChannel.HIDDEN,
+    )
+    borough_id: Mapped[str | None] = mapped_column(String(100))
+    model_release_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid,
+        ForeignKey("model_release.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    activated_by: Mapped[str | None] = mapped_column(String(255))
+    activated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        default=utc_now,
+        server_default=func.now(),
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        default=utc_now,
+        server_default=func.now(),
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        default=utc_now,
+        onupdate=utc_now,
+        server_default=func.now(),
+    )
+
+    model_release: Mapped[ModelRelease] = relationship(back_populates="active_scopes")
+
+
 class AssessmentRun(Base):
     __tablename__ = "assessment_run"
     __table_args__ = (UniqueConstraint("idempotency_key"),)
@@ -1475,7 +1602,11 @@ class AssessmentResult(Base):
         ForeignKey("assessment_run.id", ondelete="CASCADE"),
         nullable=False,
     )
-    model_release_id: Mapped[uuid.UUID | None] = mapped_column(Uuid)
+    model_release_id: Mapped[uuid.UUID | None] = mapped_column(
+        Uuid,
+        ForeignKey("model_release.id", ondelete="SET NULL"),
+    )
+    release_scope_key: Mapped[str | None] = mapped_column(String(255))
     eligibility_status: Mapped[EligibilityStatus] = mapped_column(
         Enum(EligibilityStatus, name="eligibility_status", create_type=False),
         nullable=False,
@@ -1498,6 +1629,8 @@ class AssessmentResult(Base):
     source_coverage_quality: Mapped[str | None] = mapped_column(String(32))
     geometry_quality: Mapped[str | None] = mapped_column(String(32))
     support_quality: Mapped[str | None] = mapped_column(String(32))
+    scenario_quality: Mapped[str | None] = mapped_column(String(32))
+    ood_quality: Mapped[str | None] = mapped_column(String(32))
     ood_status: Mapped[str | None] = mapped_column(String(32))
     manual_review_required: Mapped[bool] = mapped_column(
         Boolean,
@@ -1521,6 +1654,7 @@ class AssessmentResult(Base):
     )
 
     assessment_run: Mapped[AssessmentRun] = relationship(back_populates="result")
+    model_release: Mapped[ModelRelease | None] = relationship(back_populates="assessment_results")
 
 
 class ComparableCaseSet(Base):
@@ -1643,8 +1777,13 @@ class PredictionLedger(Base):
     )
     site_geom_hash: Mapped[str] = mapped_column(String(64), nullable=False)
     feature_hash: Mapped[str] = mapped_column(String(64), nullable=False)
-    model_release_id: Mapped[uuid.UUID | None] = mapped_column(Uuid)
+    model_release_id: Mapped[uuid.UUID | None] = mapped_column(
+        Uuid,
+        ForeignKey("model_release.id", ondelete="SET NULL"),
+    )
+    release_scope_key: Mapped[str | None] = mapped_column(String(255))
     calibration_hash: Mapped[str | None] = mapped_column(String(64))
+    response_mode: Mapped[str] = mapped_column(String(32), nullable=False, default="PRE_SCORE")
     source_snapshot_ids_json: Mapped[list[str]] = mapped_column(
         JSON,
         nullable=False,
@@ -1665,6 +1804,7 @@ class PredictionLedger(Base):
     )
 
     assessment_run: Mapped[AssessmentRun] = relationship(back_populates="prediction_ledger")
+    model_release: Mapped[ModelRelease | None] = relationship(back_populates="prediction_ledgers")
 
 
 class AuthUser(Base):

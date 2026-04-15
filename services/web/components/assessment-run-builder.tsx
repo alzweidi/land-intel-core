@@ -27,7 +27,7 @@ export function AssessmentRunBuilder({
   const [scenarioId, setScenarioId] = useState(initialScenarioId);
   const [asOfDate, setAsOfDate] = useState(initialAsOfDate ?? todayIsoDate());
   const [message, setMessage] = useState(
-    'A confirmed scenario is required. Phase 5A freezes features, evidence, comparables, and replay metadata only.'
+    'A confirmed scenario is required. Phase 6A freezes the run and may execute a hidden internal score if an active hidden release exists.'
   );
   const [loading, setLoading] = useState(false);
 
@@ -42,7 +42,8 @@ export function AssessmentRunBuilder({
       site_id: siteId.trim(),
       scenario_id: scenarioId.trim(),
       as_of_date: asOfDate,
-      requested_by: 'web-ui'
+      requested_by: 'web-ui',
+      hidden_mode: false
     });
 
     if (!response.item) {
@@ -51,7 +52,9 @@ export function AssessmentRunBuilder({
       return;
     }
 
-    setMessage(`Assessment ${response.item.id} created in pre-score mode.`);
+    setMessage(
+      `Assessment ${response.item.id} created. Standard reads remain non-speaking unless hidden mode is opened explicitly.`
+    );
     router.push(`/assessments/${response.item.id}`);
     router.refresh();
   }
@@ -59,8 +62,8 @@ export function AssessmentRunBuilder({
   return (
     <Panel
       eyebrow="Assessment run"
-      title="Create frozen pre-score artifact"
-      note="No probability, valuation, ranking, or model execution exists in Phase 5A."
+      title="Create frozen assessment artifact"
+      note="Phase 6A may compute a hidden internal score, but standard analyst reads stay non-speaking."
     >
       <div className="form-stack" style={{ display: 'grid', gap: 12 }}>
         <label className="field">

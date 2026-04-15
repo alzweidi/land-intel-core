@@ -5,9 +5,10 @@ from uuid import UUID
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session, selectinload
 
-from landintel.assessments.service import PRE_SCORE_NOTE
+from landintel.assessments.service import HIDDEN_SCORE_NOTE, PRE_SCORE_NOTE
 from landintel.domain.enums import EligibilityStatus, EstimateStatus, ReviewStatus
 from landintel.domain.models import (
+    AssessmentResult,
     AssessmentRun,
     ComparableCaseMember,
     ComparableCaseSet,
@@ -15,6 +16,7 @@ from landintel.domain.models import (
     HistoricalCaseLabel,
     PlanningApplication,
     PlanningApplicationDocument,
+    PredictionLedger,
     SiteCandidate,
     SiteConstraintFact,
     SitePlanningLink,
@@ -83,7 +85,12 @@ def list_assessments(
     )
 
 
-def get_assessment(session: Session, *, assessment_id: UUID) -> AssessmentDetailRead | None:
+def get_assessment(
+    session: Session,
+    *,
+    assessment_id: UUID,
+    include_hidden: bool = False,
+) -> AssessmentDetailRead | None:
     row = session.execute(
         select(AssessmentRun)
         .where(AssessmentRun.id == assessment_id)
@@ -91,7 +98,7 @@ def get_assessment(session: Session, *, assessment_id: UUID) -> AssessmentDetail
     ).scalar_one_or_none()
     if row is None:
         return None
-    return serialize_assessment_detail(session=session, run=row)
+    return serialize_assessment_detail(session=session, run=row, include_hidden=include_hidden)
 
 
 def serialize_assessment_summary(
@@ -138,6 +145,7 @@ def serialize_assessment_detail(
     *,
     session: Session,
     run: AssessmentRun,
+    include_hidden: bool = False,
 ) -> AssessmentDetailRead:
     summary = serialize_assessment_summary(session=session, run=run)
     labels_by_application_id = _labels_by_application_id(
@@ -163,48 +171,105 @@ def serialize_assessment_detail(
             )
         ),
         result=(
-            None
-            if run.result is None
-            else AssessmentResultRead(
-                id=run.result.id,
-                eligibility_status=run.result.eligibility_status,
-                estimate_status=run.result.estimate_status,
-                review_status=run.result.review_status,
-                approval_probability_raw=run.result.approval_probability_raw,
-                approval_probability_display=run.result.approval_probability_display,
-                estimate_quality=run.result.estimate_quality,
-                source_coverage_quality=run.result.source_coverage_quality,
-                geometry_quality=run.result.geometry_quality,
-                support_quality=run.result.support_quality,
-                ood_status=run.result.ood_status,
-                manual_review_required=run.result.manual_review_required,
-                result_json=run.result.result_json,
-                published_at=run.result.published_at,
-            )
+            _serialize_assessment_result(run.result, include_hidden=include_hidden)
         ),
         evidence=evidence,
         comparable_case_set=_serialize_comparable_case_set(
             run.comparable_case_set,
             labels_by_application_id=labels_by_application_id,
         ),
-        prediction_ledger=(
-            None
-            if run.prediction_ledger is None
-            else PredictionLedgerRead(
-                id=run.prediction_ledger.id,
-                site_geom_hash=run.prediction_ledger.site_geom_hash,
-                feature_hash=run.prediction_ledger.feature_hash,
-                model_release_id=run.prediction_ledger.model_release_id,
-                calibration_hash=run.prediction_ledger.calibration_hash,
-                source_snapshot_ids_json=list(run.prediction_ledger.source_snapshot_ids_json or []),
-                raw_asset_ids_json=list(run.prediction_ledger.raw_asset_ids_json or []),
-                result_payload_hash=run.prediction_ledger.result_payload_hash,
-                response_json=run.prediction_ledger.response_json,
-                created_at=run.prediction_ledger.created_at,
-            )
+        prediction_ledger=_serialize_prediction_ledger(
+            run.prediction_ledger,
+            include_hidden=include_hidden,
         ),
-        note=PRE_SCORE_NOTE,
+        note=_detail_note(run=run, include_hidden=include_hidden),
     )
+
+
+def _serialize_assessment_result(
+    result: AssessmentResult | None,
+    *,
+    include_hidden: bool,
+) -> AssessmentResultRead | None:
+    if result is None:
+        return None
+    hidden_score_present = result.approval_probability_raw is not None
+    result_json = dict(result.result_json or {})
+    if hidden_score_present and not include_hidden:
+        result_json = {
+            "phase": "Phase 6A",
+            "score_execution_status": result_json.get("score_execution_status", "HIDDEN_ONLY"),
+            "hidden_score_redacted": True,
+            "note": (
+                "Hidden internal score exists for this frozen run, but standard assessment "
+                "reads remain non-speaking in Phase 6A."
+            ),
+        }
+    return AssessmentResultRead(
+        id=result.id,
+        model_release_id=(result.model_release_id if include_hidden else None),
+        release_scope_key=(result.release_scope_key if include_hidden else None),
+        eligibility_status=result.eligibility_status,
+        estimate_status=result.estimate_status,
+        review_status=result.review_status,
+        approval_probability_raw=(
+            result.approval_probability_raw if include_hidden else None
+        ),
+        approval_probability_display=(
+            result.approval_probability_display if include_hidden else None
+        ),
+        estimate_quality=result.estimate_quality,
+        source_coverage_quality=result.source_coverage_quality,
+        geometry_quality=result.geometry_quality,
+        support_quality=result.support_quality,
+        scenario_quality=result.scenario_quality,
+        ood_quality=result.ood_quality,
+        ood_status=result.ood_status,
+        manual_review_required=result.manual_review_required,
+        result_json=result_json,
+        published_at=result.published_at,
+    )
+
+
+def _serialize_prediction_ledger(
+    ledger: PredictionLedger | None,
+    *,
+    include_hidden: bool,
+) -> PredictionLedgerRead | None:
+    if ledger is None:
+        return None
+    response_json = dict(ledger.response_json or {})
+    if ledger.model_release_id is not None and not include_hidden:
+        response_json = {
+            "response_mode": ledger.response_mode,
+            "hidden_score_redacted": True,
+            "result_payload_hash": ledger.result_payload_hash,
+        }
+    return PredictionLedgerRead(
+        id=ledger.id,
+        site_geom_hash=ledger.site_geom_hash,
+        feature_hash=ledger.feature_hash,
+        model_release_id=(ledger.model_release_id if include_hidden else None),
+        release_scope_key=(ledger.release_scope_key if include_hidden else None),
+        calibration_hash=(ledger.calibration_hash if include_hidden else None),
+        response_mode=ledger.response_mode,
+        source_snapshot_ids_json=list(ledger.source_snapshot_ids_json or []),
+        raw_asset_ids_json=list(ledger.raw_asset_ids_json or []),
+        result_payload_hash=ledger.result_payload_hash,
+        response_json=response_json,
+        created_at=ledger.created_at,
+    )
+
+
+def _detail_note(*, run: AssessmentRun, include_hidden: bool) -> str:
+    if run.result is None:
+        return PRE_SCORE_NOTE
+    if run.result.approval_probability_raw is not None:
+        return HIDDEN_SCORE_NOTE if include_hidden else (
+            "Hidden score mode is available for internal evaluation, but this view remains "
+            "non-speaking in Phase 6A."
+        )
+    return str((run.result.result_json or {}).get("note") or PRE_SCORE_NOTE)
 
 
 def list_gold_set_cases_read(

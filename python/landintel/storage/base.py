@@ -13,3 +13,6 @@ class StorageAdapter(ABC):
     def put_bytes(self, storage_path: str, payload: bytes, *, content_type: str) -> StoredObject:
         raise NotImplementedError
 
+    @abstractmethod
+    def get_bytes(self, storage_path: str) -> bytes:
+        raise NotImplementedError

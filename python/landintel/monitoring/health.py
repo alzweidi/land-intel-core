@@ -1,7 +1,13 @@
 from sqlalchemy import select, text
 from sqlalchemy.orm import Session, selectinload
 
-from landintel.domain.models import BoroughBaselinePack, SourceCoverageSnapshot
+from landintel.domain.enums import ModelReleaseStatus
+from landintel.domain.models import (
+    ActiveReleaseScope,
+    BoroughBaselinePack,
+    ModelRelease,
+    SourceCoverageSnapshot,
+)
 
 
 def database_ready(session_factory) -> bool:
@@ -72,8 +78,47 @@ def build_data_health(session: Session) -> dict[str, object]:
     }
 
 
-def build_model_health_stub() -> dict[str, object]:
+def build_model_health(session: Session) -> dict[str, object]:
+    releases = session.execute(
+        select(ModelRelease)
+        .options(selectinload(ModelRelease.active_scopes))
+        .order_by(ModelRelease.created_at.desc())
+    ).scalars().all()
+    active_scopes = session.execute(
+        select(ActiveReleaseScope)
+        .options(selectinload(ActiveReleaseScope.model_release))
+        .order_by(ActiveReleaseScope.scope_key.asc())
+    ).scalars().all()
+    status = "ok"
+    if any(release.status == ModelReleaseStatus.NOT_READY for release in releases):
+        status = "warning"
     return {
-        "status": "stub",
-        "detail": "Model release, calibration, and drift reporting are deferred to later phases.",
+        "status": status,
+        "releases": [
+            {
+                "id": str(release.id),
+                "template_key": release.template_key,
+                "scope_key": release.scope_key,
+                "status": release.status.value,
+                "support_count": release.support_count,
+                "positive_count": release.positive_count,
+                "negative_count": release.negative_count,
+                "reason_text": release.reason_text,
+                "model_kind": release.model_kind,
+                "created_at": release.created_at.isoformat(),
+                "activated_at": (
+                    None if release.activated_at is None else release.activated_at.isoformat()
+                ),
+            }
+            for release in releases
+        ],
+        "active_scopes": [
+            {
+                "scope_key": scope.scope_key,
+                "template_key": scope.template_key,
+                "model_release_id": str(scope.model_release_id),
+                "activated_at": scope.activated_at.isoformat(),
+            }
+            for scope in active_scopes
+        ],
     }

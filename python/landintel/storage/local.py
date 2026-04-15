@@ -23,3 +23,5 @@ class LocalFileStorageAdapter(StorageAdapter):
 
         return StoredObject(storage_path=storage_path, size_bytes=len(payload))
 
+    def get_bytes(self, storage_path: str) -> bytes:
+        return (self.root / storage_path).read_bytes()
