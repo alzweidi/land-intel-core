@@ -44,11 +44,11 @@ export default function HomePage() {
       <Panel
         eyebrow="Spec guardrails"
         title="What Phase 1A deliberately does not do"
-        note="The later site, planning, scenario, scoring, and valuation surfaces stay stubbed. This pass only handles live listings and cluster review."
+        note="Listings, sites, planning context, and scenario foundations are live. Assessment, scoring, valuation, and ranking surfaces remain stubbed."
       >
         <ul className="checklist">
           <li>No site geometry or title linkage.</li>
-          <li>No planning enrichment, scenarios, assessments, or scoring.</li>
+          <li>No assessment execution, scoring, valuation, or ranking.</li>
           <li>No unapproved public-page connector execution.</li>
           <li>No hidden overwrite of raw source assets or snapshots.</li>
         </ul>
@@ -64,4 +64,3 @@ export default function HomePage() {
     </div>
   );
 }
-

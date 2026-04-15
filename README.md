@@ -2,7 +2,7 @@
 
 London-first land intelligence monorepo. The controlling spec for this repo is [docs/london_land_intelligence_implementation_spec_v1 (2).md](/Users/atta/land-intel-core/docs/london_land_intelligence_implementation_spec_v1%20(2).md).
 
-Phase 3A is implemented here. The repo now covers the Phase 1A listing pipeline, Phase 2 site geometry, and the first planning-context layer:
+Phase 4A is implemented here. The repo now covers the Phase 1A listing pipeline, Phase 2 site geometry, Phase 3A planning context, and the Phase 4A scenario-engine foundation:
 - compliant connector framework and immutable listing snapshots
 - listing parsing, normalization, and deterministic clustering
 - site creation from listing clusters
@@ -12,9 +12,12 @@ Phase 3A is implemented here. The repo now covers the Phase 1A listing pipeline,
 - fixture-scale planning, policy, brownfield, flood, heritage, and Article 4 imports
 - deterministic site planning enrichment and source-coverage tracking
 - auditable extant-permission screening with `FOR` / `AGAINST` / `UNKNOWN` evidence assembly
-- site list/detail API and internal map/detail UI with planning context panels
+- seeded v1 scenario templates, cited pilot-borough rulepacks, and deterministic scenario suggestions
+- analyst scenario edit / confirm / reject workflow with frozen geometry hash and stale-state handling
+- scenario-conditioned evidence in API and internal UI
+- site list/detail API and internal map/detail UI with planning and scenario panels
 
-Phase 4+ scenario logic, assessments, scoring, valuation, ranking, visible probability, hidden probability, and model work remain deferred.
+Phase 5+ historical labels, comparable retrieval, model work, scoring, valuation, ranking, visible probability, and hidden probability remain deferred.
 
 ## Repo Layout
 
@@ -66,7 +69,7 @@ source .venv/bin/activate
 python -m landintel.geospatial.bootstrap --dataset all --requested-by local-dev
 ```
 
-6. Bootstrap the local Phase 3A planning fixtures:
+6. Bootstrap the local Phase 3A/4A planning fixtures:
 
 ```bash
 source .venv/bin/activate
@@ -165,6 +168,21 @@ curl -X POST http://localhost:8000/api/sites/<site_uuid>/geometry \
   -d '{"geom_4326":{"type":"Polygon","coordinates":[[[-0.12,51.52],[-0.119,51.52],[-0.119,51.521],[-0.12,51.521],[-0.12,51.52]]]},"source_type":"ANALYST_DRAWN","confidence":"HIGH","reason":"Analyst correction","created_by":"local-smoke"}'
 ```
 
+Suggest, inspect, and confirm scenarios:
+
+```bash
+curl -X POST http://localhost:8000/api/sites/<site_uuid>/scenarios/suggest \
+  -H 'Content-Type: application/json' \
+  -d '{"requested_by":"local-smoke"}'
+
+curl http://localhost:8000/api/sites/<site_uuid>/scenarios
+curl http://localhost:8000/api/scenarios/<scenario_uuid>
+
+curl -X POST http://localhost:8000/api/scenarios/<scenario_uuid>/confirm \
+  -H 'Content-Type: application/json' \
+  -d '{"action":"confirm","reviewed_by":"local-smoke","review_notes":"Analyst confirmed after reviewing rulepack fit."}'
+```
+
 ## Source Approval Rules
 
 - `manual_url` uses connector type `MANUAL_URL` and is allowed for manual analyst-triggered intake.
@@ -210,6 +228,10 @@ Minimal `refresh_policy_json` for an automated source:
 - `GET /api/sites/{site_id}`
 - `POST /api/sites/{site_id}/geometry`
 - `POST /api/sites/{site_id}/extant-permission-check`
+- `POST /api/sites/{site_id}/scenarios/suggest`
+- `GET /api/sites/{site_id}/scenarios`
+- `GET /api/scenarios/{scenario_id}`
+- `POST /api/scenarios/{scenario_id}/confirm`
 - `GET /api/health/data`
 
 ## Reference Data Bootstrap
@@ -222,8 +244,8 @@ Minimal `refresh_policy_json` for an automated source:
 - `python -m landintel.planning.bootstrap --dataset brownfield --requested-by local-dev` imports brownfield state fixtures with Part 1 and Part 2 separated.
 - `python -m landintel.planning.bootstrap --dataset policy --requested-by local-dev` imports London DataMap / borough policy area fixtures.
 - `python -m landintel.planning.bootstrap --dataset constraints --requested-by local-dev` imports Planning Data, flood, heritage, and Article 4 fixtures.
-- `python -m landintel.planning.bootstrap --dataset baseline --requested-by local-dev` imports initial borough baseline-pack and rulepack placeholder records.
-- `python -m landintel.planning.bootstrap --dataset all --requested-by local-dev` runs the full Phase 3A fixture bootstrap.
+- `python -m landintel.planning.bootstrap --dataset baseline --requested-by local-dev` imports cited pilot-borough baseline packs and machine-readable rulepacks.
+- `python -m landintel.planning.bootstrap --dataset all --requested-by local-dev` runs the full Phase 3A/4A fixture bootstrap.
 - local/dev uses fixture-scale coverage only; this phase does not attempt national bulk ingestion.
 
 ## Geometry Confidence Meanings
@@ -235,7 +257,32 @@ Minimal `refresh_policy_json` for an automated source:
 
 All canonical calculations run in EPSG:27700. EPSG:4326 is stored only for display and export surfaces.
 
-## Phase 3A Rules
+## Scenario Templates And Rulepacks
+
+- Phase 4A seeds the exact v1 templates from the controlling spec:
+  - `resi_1_4_full`
+  - `resi_5_9_full`
+  - `resi_10_49_outline`
+- pilot borough rulepacks are stored as machine-readable operational summaries, not law
+- every operational rule must carry source provenance in the stored citation payload
+- rulepack freshness and status are exposed through site readback and `/api/health/data`
+
+## Scenario Statuses
+
+- `SUGGESTED`: deterministic heuristic output awaiting analyst action
+- `AUTO_CONFIRMED`: only allowed when all conservative gates are satisfied; this phase defaults to `ANALYST_REQUIRED` when strong nearest historical support cannot be proven
+- `ANALYST_CONFIRMED`: analyst-reviewed scenario, possibly with edits
+- `ANALYST_REQUIRED`: viable hypothesis but not safely auto-confirmable
+- `REJECTED`: analyst explicitly rejected the scenario
+- `OUT_OF_SCOPE`: scenario blocked by extant-permission or other exclusionary context
+
+## Scenario Staleness
+
+- confirmed scenarios freeze the current `red_line_geom_hash`
+- if the site geometry changes later, current scenarios are marked stale and review-required rather than silently carried forward
+- stale-state is surfaced in the API/UI with warning codes and audit history
+
+## Phase 4A Rules
 
 - the assessed object is the site geometry, not an individual title polygon
 - title polygons are indicative evidence only and can support multi-title linkage
@@ -247,6 +294,10 @@ All canonical calculations run in EPSG:27700. EPSG:4326 is stored only for displ
 - missing mandatory source families must return manual review or abstain, not a silent clean state
 - do not infer planning truth, policy truth, or parcel-only scoring signals from listing text
 - do not use brochure OCR/CV, speculative polygon inference, or LLM-generated planning facts in this phase
+- scenarios are hypotheses, not facts
+- no probability, valuation, ranking, or assessment execution is implemented in this phase
+- do not downgrade an `ABSTAIN` / manual-review condition just because a scenario exists
+- if strong nearest historical support cannot be shown honestly, default to `ANALYST_REQUIRED`
 
 ## Implemented Source Families
 
@@ -257,7 +308,7 @@ All canonical calculations run in EPSG:27700. EPSG:4326 is stored only for displ
 - Planning Data constraint enrichment
 - flood enrichment
 - heritage / Article 4 enrichment
-- borough source-coverage capture, freshness state, and baseline-pack scaffolding
+- borough source-coverage capture, freshness state, baseline-pack structure, and cited pilot rulepacks
 
 ## Extant Permission Outcomes
 
@@ -306,11 +357,13 @@ docker compose ps
 - when only point evidence exists, the site can be created as `POINT_ONLY` / `INSUFFICIENT`, but it stays clearly flagged for manual work
 - missing fields stay null; the parser does not invent planning claims or geometry
 - Phase 3A planning imports stay fixture-scale for local/dev and focus on deterministic site enrichment, not citywide production ingest
-- borough baseline packs and rulepacks are structural placeholders only in this phase; they are not a scenario engine
+- Phase 4A scenario suggestions stay deterministic, testable, and config-driven; they are not predictions
+- pilot borough rulepacks are usable operational summaries for fixture boroughs, but they are not a substitute for analyst judgment or legal advice
 
-## Deferred To Phase 4+
+## Deferred To Phase 5+
 
-- scenario suggestion or confirmation
+- historical labels and point-in-time feature reconstruction
+- gold-set workflow and comparable retrieval
 - assessment runs
 - feature snapshots for model training
 - scoring

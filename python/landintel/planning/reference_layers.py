@@ -156,8 +156,11 @@ def import_baseline_pack_fixture(
         dataset_key="borough_baseline_pack",
         source_family=SOURCE_FAMILY_BASELINE_PACK,
         source_name=source_name,
-        schema_key="phase3a:baseline-pack:json:v1",
-        coverage_note="Borough baseline-pack scaffold fixture import for Phase 3A local/dev.",
+        schema_key="phase4a:baseline-pack:json:v1",
+        coverage_note=(
+            "Borough baseline-pack and cited rulepack fixture import for Phase 4A "
+            "local/dev."
+        ),
         freshness_status=SourceFreshnessStatus.FRESH,
         requested_by=requested_by,
     )

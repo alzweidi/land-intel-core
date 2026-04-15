@@ -5,13 +5,14 @@ from collections.abc import Iterable
 from sqlalchemy.orm import Session
 
 from landintel.domain.enums import (
+    BaselinePackStatus,
     EvidenceImportance,
     EvidencePolarity,
     ExtantPermissionStatus,
     SourceClass,
     VerifiedStatus,
 )
-from landintel.domain.models import SiteCandidate
+from landintel.domain.models import BoroughBaselinePack, SiteCandidate, SiteScenario
 from landintel.domain.schemas import EvidenceItemRead, EvidencePackRead, ExtantPermissionRead
 from landintel.planning.enrich import (
     list_brownfield_states_for_site,
@@ -243,6 +244,234 @@ def assemble_site_evidence(
     )
 
 
+def assemble_scenario_evidence(
+    *,
+    session: Session,
+    site: SiteCandidate,
+    scenario: SiteScenario,
+    site_evidence: EvidencePackRead | None,
+    extant_permission: ExtantPermissionRead,
+    baseline_pack: BoroughBaselinePack | None = None,
+) -> EvidencePackRead:
+    base = site_evidence or assemble_site_evidence(
+        session=session,
+        site=site,
+        extant_permission=extant_permission,
+    )
+    for_items = list(base.for_)
+    against_items = list(base.against)
+    unknown_items = list(base.unknown)
+
+    rationale = dict(scenario.rationale_json or {})
+    missing_data_flags = list(rationale.get("missing_data_flags") or [])
+    warning_codes = list(rationale.get("warning_codes") or [])
+
+    for_items.append(
+        EvidenceItemRead(
+            polarity=EvidencePolarity.FOR,
+            claim_text=(
+                f"Scenario {scenario.template_key} assumes {scenario.units_assumed} units via "
+                f"{scenario.route_assumed} route."
+            ),
+            topic="scenario_fit",
+            importance=EvidenceImportance.HIGH,
+            source_class=SourceClass.ANALYST_DERIVED,
+            source_label=scenario.template_key,
+            source_url=None,
+            source_snapshot_id=None,
+            raw_asset_id=None,
+            excerpt_text=scenario.height_band_assumed,
+            verified_status=VerifiedStatus.VERIFIED,
+        )
+    )
+
+    if baseline_pack is not None:
+        rulepack = next(
+            (row for row in baseline_pack.rulepacks if row.template_key == scenario.template_key),
+            None,
+        )
+        if rulepack is not None:
+            rule_json = dict(rulepack.rule_json or {})
+            citations = list(rule_json.get("citations") or [])
+            scenario_rules = dict(rule_json.get("scenario_rules") or {})
+            route_message = (
+                f"Rulepack for {scenario.template_key} expects route "
+                f"{scenario_rules.get('preferred_route', scenario.route_assumed)}."
+            )
+            for_items.append(
+                EvidenceItemRead(
+                    polarity=EvidencePolarity.FOR,
+                    claim_text=route_message,
+                    topic="route_fit",
+                    importance=EvidenceImportance.MEDIUM,
+                    source_class=SourceClass.ANALYST_DERIVED,
+                    source_label=f"{baseline_pack.borough_id} rulepack",
+                    source_url=_citation_url(citations),
+                    source_snapshot_id=baseline_pack.source_snapshot_id,
+                    raw_asset_id=None,
+                    excerpt_text=rule_json.get("summary"),
+                    verified_status=VerifiedStatus.VERIFIED,
+                )
+            )
+
+            if baseline_pack.status != BaselinePackStatus.PILOT_READY:
+                unknown_items.append(
+                    EvidenceItemRead(
+                        polarity=EvidencePolarity.UNKNOWN,
+                        claim_text=(
+                            f"Rulepack status is {baseline_pack.status.value}; analyst review "
+                            "remains required."
+                        ),
+                        topic="rulepack_status",
+                        importance=EvidenceImportance.HIGH,
+                        source_class=SourceClass.ANALYST_DERIVED,
+                        source_label=f"{baseline_pack.borough_id} rulepack",
+                        source_url=_citation_url(citations),
+                        source_snapshot_id=baseline_pack.source_snapshot_id,
+                        raw_asset_id=None,
+                        excerpt_text=rule_json.get("summary"),
+                        verified_status=VerifiedStatus.VERIFIED,
+                    )
+                )
+
+    if scenario.net_developable_area_pct < 0.6:
+        against_items.append(
+            EvidenceItemRead(
+                polarity=EvidencePolarity.AGAINST,
+                claim_text=(
+                    f"Scenario assumes only {round(scenario.net_developable_area_pct * 100, 1)}% "
+                    "net developable area, which may constrain delivery."
+                ),
+                topic="developable_area",
+                importance=EvidenceImportance.MEDIUM,
+                source_class=SourceClass.ANALYST_DERIVED,
+                source_label=scenario.template_key,
+                source_url=None,
+                source_snapshot_id=None,
+                raw_asset_id=None,
+                excerpt_text=scenario.access_assumption,
+                verified_status=VerifiedStatus.VERIFIED,
+            )
+        )
+    else:
+        for_items.append(
+            EvidenceItemRead(
+                polarity=EvidencePolarity.FOR,
+                claim_text=(
+                    "Net developable area assumption is "
+                    f"{round(scenario.net_developable_area_pct * 100, 1)}%."
+                ),
+                topic="developable_area",
+                importance=EvidenceImportance.MEDIUM,
+                source_class=SourceClass.ANALYST_DERIVED,
+                source_label=scenario.template_key,
+                source_url=None,
+                source_snapshot_id=None,
+                raw_asset_id=None,
+                excerpt_text=scenario.access_assumption,
+                verified_status=VerifiedStatus.VERIFIED,
+            )
+        )
+
+    if scenario.parking_assumption:
+        unknown_items.append(
+            EvidenceItemRead(
+                polarity=EvidencePolarity.UNKNOWN,
+                claim_text=scenario.parking_assumption,
+                topic="parking",
+                importance=EvidenceImportance.MEDIUM,
+                source_class=SourceClass.ANALYST_DERIVED,
+                source_label=scenario.template_key,
+                source_url=None,
+                source_snapshot_id=None,
+                raw_asset_id=None,
+                excerpt_text="Parking remains an assumption in Phase 4A.",
+                verified_status=VerifiedStatus.VERIFIED,
+            )
+        )
+
+    if scenario.affordable_housing_assumption:
+        unknown_items.append(
+            EvidenceItemRead(
+                polarity=EvidencePolarity.UNKNOWN,
+                claim_text=scenario.affordable_housing_assumption,
+                topic="affordable_housing",
+                importance=EvidenceImportance.MEDIUM,
+                source_class=SourceClass.ANALYST_DERIVED,
+                source_label=scenario.template_key,
+                source_url=None,
+                source_snapshot_id=None,
+                raw_asset_id=None,
+                excerpt_text="Affordable-housing triggers remain scenario-conditioned.",
+                verified_status=VerifiedStatus.VERIFIED,
+            )
+        )
+
+    if scenario.access_assumption:
+        unknown_items.append(
+            EvidenceItemRead(
+                polarity=EvidencePolarity.UNKNOWN,
+                claim_text=scenario.access_assumption,
+                topic="access",
+                importance=EvidenceImportance.HIGH,
+                source_class=SourceClass.ANALYST_DERIVED,
+                source_label=scenario.template_key,
+                source_url=None,
+                source_snapshot_id=None,
+                raw_asset_id=None,
+                excerpt_text="Access/frontage remains a deterministic assumption in Phase 4A.",
+                verified_status=VerifiedStatus.VERIFIED,
+            )
+        )
+
+    for flag in missing_data_flags:
+        unknown_items.append(
+            EvidenceItemRead(
+                polarity=EvidencePolarity.UNKNOWN,
+                claim_text=f"Scenario missing-data flag: {flag}",
+                topic="scenario_gap",
+                importance=EvidenceImportance.HIGH,
+                source_class=SourceClass.ANALYST_DERIVED,
+                source_label=scenario.template_key,
+                source_url=None,
+                source_snapshot_id=None,
+                raw_asset_id=None,
+                excerpt_text=flag,
+                verified_status=VerifiedStatus.VERIFIED,
+            )
+        )
+
+    for code in warning_codes:
+        target = unknown_items
+        polarity = EvidencePolarity.UNKNOWN
+        importance = EvidenceImportance.MEDIUM
+        if "OUT_OF_SCOPE" in code:
+            target = against_items
+            polarity = EvidencePolarity.AGAINST
+            importance = EvidenceImportance.HIGH
+        target.append(
+            EvidenceItemRead(
+                polarity=polarity,
+                claim_text=f"Scenario warning: {code}",
+                topic="scenario_warning",
+                importance=importance,
+                source_class=SourceClass.ANALYST_DERIVED,
+                source_label=scenario.template_key,
+                source_url=None,
+                source_snapshot_id=None,
+                raw_asset_id=None,
+                excerpt_text=scenario.stale_reason,
+                verified_status=VerifiedStatus.VERIFIED,
+            )
+        )
+
+    return EvidencePackRead(
+        for_=_dedupe_items(for_items),
+        against=_dedupe_items(against_items),
+        unknown=_dedupe_items(unknown_items),
+    )
+
+
 def _append_by_polarity(
     item: EvidenceItemRead,
     *,
@@ -257,6 +486,14 @@ def _append_by_polarity(
         against_items.append(item)
         return
     unknown_items.append(item)
+
+
+def _citation_url(citations: list[dict[str, object]]) -> str | None:
+    for citation in citations:
+        url = citation.get("url")
+        if isinstance(url, str) and url:
+            return url
+    return None
 
 
 def _planning_polarity(status: str) -> EvidencePolarity:

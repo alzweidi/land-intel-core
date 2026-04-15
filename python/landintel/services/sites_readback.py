@@ -21,6 +21,7 @@ from landintel.domain.models import (
     SiteLpaLink,
     SitePlanningLink,
     SitePolicyFact,
+    SiteScenario,
     SiteTitleLink,
     SourceSnapshot,
 )
@@ -48,7 +49,7 @@ from landintel.domain.schemas import (
     SiteWarningRead,
     SourceCoverageSnapshotRead,
 )
-from landintel.evidence.assemble import assemble_site_evidence
+from landintel.evidence.assemble import assemble_scenario_evidence, assemble_site_evidence
 from landintel.planning.enrich import (
     get_borough_baseline_pack,
     list_brownfield_states_for_site,
@@ -144,6 +145,36 @@ def serialize_site_detail(*, session: Session, site: SiteCandidate) -> SiteDetai
         extant_permission=extant_permission,
     )
     baseline_pack = get_borough_baseline_pack(session=session, borough_id=site.borough_id)
+    from landintel.services.scenarios_readback import serialize_site_scenario_summary
+
+    scenario_summaries = [
+        serialize_site_scenario_summary(
+            session=session,
+            scenario=scenario,
+            baseline_pack=baseline_pack,
+            site=site,
+        )
+        for scenario in sorted(
+            site.scenarios,
+            key=lambda row: (
+                not row.is_headline,
+                not row.is_current,
+                row.heuristic_rank if row.heuristic_rank is not None else 999,
+                row.updated_at,
+                str(row.id),
+            ),
+        )
+    ]
+    headline_scenario = next((row for row in site.scenarios if row.is_headline), None)
+    if headline_scenario is not None:
+        evidence = assemble_scenario_evidence(
+            session=session,
+            site=site,
+            scenario=headline_scenario,
+            site_evidence=evidence,
+            extant_permission=extant_permission,
+            baseline_pack=baseline_pack,
+        )
 
     return SiteDetailRead(
         **summary.model_dump(),
@@ -271,6 +302,7 @@ def serialize_site_detail(*, session: Session, site: SiteCandidate) -> SiteDetai
         extant_permission=extant_permission,
         evidence=evidence,
         baseline_pack=_serialize_baseline_pack(baseline_pack),
+        scenarios=scenario_summaries,
     )
 
 
@@ -298,6 +330,9 @@ def _site_load_options():
         selectinload(SiteCandidate.constraint_facts).selectinload(
             SiteConstraintFact.constraint_feature
         ),
+        selectinload(SiteCandidate.scenarios)
+        .selectinload(SiteScenario.reviews),
+        selectinload(SiteCandidate.scenarios).selectinload(SiteScenario.geometry_revision),
     )
 
 
@@ -395,6 +430,7 @@ def _serialize_baseline_pack(pack: BoroughBaselinePack | None) -> BoroughBaselin
         borough_id=pack.borough_id,
         version=pack.version,
         status=pack.status,
+        freshness_status=pack.freshness_status,
         signed_off_by=pack.signed_off_by,
         signed_off_at=pack.signed_off_at,
         pack_json=pack.pack_json,
@@ -403,9 +439,13 @@ def _serialize_baseline_pack(pack: BoroughBaselinePack | None) -> BoroughBaselin
             BoroughRulepackRead(
                 id=rule.id,
                 template_key=rule.template_key,
+                status=rule.status,
+                freshness_status=rule.freshness_status,
+                source_snapshot_id=rule.source_snapshot_id,
                 effective_from=rule.effective_from,
                 effective_to=rule.effective_to,
                 rule_json=rule.rule_json,
+                citations_complete=_rulepack_citations_complete(rule.rule_json),
             )
             for rule in pack.rulepacks
         ],
@@ -452,3 +492,19 @@ def _flatten_warnings(warning_json: dict[str, object] | None) -> list[SiteWarnin
             if isinstance(code, str) and isinstance(message, str):
                 flattened.append(SiteWarningRead(code=code, message=message))
     return flattened
+
+
+def _rulepack_citations_complete(rule_json: dict[str, object] | None) -> bool:
+    if not isinstance(rule_json, dict):
+        return False
+    citations = rule_json.get("citations")
+    if not isinstance(citations, list) or not citations:
+        return False
+    for citation in citations:
+        if not isinstance(citation, dict):
+            return False
+        if not isinstance(citation.get("label"), str) or not citation.get("label"):
+            return False
+        if not isinstance(citation.get("source_family"), str) or not citation.get("source_family"):
+            return False
+    return True

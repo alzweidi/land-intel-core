@@ -94,6 +94,7 @@ def build_or_refresh_site_from_cluster(
     ).scalar_one_or_none()
 
     is_new = site is None
+    previous_geom_hash = None if site is None else site.geom_hash
     before_payload = None if site is None else _site_audit_payload(site)
     if site is None:
         site = SiteCandidate(
@@ -149,6 +150,14 @@ def build_or_refresh_site_from_cluster(
         site=site,
         requested_by=requested_by or "system",
     )
+    if not is_new and previous_geom_hash is not None and previous_geom_hash != site.geom_hash:
+        from landintel.scenarios.normalize import mark_site_scenarios_stale_for_geometry_change
+
+        mark_site_scenarios_stale_for_geometry_change(
+            session=session,
+            site=site,
+            requested_by=requested_by or "system",
+        )
     session.flush()
 
     _record_audit_event(
@@ -186,6 +195,7 @@ def save_site_geometry_revision(
         raise SiteBuildError(f"Site '{site_id}' was not found.")
 
     before_payload = _site_audit_payload(site)
+    previous_geom_hash = site.geom_hash
     prepared = normalize_geojson_geometry(
         geometry_payload=geom_4326,
         source_epsg=4326,
@@ -217,6 +227,14 @@ def save_site_geometry_revision(
         site=site,
         requested_by=created_by or "analyst",
     )
+    if previous_geom_hash != site.geom_hash:
+        from landintel.scenarios.normalize import mark_site_scenarios_stale_for_geometry_change
+
+        mark_site_scenarios_stale_for_geometry_change(
+            session=session,
+            site=site,
+            requested_by=created_by or "analyst",
+        )
     session.flush()
 
     _record_audit_event(

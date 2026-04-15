@@ -10,6 +10,12 @@ from .planning_enrich import (
     run_site_planning_enrich_job,
     run_source_coverage_refresh_job,
 )
+from .scenarios import (
+    run_borough_rulepack_scenario_refresh_job,
+    run_scenario_evidence_refresh_job,
+    run_site_scenario_geometry_refresh_job,
+    run_site_scenario_suggest_refresh_job,
+)
 from .site_build import (
     run_site_build_job,
     run_site_lpa_refresh_job,
@@ -69,6 +75,26 @@ def dispatch_connector_job(session, job, settings, storage: StorageAdapter) -> b
 
     if job.job_type == JobType.SOURCE_COVERAGE_REFRESH:
         run_source_coverage_refresh_job(session=session, job=job)
+        mark_job_succeeded(session=session, job=job)
+        return True
+
+    if job.job_type == JobType.SITE_SCENARIO_SUGGEST_REFRESH:
+        run_site_scenario_suggest_refresh_job(session=session, job=job)
+        mark_job_succeeded(session=session, job=job)
+        return True
+
+    if job.job_type == JobType.SITE_SCENARIO_GEOMETRY_REFRESH:
+        run_site_scenario_geometry_refresh_job(session=session, job=job)
+        mark_job_succeeded(session=session, job=job)
+        return True
+
+    if job.job_type == JobType.BOROUGH_RULEPACK_SCENARIO_REFRESH:
+        run_borough_rulepack_scenario_refresh_job(session=session, job=job)
+        mark_job_succeeded(session=session, job=job)
+        return True
+
+    if job.job_type == JobType.SCENARIO_EVIDENCE_REFRESH:
+        run_scenario_evidence_refresh_job(session=session, job=job)
         mark_job_succeeded(session=session, job=job)
         return True
 

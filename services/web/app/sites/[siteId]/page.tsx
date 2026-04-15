@@ -36,7 +36,7 @@ function permissionTone(value: string | undefined): 'neutral' | 'accent' | 'succ
     return 'danger';
   }
 
-  if (value.includes('MANUAL_REVIEW') || value.includes('UNRESOLVED')) {
+  if (value.includes('MANUAL_REVIEW') || value.includes('UNRESOLVED') || value.includes('REQUIRED')) {
     return 'warning';
   }
 
@@ -56,7 +56,7 @@ export default async function SiteDetailPage({
     return (
       <div className="page-stack">
         <PageHeader
-          eyebrow="Phase 3A"
+          eyebrow="Phase 4A"
           title="Site not found"
           summary={`No site record is available for ${siteId}. The page still renders as a stable empty state.`}
           actions={
@@ -78,6 +78,8 @@ export default async function SiteDetailPage({
   const brownfieldStates = site.brownfield_states ?? [];
   const policyFacts = site.policy_facts ?? [];
   const constraintFacts = site.constraint_facts ?? [];
+  const scenarios = site.scenarios ?? [];
+  const headlineScenario = scenarios.find((scenario) => scenario.is_headline) ?? scenarios[0] ?? null;
   const sourceSnapshots = site.source_snapshots ?? [];
   const rawLinks = [
     ...site.documents.map((document) => ({
@@ -104,7 +106,7 @@ export default async function SiteDetailPage({
   return (
     <div className="page-stack">
       <PageHeader
-        eyebrow="Phase 3A"
+        eyebrow="Phase 4A"
         title={site.display_name}
         summary={
           extant?.summary ??
@@ -207,6 +209,63 @@ export default async function SiteDetailPage({
             </>
           ) : (
             <p className="empty-note">No extant-permission result is available for this site.</p>
+          )}
+        </Panel>
+      </div>
+
+      <div className="split-grid">
+        <Panel eyebrow="Scenarios" title="Scenario hypotheses">
+          <div className="button-row" style={{ display: 'flex', gap: 12, marginBottom: 16 }}>
+            <Link className="button button--ghost" href={`/sites/${siteId}/scenario-editor`}>
+              Open scenario editor
+            </Link>
+          </div>
+          <div className="card-stack">
+            {scenarios.length === 0 ? (
+              <p className="empty-note">No scenarios are stored yet. Open the editor to seed suggestions.</p>
+            ) : (
+              scenarios.map((scenario) => (
+                <article className="mini-card" key={scenario.id}>
+                  <div className="mini-card__top">
+                    <div>
+                      <div className="table-primary">
+                        {scenario.template_key} · {scenario.units_assumed} units
+                      </div>
+                      <div className="table-secondary">
+                        {scenario.proposal_form} · {scenario.route_assumed} · {scenario.height_band_assumed}
+                      </div>
+                    </div>
+                    <Badge tone={permissionTone(scenario.status)}>
+                      {scenario.status}
+                    </Badge>
+                  </div>
+                  <div className="table-secondary">
+                    {scenario.is_headline ? 'Headline scenario' : 'Supporting scenario'}
+                    {scenario.stale_reason ? ` · ${scenario.stale_reason}` : ''}
+                  </div>
+                </article>
+              ))
+            )}
+          </div>
+        </Panel>
+
+        <Panel eyebrow="Headline scenario" title="Current hypothesis">
+          {headlineScenario ? (
+            <DefinitionList
+              items={[
+                { label: 'Template', value: headlineScenario.template_key },
+                { label: 'Status', value: headlineScenario.status },
+                { label: 'Units', value: String(headlineScenario.units_assumed) },
+                { label: 'Route', value: headlineScenario.route_assumed },
+                { label: 'Proposal form', value: headlineScenario.proposal_form },
+                {
+                  label: 'Geometry hash',
+                  value: headlineScenario.red_line_geom_hash.slice(0, 12)
+                }
+              ]}
+            />
+          ) : (
+            <p className="empty-note">No headline scenario is available yet.</p>
           )}
         </Panel>
       </div>
@@ -352,7 +411,7 @@ export default async function SiteDetailPage({
       </div>
 
       <div className="split-grid">
-        <Panel eyebrow="Evidence FOR" title="Supportive evidence">
+        <Panel eyebrow="Evidence FOR" title={headlineScenario ? `Supportive evidence · ${headlineScenario.template_key}` : 'Supportive evidence'}>
           <div className="mini-list">
             {evidence.for.map((item) => (
               <div className="mini-list__row" key={`${item.topic}-${item.source_label}-${item.claim_text}`}>
@@ -372,7 +431,7 @@ export default async function SiteDetailPage({
           </div>
         </Panel>
 
-        <Panel eyebrow="Evidence AGAINST" title="Constraining evidence">
+        <Panel eyebrow="Evidence AGAINST" title={headlineScenario ? `Constraining evidence · ${headlineScenario.template_key}` : 'Constraining evidence'}>
           <div className="mini-list">
             {evidence.against.map((item) => (
               <div className="mini-list__row" key={`${item.topic}-${item.source_label}-${item.claim_text}`}>
@@ -394,7 +453,7 @@ export default async function SiteDetailPage({
       </div>
 
       <div className="split-grid">
-        <Panel eyebrow="Evidence UNKNOWN" title="Coverage caveats and manual-review items">
+        <Panel eyebrow="Evidence UNKNOWN" title={headlineScenario ? `Coverage caveats · ${headlineScenario.template_key}` : 'Coverage caveats and manual-review items'}>
           <div className="mini-list">
             {evidence.unknown.map((item) => (
               <div className="mini-list__row" key={`${item.topic}-${item.source_label}-${item.claim_text}`}>

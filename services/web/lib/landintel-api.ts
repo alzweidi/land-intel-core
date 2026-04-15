@@ -187,6 +187,7 @@ export type SiteDetail = SiteSummary & {
   extant_permission?: ExtantPermissionRecord | null;
   evidence?: EvidencePack | null;
   baseline_pack?: BaselinePackRecord | null;
+  scenarios?: ScenarioSummary[];
 };
 
 export type SourceCoverageRecord = {
@@ -335,6 +336,7 @@ export type BaselinePackRecord = {
   borough_id: string;
   version: string;
   status: string;
+  freshness_status: string;
   signed_off_by: string | null;
   signed_off_at: string | null;
   pack_json: Record<string, unknown>;
@@ -342,10 +344,125 @@ export type BaselinePackRecord = {
   rulepacks: Array<{
     id: string;
     template_key: string;
+    status: string;
+    freshness_status: string;
+    source_snapshot_id: string | null;
+    citations_complete: boolean;
     effective_from: string | null;
     effective_to: string | null;
     rule_json: Record<string, unknown>;
   }>;
+};
+
+export type ScenarioStatus =
+  | 'SUGGESTED'
+  | 'AUTO_CONFIRMED'
+  | 'ANALYST_CONFIRMED'
+  | 'ANALYST_REQUIRED'
+  | 'REJECTED'
+  | 'OUT_OF_SCOPE';
+
+export type ScenarioSource = 'AUTO' | 'ANALYST' | 'IMPORTED';
+
+export type ProposalForm =
+  | 'INFILL'
+  | 'REDEVELOPMENT'
+  | 'BROWNFIELD_REUSE'
+  | 'BACKLAND'
+  | 'AIRSPACE';
+
+export type ScenarioReason = {
+  code: string;
+  message: string;
+  source_label: string | null;
+  source_url: string | null;
+  source_snapshot_id: string | null;
+  raw_asset_id: string | null;
+};
+
+export type ScenarioReview = {
+  id: string;
+  review_status: ScenarioStatus;
+  review_notes: string | null;
+  reviewed_by: string | null;
+  reviewed_at: string;
+};
+
+export type ScenarioSummary = {
+  id: string;
+  site_id: string;
+  template_key: string;
+  template_version: string;
+  proposal_form: ProposalForm;
+  units_assumed: number;
+  route_assumed: string;
+  height_band_assumed: string;
+  net_developable_area_pct: number;
+  red_line_geom_hash: string;
+  scenario_source: ScenarioSource;
+  status: ScenarioStatus;
+  supersedes_id: string | null;
+  is_current: boolean;
+  is_headline: boolean;
+  heuristic_rank: number | null;
+  manual_review_required: boolean;
+  stale_reason: string | null;
+  housing_mix_assumed_json: Record<string, unknown>;
+  parking_assumption: string | null;
+  affordable_housing_assumption: string | null;
+  access_assumption: string | null;
+  reason_codes: ScenarioReason[];
+  missing_data_flags: string[];
+  warning_codes: string[];
+};
+
+export type ScenarioDetail = ScenarioSummary & {
+  template: {
+    id: string;
+    key: string;
+    version: string;
+    enabled: boolean;
+    config_json: Record<string, unknown>;
+  } | null;
+  review_history: ScenarioReview[];
+  evidence: EvidencePack | null;
+  baseline_pack: BaselinePackRecord | null;
+  site_summary: SiteSummary | null;
+};
+
+export type ScenarioExclusion = {
+  template_key: string;
+  reasons: ScenarioReason[];
+  missing_data_flags: string[];
+  warning_codes: string[];
+};
+
+export type ScenarioSuggestResponse = {
+  site_id: string;
+  headline_scenario_id: string | null;
+  items: ScenarioSummary[];
+  excluded_templates: ScenarioExclusion[];
+};
+
+export type ScenarioSuggestInput = {
+  requested_by?: string;
+  template_keys?: string[];
+  manual_seed?: boolean;
+};
+
+export type ScenarioConfirmInput = {
+  requested_by?: string;
+  action?: 'CONFIRM' | 'REJECT';
+  proposal_form?: ProposalForm;
+  units_assumed?: number;
+  route_assumed?: string;
+  height_band_assumed?: string;
+  net_developable_area_pct?: number;
+  housing_mix_assumed_json?: Record<string, unknown>;
+  parking_assumption?: string;
+  affordable_housing_assumption?: string;
+  access_assumption?: string;
+  review_notes?: string;
 };
 
 export type SitesQuery = {
@@ -1239,6 +1356,7 @@ function mapBaselinePack(value: unknown): BaselinePackRecord | null {
     borough_id: toStringValue(value.borough_id ?? value.boroughId),
     version: toStringValue(value.version),
     status: toStringValue(value.status),
+    freshness_status: toStringValue(value.freshness_status ?? value.freshnessStatus),
     signed_off_by:
       value.signed_off_by === null || value.signed_off_by === undefined
         ? null
@@ -1255,6 +1373,13 @@ function mapBaselinePack(value: unknown): BaselinePackRecord | null {
     rulepacks: pickCollection(value.rulepacks as ApiCollectionResponse<unknown>).map((item) => ({
       id: isRecord(item) ? toStringValue(item.id) : '',
       template_key: isRecord(item) ? toStringValue(item.template_key ?? item.templateKey) : '',
+      status: isRecord(item) ? toStringValue(item.status, 'DRAFT') : 'DRAFT',
+      freshness_status: isRecord(item) ? toStringValue(item.freshness_status ?? item.freshnessStatus, 'UNKNOWN') : 'UNKNOWN',
+      source_snapshot_id:
+        isRecord(item) && item.source_snapshot_id !== null && item.source_snapshot_id !== undefined
+          ? toStringValue(item.source_snapshot_id)
+          : null,
+      citations_complete: isRecord(item) ? Boolean(item.citations_complete ?? item.citationsComplete) : false,
       effective_from:
         isRecord(item) && item.effective_from !== null && item.effective_from !== undefined
           ? toStringValue(item.effective_from)
@@ -1264,6 +1389,157 @@ function mapBaselinePack(value: unknown): BaselinePackRecord | null {
           ? toStringValue(item.effective_to)
           : null,
       rule_json: isRecord(item) && isRecord(item.rule_json) ? item.rule_json : {}
+    }))
+  };
+}
+
+function mapScenarioReason(value: unknown): ScenarioReason {
+  if (!isRecord(value)) {
+    throw new Error('Invalid scenario reason');
+  }
+
+  return {
+    code: toStringValue(value.code),
+    message: toStringValue(value.message),
+    source_label:
+      value.source_label === null || value.source_label === undefined
+        ? null
+        : toStringValue(value.source_label),
+    source_url:
+      value.source_url === null || value.source_url === undefined
+        ? null
+        : toStringValue(value.source_url),
+    source_snapshot_id:
+      value.source_snapshot_id === null || value.source_snapshot_id === undefined
+        ? null
+        : toStringValue(value.source_snapshot_id),
+    raw_asset_id:
+      value.raw_asset_id === null || value.raw_asset_id === undefined
+        ? null
+        : toStringValue(value.raw_asset_id)
+  };
+}
+
+function mapScenarioSummary(value: unknown): ScenarioSummary {
+  if (!isRecord(value)) {
+    throw new Error('Invalid scenario summary');
+  }
+
+  return {
+    id: toStringValue(value.id),
+    site_id: toStringValue(value.site_id ?? value.siteId),
+    template_key: toStringValue(value.template_key ?? value.templateKey),
+    template_version: toStringValue(value.template_version ?? value.templateVersion),
+    proposal_form: toStringValue(value.proposal_form ?? value.proposalForm, 'REDEVELOPMENT') as ProposalForm,
+    units_assumed: toNumberValue(value.units_assumed ?? value.unitsAssumed) ?? 0,
+    route_assumed: toStringValue(value.route_assumed ?? value.routeAssumed),
+    height_band_assumed: toStringValue(value.height_band_assumed ?? value.heightBandAssumed),
+    net_developable_area_pct: toNumberValue(value.net_developable_area_pct ?? value.netDevelopableAreaPct) ?? 0,
+    red_line_geom_hash: toStringValue(value.red_line_geom_hash ?? value.redLineGeomHash),
+    scenario_source: toStringValue(value.scenario_source ?? value.scenarioSource, 'AUTO') as ScenarioSource,
+    status: toStringValue(value.status, 'ANALYST_REQUIRED') as ScenarioStatus,
+    supersedes_id:
+      value.supersedes_id === null || value.supersedes_id === undefined
+        ? null
+        : toStringValue(value.supersedes_id),
+    is_current: Boolean(value.is_current ?? value.isCurrent),
+    is_headline: Boolean(value.is_headline ?? value.isHeadline),
+    heuristic_rank:
+      value.heuristic_rank === null || value.heuristic_rank === undefined
+        ? null
+        : toNumberValue(value.heuristic_rank),
+    manual_review_required: Boolean(value.manual_review_required ?? value.manualReviewRequired),
+    stale_reason:
+      value.stale_reason === null || value.stale_reason === undefined
+        ? null
+        : toStringValue(value.stale_reason),
+    housing_mix_assumed_json: isRecord(value.housing_mix_assumed_json) ? value.housing_mix_assumed_json : {},
+    parking_assumption:
+      value.parking_assumption === null || value.parking_assumption === undefined
+        ? null
+        : toStringValue(value.parking_assumption),
+    affordable_housing_assumption:
+      value.affordable_housing_assumption === null || value.affordable_housing_assumption === undefined
+        ? null
+        : toStringValue(value.affordable_housing_assumption),
+    access_assumption:
+      value.access_assumption === null || value.access_assumption === undefined
+        ? null
+        : toStringValue(value.access_assumption),
+    reason_codes: pickCollection(value.reason_codes as ApiCollectionResponse<unknown>).map(mapScenarioReason),
+    missing_data_flags: pickCollection(value.missing_data_flags as ApiCollectionResponse<unknown>).map((item) => toStringValue(item)),
+    warning_codes: pickCollection(value.warning_codes as ApiCollectionResponse<unknown>).map((item) => toStringValue(item))
+  };
+}
+
+function mapScenarioReview(value: unknown): ScenarioReview {
+  if (!isRecord(value)) {
+    throw new Error('Invalid scenario review');
+  }
+
+  return {
+    id: toStringValue(value.id),
+    review_status: toStringValue(value.review_status ?? value.reviewStatus, 'ANALYST_REQUIRED') as ScenarioStatus,
+    review_notes:
+      value.review_notes === null || value.review_notes === undefined
+        ? null
+        : toStringValue(value.review_notes),
+    reviewed_by:
+      value.reviewed_by === null || value.reviewed_by === undefined
+        ? null
+        : toStringValue(value.reviewed_by),
+    reviewed_at: toStringValue(value.reviewed_at ?? value.reviewedAt)
+  };
+}
+
+function mapScenarioDetail(value: unknown): ScenarioDetail {
+  if (!isRecord(value)) {
+    throw new Error('Invalid scenario detail');
+  }
+
+  const templateRecord = getRecord(value, 'template');
+  const siteSummaryRecord = getRecord(value, 'site_summary');
+  return {
+    ...mapScenarioSummary(value),
+    template: templateRecord
+      ? {
+          id: toStringValue(templateRecord.id),
+          key: toStringValue(templateRecord.key),
+          version: toStringValue(templateRecord.version),
+          enabled: Boolean(templateRecord.enabled),
+          config_json: isRecord(templateRecord.config_json) ? templateRecord.config_json : {}
+        }
+      : null,
+    review_history: pickCollection(value.review_history as ApiCollectionResponse<unknown>).map(mapScenarioReview),
+    evidence: mapEvidencePack(value.evidence),
+    baseline_pack: mapBaselinePack(value.baseline_pack),
+    site_summary: siteSummaryRecord ? mapSiteSummary(siteSummaryRecord) : null
+  };
+}
+
+function mapScenarioSuggestResponse(value: unknown): ScenarioSuggestResponse | null {
+  if (!isRecord(value)) {
+    return null;
+  }
+
+  return {
+    site_id: toStringValue(value.site_id ?? value.siteId),
+    headline_scenario_id:
+      value.headline_scenario_id === null || value.headline_scenario_id === undefined
+        ? null
+        : toStringValue(value.headline_scenario_id),
+    items: pickCollection(value.items as ApiCollectionResponse<unknown>).map(mapScenarioSummary),
+    excluded_templates: pickCollection(value.excluded_templates as ApiCollectionResponse<unknown>).map((item) => ({
+      template_key: isRecord(item) ? toStringValue(item.template_key ?? item.templateKey) : '',
+      reasons: isRecord(item)
+        ? pickCollection(item.reasons as ApiCollectionResponse<unknown>).map(mapScenarioReason)
+        : [],
+      missing_data_flags: isRecord(item)
+        ? pickCollection(item.missing_data_flags as ApiCollectionResponse<unknown>).map((entry) => toStringValue(entry))
+        : [],
+      warning_codes: isRecord(item)
+        ? pickCollection(item.warning_codes as ApiCollectionResponse<unknown>).map((entry) => toStringValue(entry))
+        : []
     }))
   };
 }
@@ -1441,6 +1717,7 @@ function mapSiteDetail(value: unknown): SiteDetail {
   const extantPermission = mapExtantPermission(value.extant_permission);
   const evidence = mapEvidencePack(value.evidence);
   const baselinePack = mapBaselinePack(value.baseline_pack);
+  const scenarios = pickCollection(value.scenarios as ApiCollectionResponse<unknown>).map(mapScenarioSummary);
   const materialCrossLpa = summary.review_flags.includes('CROSS_LPA_MATERIAL');
 
   return {
@@ -1531,7 +1808,8 @@ function mapSiteDetail(value: unknown): SiteDetail {
     constraint_facts: constraintFacts,
     extant_permission: extantPermission,
     evidence,
-    baseline_pack: baselinePack
+    baseline_pack: baselinePack,
+    scenarios
   };
 }
 
@@ -1761,5 +2039,95 @@ export async function saveSiteGeometry(
   return {
     apiAvailable: false,
     item: applyLocalSiteGeometry(siteId, input)
+  };
+}
+
+export async function getSiteScenarios(
+  siteId: string
+): Promise<{ items: ScenarioSummary[]; apiAvailable: boolean }> {
+  const result = await queryApiCollection(
+    `/api/sites/${encodeURIComponent(siteId)}/scenarios`,
+    mapScenarioSummary
+  );
+  return {
+    items: result.items,
+    apiAvailable: result.apiAvailable
+  };
+}
+
+export async function suggestSiteScenarios(
+  siteId: string,
+  input: ScenarioSuggestInput = {}
+): Promise<{ item: ScenarioSuggestResponse | null; apiAvailable: boolean }> {
+  const payload = await requestJson(`/api/sites/${encodeURIComponent(siteId)}/scenarios/suggest`, {
+    body: JSON.stringify({
+      requested_by: input.requested_by ?? 'web-ui',
+      template_keys: input.template_keys,
+      manual_seed: input.manual_seed ?? false
+    }),
+    headers: {
+      'Content-Type': 'application/json'
+    },
+    method: 'POST'
+  });
+
+  return {
+    apiAvailable: payload !== null,
+    item: payload ? mapScenarioSuggestResponse(payload) : null
+  };
+}
+
+export async function getScenario(
+  scenarioId: string
+): Promise<{ item: ScenarioDetail | null; apiAvailable: boolean }> {
+  const payload = await requestJson(`/api/scenarios/${encodeURIComponent(scenarioId)}`);
+  if (payload && isRecord(payload)) {
+    return {
+      apiAvailable: true,
+      item: mapScenarioDetail(payload)
+    };
+  }
+
+  return {
+    apiAvailable: false,
+    item: null
+  };
+}
+
+export async function confirmScenario(
+  scenarioId: string,
+  input: ScenarioConfirmInput
+): Promise<{ item: ScenarioDetail | null; apiAvailable: boolean }> {
+  const payload = await requestJson(`/api/scenarios/${encodeURIComponent(scenarioId)}/confirm`, {
+    body: JSON.stringify({
+      requested_by: input.requested_by ?? 'web-ui',
+      action: input.action ?? 'CONFIRM',
+      proposal_form: input.proposal_form,
+      units_assumed: input.units_assumed,
+      route_assumed: input.route_assumed,
+      height_band_assumed: input.height_band_assumed,
+      net_developable_area_pct: input.net_developable_area_pct,
+      housing_mix_assumed_json: input.housing_mix_assumed_json,
+      parking_assumption: input.parking_assumption,
+      affordable_housing_assumption: input.affordable_housing_assumption,
+      access_assumption: input.access_assumption,
+      review_notes: input.review_notes
+    }),
+    headers: {
+      'Content-Type': 'application/json'
+    },
+    method: 'POST'
+  });
+
+  if (payload && isRecord(payload)) {
+    return {
+      apiAvailable: true,
+      item: mapScenarioDetail(payload)
+    };
+  }
+
+  return {
+    apiAvailable: false,
+    item: null
   };
 }

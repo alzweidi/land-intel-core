@@ -466,6 +466,9 @@ def upsert_baseline_pack_rows(
         pack.status = BaselinePackStatus(
             str(payload.get("status") or BaselinePackStatus.DRAFT.value)
         )
+        pack.freshness_status = SourceFreshnessStatus(
+            str(payload.get("freshness_status") or source_snapshot.freshness_status.value)
+        )
         pack.signed_off_by = _nullable_string(payload.get("signed_off_by"))
         pack.signed_off_at = _parse_datetime(payload.get("signed_off_at"))
         pack.pack_json = dict(payload.get("pack_json") or {})
@@ -489,9 +492,20 @@ def upsert_baseline_pack_rows(
 
             rulepack.borough_baseline_pack_id = pack.id
             rulepack.template_key = template_key
+            rulepack.status = BaselinePackStatus(
+                str(rule_payload.get("status") or pack.status.value)
+            )
+            rulepack.freshness_status = SourceFreshnessStatus(
+                str(
+                    rule_payload.get("freshness_status")
+                    or payload.get("freshness_status")
+                    or source_snapshot.freshness_status.value
+                )
+            )
             rulepack.effective_from = _parse_date(rule_payload.get("effective_from"))
             rulepack.effective_to = _parse_date(rule_payload.get("effective_to"))
             rulepack.rule_json = dict(rule_payload.get("rule_json") or {})
+            rulepack.source_snapshot_id = source_snapshot.id
         imported += 1
     return imported
 

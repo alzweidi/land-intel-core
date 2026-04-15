@@ -215,6 +215,75 @@ def enqueue_source_coverage_refresh_job(
     )
 
 
+def enqueue_site_scenario_suggest_refresh_job(
+    session: Session,
+    *,
+    site_id: str,
+    requested_by: str | None,
+    template_keys: list[str] | None = None,
+    manual_seed: bool = False,
+) -> JobRun:
+    payload_json: dict[str, object] = {
+        "site_id": site_id,
+        "manual_seed": manual_seed,
+    }
+    if template_keys:
+        payload_json["template_keys"] = template_keys
+    dedupe_key = f"site:{site_id}:{','.join(template_keys or ['all'])}:{int(manual_seed)}"
+    return _deduplicated_job(
+        session=session,
+        job_type=JobType.SITE_SCENARIO_SUGGEST_REFRESH,
+        dedupe_key=dedupe_key,
+        payload_json=payload_json,
+        requested_by=requested_by,
+    )
+
+
+def enqueue_site_scenario_geometry_refresh_job(
+    session: Session,
+    *,
+    site_id: str,
+    requested_by: str | None,
+) -> JobRun:
+    return _deduplicated_job(
+        session=session,
+        job_type=JobType.SITE_SCENARIO_GEOMETRY_REFRESH,
+        dedupe_key=f"site:{site_id}",
+        payload_json={"site_id": site_id},
+        requested_by=requested_by,
+    )
+
+
+def enqueue_borough_rulepack_scenario_refresh_job(
+    session: Session,
+    *,
+    borough_id: str,
+    requested_by: str | None,
+) -> JobRun:
+    return _deduplicated_job(
+        session=session,
+        job_type=JobType.BOROUGH_RULEPACK_SCENARIO_REFRESH,
+        dedupe_key=f"borough:{borough_id}",
+        payload_json={"borough_id": borough_id},
+        requested_by=requested_by,
+    )
+
+
+def enqueue_scenario_evidence_refresh_job(
+    session: Session,
+    *,
+    scenario_id: str,
+    requested_by: str | None,
+) -> JobRun:
+    return _deduplicated_job(
+        session=session,
+        job_type=JobType.SCENARIO_EVIDENCE_REFRESH,
+        dedupe_key=f"scenario:{scenario_id}",
+        payload_json={"scenario_id": scenario_id},
+        requested_by=requested_by,
+    )
+
+
 def _create_job(
     *,
     session: Session,

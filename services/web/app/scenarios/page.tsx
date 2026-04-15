@@ -1,16 +1,43 @@
+import Link from 'next/link';
+
 import { Badge, PageHeader, Panel } from '@/components/ui';
-import { scenarioRows } from '@/lib/mock-data';
+
+const templateRows = [
+  {
+    key: 'resi_1_4_full',
+    route: 'FULL',
+    units: '1-4',
+    note: 'Small infill or redevelopment hypothesis.'
+  },
+  {
+    key: 'resi_5_9_full',
+    route: 'FULL',
+    units: '5-9',
+    note: 'Mid-band residential hypothesis for compact London sites.'
+  },
+  {
+    key: 'resi_10_49_outline',
+    route: 'OUTLINE',
+    units: '10-49',
+    note: 'Larger outline-led residential hypothesis with explicit analyst review.'
+  }
+];
 
 export default function ScenariosPage() {
   return (
     <div className="page-stack">
       <PageHeader
-        eyebrow="Scenarios"
-        title="Scenario template shell"
-        summary="This page holds the route for future scenario normalization, confirmation, and comparison. For now, it only documents the enabled v1 templates."
+        eyebrow="Phase 4A"
+        title="Scenario engine foundation"
+        summary="The enabled v1 templates are seeded and operational. Generate, compare, and confirm scenarios from each site detail page; no scoring or probability is exposed here."
+        actions={
+          <Link className="button button--ghost" href="/sites">
+            Open site registry
+          </Link>
+        }
       />
 
-      <Panel eyebrow="Library" title="Template states">
+      <Panel eyebrow="Templates" title="Enabled v1 scenario templates">
         <div className="table-wrap">
           <table className="table-shell">
             <thead>
@@ -23,15 +50,13 @@ export default function ScenariosPage() {
               </tr>
             </thead>
             <tbody>
-              {scenarioRows.map((row) => (
+              {templateRows.map((row) => (
                 <tr key={row.key}>
                   <td className="table-primary">{row.key}</td>
                   <td>{row.units}</td>
                   <td>{row.route}</td>
                   <td>
-                    <Badge tone={row.status === 'ANALYST_CONFIRMED' ? 'success' : row.status === 'ANALYST_REQUIRED' ? 'warning' : 'accent'}>
-                      {row.status}
-                    </Badge>
+                    <Badge tone="accent">Enabled</Badge>
                   </td>
                   <td>{row.note}</td>
                 </tr>

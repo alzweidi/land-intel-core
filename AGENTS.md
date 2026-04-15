@@ -2,11 +2,11 @@
 
 ## Repo Layout
 
-- `services/api`: FastAPI routes for listings, clusters, sites, admin, and future stubs
-- `services/worker`: Postgres-backed worker loop with connector, cluster rebuild, site refresh/linkage, and planning enrichment jobs
+- `services/api`: FastAPI routes for listings, clusters, sites, scenarios, admin, and later-phase stubs
+- `services/worker`: Postgres-backed worker loop with connector, cluster rebuild, site refresh/linkage, planning enrichment, and scenario refresh jobs
 - `services/scheduler`: recurring enqueue loop for approved automated listing sources with explicit intervals
-- `services/web`: Next.js analyst UI focused on listings, clusters, sites, and planning context readback
-- `python/landintel`: shared config, ORM models, connector framework, listing parsing/clustering, geospatial/site services, planning enrichment, evidence assembly, storage, and readback
+- `services/web`: Next.js analyst UI focused on listings, clusters, sites, planning context, and scenario editing
+- `python/landintel`: shared config, ORM models, connector framework, listing parsing/clustering, geospatial/site services, planning enrichment, evidence assembly, scenarios, storage, and readback
 - `db/migrations`: Alembic revisions
 - `infra/compose`: local/VPS compose assets
 - `docs`: controlling spec and implementation notes
@@ -32,7 +32,7 @@
 
 ## Non-Negotiable Rules From The Spec
 
-- Stop at Phase 3A. Do not start Phase 4 scenario suggestion/confirmation, assessments, scoring, valuation, ranking, visible probability, hidden probability, comparable-case ranking logic, or model training.
+- Stop at Phase 4A. Do not start Phase 5 historical labels / point-in-time feature reconstruction / gold-set workflow / comparable retrieval / prediction ledger, Phase 6 model training / calibration / hidden-score mode, Phase 7 valuation / uplift / ranking, or Phase 8 overrides / kill switches / model-health dashboards.
 - No AWS, Kubernetes, Redis, vector DB, domain microservices, or separate model-serving service.
 - Use the Postgres-backed `job_run` queue with `FOR UPDATE SKIP LOCKED`.
 - Every connector run must create one `source_snapshot`, one or more `raw_asset` rows, a coverage note, and a parse status.
@@ -50,8 +50,15 @@
 - Missing source coverage never proves a clean permission, policy, or constraint state.
 - If a mandatory source family is missing for a critical permission conclusion, return manual review or abstain.
 - LLMs may help summarize evidence, but they must not create authoritative planning facts.
+- Scenarios are hypotheses, not facts.
+- No visible or hidden probability output exists in this phase.
+- No valuation, ranking, or scoring logic belongs in this phase.
+- Every operational borough rulepack rule must cite source provenance.
+- Confirmed scenarios must freeze the current geometry hash and become stale/review-required after later geometry changes.
+- Do not downgrade an abstain/manual-review condition just because a scenario exists.
+- If strong nearest historical support cannot be shown honestly, default to `ANALYST_REQUIRED`.
 
-## Phase 3A Done Means
+## Phase 4A Done Means
 
 - `docker compose up --build` boots `api`, `worker`, `scheduler`, `web`, and local PostGIS
 - `alembic upgrade head` succeeds
@@ -63,7 +70,11 @@
 - fixture-scale planning, policy, brownfield, flood, heritage, and Article 4 imports run locally
 - site detail shows permission state, evidence `FOR` / `AGAINST` / `UNKNOWN`, source coverage warnings, and raw-source links
 - extant-permission re-screening works through the API
-- the web app renders the site list/detail, MapLibre geometry editor, and planning-context panels locally
+- the three v1 scenario templates are seeded and supported pilot boroughs expose cited rulepacks
+- analysts can suggest, edit, confirm, reject, and inspect scenarios end to end
+- scenario-conditioned evidence is visible in the API and web UI
+- confirmed scenarios freeze the current geometry hash and become stale when geometry later changes
+- the web app renders the site list/detail, MapLibre geometry editor, planning-context panels, and scenario editor locally
 - tests and lint/build checks pass
 
 ## Source Approval Notes

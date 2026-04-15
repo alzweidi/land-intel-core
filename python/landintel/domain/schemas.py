@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 from datetime import date, datetime
 from typing import Any
 from uuid import UUID
@@ -22,6 +24,9 @@ from landintel.domain.enums import (
     ListingStatus,
     ListingType,
     PriceBasisType,
+    ProposalForm,
+    ScenarioSource,
+    ScenarioStatus,
     SiteStatus,
     SourceClass,
     SourceCoverageStatus,
@@ -212,6 +217,27 @@ class ExtantPermissionCheckRequest(BaseModel):
     requested_by: str | None = Field(default=None, max_length=255)
 
 
+class ScenarioSuggestRequest(BaseModel):
+    requested_by: str | None = Field(default=None, max_length=255)
+    template_keys: list[str] | None = None
+    manual_seed: bool = False
+
+
+class ScenarioConfirmRequest(BaseModel):
+    requested_by: str | None = Field(default=None, max_length=255)
+    action: str = Field(default="CONFIRM", max_length=50)
+    proposal_form: ProposalForm | None = None
+    units_assumed: int | None = Field(default=None, ge=1, le=999)
+    route_assumed: str | None = Field(default=None, max_length=100)
+    height_band_assumed: str | None = Field(default=None, max_length=100)
+    net_developable_area_pct: float | None = Field(default=None, ge=0.0, le=1.0)
+    housing_mix_assumed_json: dict[str, Any] | None = None
+    parking_assumption: str | None = Field(default=None, max_length=1000)
+    affordable_housing_assumption: str | None = Field(default=None, max_length=1000)
+    access_assumption: str | None = Field(default=None, max_length=1000)
+    review_notes: str | None = Field(default=None, max_length=4000)
+
+
 class SiteWarningRead(BaseModel):
     code: str
     message: str
@@ -397,9 +423,13 @@ class SiteConstraintFactRead(BaseModel):
 class BoroughRulepackRead(BaseModel):
     id: UUID
     template_key: str
+    status: BaselinePackStatus
+    freshness_status: SourceFreshnessStatus
+    source_snapshot_id: UUID | None
     effective_from: date | None
     effective_to: date | None
     rule_json: dict[str, Any]
+    citations_complete: bool = True
 
 
 class BoroughBaselinePackRead(BaseModel):
@@ -407,11 +437,92 @@ class BoroughBaselinePackRead(BaseModel):
     borough_id: str
     version: str
     status: BaselinePackStatus
+    freshness_status: SourceFreshnessStatus
     signed_off_by: str | None
     signed_off_at: datetime | None
     pack_json: dict[str, Any]
     source_snapshot_id: UUID | None
     rulepacks: list[BoroughRulepackRead] = Field(default_factory=list)
+
+
+class ScenarioTemplateRead(BaseModel):
+    id: UUID
+    key: str
+    version: str
+    enabled: bool
+    config_json: dict[str, Any]
+
+
+class ScenarioReasonRead(BaseModel):
+    code: str
+    message: str
+    source_label: str | None = None
+    source_url: str | None = None
+    source_snapshot_id: UUID | None = None
+    raw_asset_id: UUID | None = None
+
+
+class ScenarioReviewRead(BaseModel):
+    id: UUID
+    review_status: ScenarioStatus
+    review_notes: str | None
+    reviewed_by: str | None
+    reviewed_at: datetime
+
+
+class SiteScenarioSummaryRead(BaseModel):
+    id: UUID
+    site_id: UUID
+    template_key: str
+    template_version: str
+    proposal_form: ProposalForm
+    units_assumed: int
+    route_assumed: str
+    height_band_assumed: str
+    net_developable_area_pct: float
+    red_line_geom_hash: str
+    scenario_source: ScenarioSource
+    status: ScenarioStatus
+    supersedes_id: UUID | None
+    is_current: bool
+    is_headline: bool
+    heuristic_rank: int | None
+    manual_review_required: bool
+    stale_reason: str | None
+    housing_mix_assumed_json: dict[str, Any] = Field(default_factory=dict)
+    parking_assumption: str | None = None
+    affordable_housing_assumption: str | None = None
+    access_assumption: str | None = None
+    reason_codes: list[ScenarioReasonRead] = Field(default_factory=list)
+    missing_data_flags: list[str] = Field(default_factory=list)
+    warning_codes: list[str] = Field(default_factory=list)
+
+
+class SiteScenarioDetailRead(SiteScenarioSummaryRead):
+    template: ScenarioTemplateRead | None = None
+    review_history: list[ScenarioReviewRead] = Field(default_factory=list)
+    evidence: EvidencePackRead
+    baseline_pack: BoroughBaselinePackRead | None = None
+    site_summary: SiteSummaryRead | None = None
+
+
+class ScenarioExclusionRead(BaseModel):
+    template_key: str
+    reasons: list[ScenarioReasonRead] = Field(default_factory=list)
+    missing_data_flags: list[str] = Field(default_factory=list)
+    warning_codes: list[str] = Field(default_factory=list)
+
+
+class SiteScenarioListResponse(BaseModel):
+    items: list[SiteScenarioSummaryRead]
+    total: int
+
+
+class SiteScenarioSuggestResponse(BaseModel):
+    site_id: UUID
+    headline_scenario_id: UUID | None = None
+    items: list[SiteScenarioSummaryRead]
+    excluded_templates: list[ScenarioExclusionRead] = Field(default_factory=list)
 
 
 class ExtantPermissionMatchRead(BaseModel):
@@ -489,6 +600,7 @@ class SiteDetailRead(SiteSummaryRead):
     extant_permission: ExtantPermissionRead
     evidence: EvidencePackRead
     baseline_pack: BoroughBaselinePackRead | None = None
+    scenarios: list[SiteScenarioSummaryRead] = Field(default_factory=list)
 
 
 class SiteListResponse(BaseModel):

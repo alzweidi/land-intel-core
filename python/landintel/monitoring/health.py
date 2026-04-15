@@ -1,5 +1,5 @@
 from sqlalchemy import select, text
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, selectinload
 
 from landintel.domain.models import BoroughBaselinePack, SourceCoverageSnapshot
 
@@ -22,7 +22,9 @@ def build_data_health(session: Session) -> dict[str, object]:
         latest.setdefault((row.borough_id, row.source_family), row)
 
     baseline_packs = session.execute(
-        select(BoroughBaselinePack).order_by(BoroughBaselinePack.created_at.desc())
+        select(BoroughBaselinePack)
+        .options(selectinload(BoroughBaselinePack.rulepacks))
+        .order_by(BoroughBaselinePack.created_at.desc())
     ).scalars().all()
     status = "ok"
     if any(row.coverage_status.value != "COMPLETE" for row in latest.values()):
@@ -50,8 +52,20 @@ def build_data_health(session: Session) -> dict[str, object]:
                 "borough_id": pack.borough_id,
                 "version": pack.version,
                 "status": pack.status.value,
+                "freshness_status": pack.freshness_status.value,
                 "signed_off_by": pack.signed_off_by,
                 "signed_off_at": pack.signed_off_at.isoformat() if pack.signed_off_at else None,
+                "rulepacks": [
+                    {
+                        "template_key": rule.template_key,
+                        "status": rule.status.value,
+                        "freshness_status": rule.freshness_status.value,
+                        "source_snapshot_id": (
+                            str(rule.source_snapshot_id) if rule.source_snapshot_id else None
+                        ),
+                    }
+                    for rule in pack.rulepacks
+                ],
             }
             for pack in baseline_packs
         ],

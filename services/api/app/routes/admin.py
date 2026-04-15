@@ -72,10 +72,10 @@ def get_listing_sources(
 def get_phase_status() -> PlaceholderResponse:
     return PlaceholderResponse(
         detail=(
-            "Phase 3A planning context, extant-permission screening, and evidence assembly are "
-            "active. "
-            "Scenario, assessment, scoring, valuation, and ranking surfaces remain deferred."
+            "Phase 4A scenario suggestion, confirmation, stale-state tracking, and "
+            "scenario-conditioned evidence are active. Assessment execution, scoring, "
+            "valuation, and ranking remain deferred."
         ),
         surface="admin.phase-status",
-        spec_phase="Phase 3A",
+        spec_phase="Phase 4A",
     )

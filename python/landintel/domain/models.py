@@ -37,6 +37,9 @@ from landintel.domain.enums import (
     ListingStatus,
     ListingType,
     PriceBasisType,
+    ProposalForm,
+    ScenarioSource,
+    ScenarioStatus,
     SiteMarketEventType,
     SiteStatus,
     SourceClass,
@@ -562,6 +565,11 @@ class SiteCandidate(Base):
         back_populates="site",
         cascade="all, delete-orphan",
     )
+    scenarios: Mapped[list["SiteScenario"]] = relationship(
+        back_populates="site",
+        cascade="all, delete-orphan",
+        order_by="SiteScenario.updated_at.desc()",
+    )
 
 
 class SiteGeometryRevision(Base):
@@ -601,6 +609,9 @@ class SiteGeometryRevision(Base):
 
     site: Mapped[SiteCandidate] = relationship(back_populates="geometry_revisions")
     raw_asset: Mapped[RawAsset | None] = relationship(foreign_keys=[raw_asset_id])
+    frozen_scenarios: Mapped[list["SiteScenario"]] = relationship(
+        back_populates="geometry_revision"
+    )
 
 
 class SiteTitleLink(Base):
@@ -1018,6 +1029,11 @@ class BoroughBaselinePack(Base):
         nullable=False,
         default=BaselinePackStatus.DRAFT,
     )
+    freshness_status: Mapped[SourceFreshnessStatus] = mapped_column(
+        Enum(SourceFreshnessStatus, name="source_freshness_status", create_type=False),
+        nullable=False,
+        default=SourceFreshnessStatus.UNKNOWN,
+    )
     signed_off_by: Mapped[str | None] = mapped_column(String(255))
     signed_off_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     pack_json: Mapped[dict[str, object]] = mapped_column(JSON, nullable=False, default=dict)
@@ -1057,6 +1073,20 @@ class BoroughRulepack(Base):
         nullable=False,
     )
     template_key: Mapped[str] = mapped_column(String(100), nullable=False)
+    status: Mapped[BaselinePackStatus] = mapped_column(
+        Enum(BaselinePackStatus, name="baseline_pack_status", create_type=False),
+        nullable=False,
+        default=BaselinePackStatus.DRAFT,
+    )
+    freshness_status: Mapped[SourceFreshnessStatus] = mapped_column(
+        Enum(SourceFreshnessStatus, name="source_freshness_status", create_type=False),
+        nullable=False,
+        default=SourceFreshnessStatus.UNKNOWN,
+    )
+    source_snapshot_id: Mapped[uuid.UUID | None] = mapped_column(
+        Uuid,
+        ForeignKey("source_snapshot.id", ondelete="SET NULL"),
+    )
     rule_json: Mapped[dict[str, object]] = mapped_column(JSON, nullable=False, default=dict)
     effective_from: Mapped[date | None] = mapped_column(Date)
     effective_to: Mapped[date | None] = mapped_column(Date)
@@ -1066,10 +1096,163 @@ class BoroughRulepack(Base):
         default=utc_now,
         server_default=func.now(),
     )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        default=utc_now,
+        onupdate=utc_now,
+        server_default=func.now(),
+    )
 
     borough_baseline_pack: Mapped[BoroughBaselinePack] = relationship(
         back_populates="rulepacks"
     )
+    source_snapshot: Mapped[SourceSnapshot | None] = relationship()
+
+
+class ScenarioTemplate(Base):
+    __tablename__ = "scenario_template"
+    __table_args__ = (UniqueConstraint("key", "version"),)
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
+    key: Mapped[str] = mapped_column(String(100), nullable=False)
+    version: Mapped[str] = mapped_column(String(50), nullable=False)
+    enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    config_json: Mapped[dict[str, object]] = mapped_column(JSON, nullable=False, default=dict)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        default=utc_now,
+        server_default=func.now(),
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        default=utc_now,
+        onupdate=utc_now,
+        server_default=func.now(),
+    )
+
+
+class SiteScenario(Base):
+    __tablename__ = "site_scenario"
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
+    site_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid,
+        ForeignKey("site_candidate.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    template_key: Mapped[str] = mapped_column(String(100), nullable=False)
+    template_version: Mapped[str] = mapped_column(String(50), nullable=False)
+    proposal_form: Mapped[ProposalForm] = mapped_column(
+        Enum(ProposalForm, name="proposal_form"),
+        nullable=False,
+    )
+    units_assumed: Mapped[int] = mapped_column(Integer, nullable=False)
+    route_assumed: Mapped[str] = mapped_column(String(100), nullable=False)
+    height_band_assumed: Mapped[str] = mapped_column(String(100), nullable=False)
+    net_developable_area_pct: Mapped[float] = mapped_column(Float, nullable=False)
+    housing_mix_assumed_json: Mapped[dict[str, object]] = mapped_column(
+        JSON,
+        nullable=False,
+        default=dict,
+    )
+    parking_assumption: Mapped[str | None] = mapped_column(Text)
+    affordable_housing_assumption: Mapped[str | None] = mapped_column(Text)
+    access_assumption: Mapped[str | None] = mapped_column(Text)
+    site_geometry_revision_id: Mapped[uuid.UUID | None] = mapped_column(
+        Uuid,
+        ForeignKey("site_geometry_revision.id", ondelete="SET NULL"),
+    )
+    red_line_geom_hash: Mapped[str] = mapped_column(String(64), nullable=False)
+    scenario_source: Mapped[ScenarioSource] = mapped_column(
+        Enum(ScenarioSource, name="scenario_source"),
+        nullable=False,
+        default=ScenarioSource.AUTO,
+    )
+    status: Mapped[ScenarioStatus] = mapped_column(
+        Enum(ScenarioStatus, name="scenario_status"),
+        nullable=False,
+        default=ScenarioStatus.SUGGESTED,
+    )
+    supersedes_id: Mapped[uuid.UUID | None] = mapped_column(
+        Uuid,
+        ForeignKey("site_scenario.id", ondelete="SET NULL"),
+    )
+    is_current: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    is_headline: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    heuristic_rank: Mapped[int | None] = mapped_column(Integer)
+    manual_review_required: Mapped[bool] = mapped_column(
+        Boolean,
+        nullable=False,
+        default=False,
+    )
+    stale_reason: Mapped[str | None] = mapped_column(Text)
+    rationale_json: Mapped[dict[str, object]] = mapped_column(
+        JSON,
+        nullable=False,
+        default=dict,
+    )
+    evidence_json: Mapped[dict[str, object]] = mapped_column(
+        JSON,
+        nullable=False,
+        default=dict,
+    )
+    created_by: Mapped[str | None] = mapped_column(String(255))
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        default=utc_now,
+        server_default=func.now(),
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        default=utc_now,
+        onupdate=utc_now,
+        server_default=func.now(),
+    )
+
+    site: Mapped[SiteCandidate] = relationship(back_populates="scenarios")
+    geometry_revision: Mapped[SiteGeometryRevision | None] = relationship(
+        back_populates="frozen_scenarios"
+    )
+    supersedes: Mapped["SiteScenario | None"] = relationship(
+        remote_side="SiteScenario.id",
+        back_populates="superseded_by",
+    )
+    superseded_by: Mapped[list["SiteScenario"]] = relationship(back_populates="supersedes")
+    reviews: Mapped[list["ScenarioReview"]] = relationship(
+        back_populates="scenario",
+        cascade="all, delete-orphan",
+        order_by="ScenarioReview.reviewed_at.desc()",
+    )
+
+
+class ScenarioReview(Base):
+    __tablename__ = "scenario_review"
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
+    scenario_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid,
+        ForeignKey("site_scenario.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    review_status: Mapped[ScenarioStatus] = mapped_column(
+        Enum(ScenarioStatus, name="scenario_status", create_type=False),
+        nullable=False,
+    )
+    review_notes: Mapped[str | None] = mapped_column(Text)
+    reviewed_by: Mapped[str | None] = mapped_column(String(255))
+    reviewed_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        default=utc_now,
+        server_default=func.now(),
+    )
+
+    scenario: Mapped[SiteScenario] = relationship(back_populates="reviews")
 
 
 class AuthUser(Base):
@@ -1241,8 +1424,24 @@ Index("ix_site_policy_fact_site_id", SitePolicyFact.site_id)
 Index("ix_site_constraint_fact_site_id", SiteConstraintFact.site_id)
 Index("ix_borough_baseline_pack_borough_id", BoroughBaselinePack.borough_id)
 Index("ix_borough_baseline_pack_status", BoroughBaselinePack.status)
+Index("ix_borough_baseline_pack_freshness", BoroughBaselinePack.freshness_status)
 Index(
     "ix_borough_rulepack_pack_template",
     BoroughRulepack.borough_baseline_pack_id,
     BoroughRulepack.template_key,
 )
+Index("ix_borough_rulepack_status", BoroughRulepack.status)
+Index("ix_borough_rulepack_freshness", BoroughRulepack.freshness_status)
+Index("ix_scenario_template_enabled", ScenarioTemplate.enabled)
+Index("ix_scenario_template_key", ScenarioTemplate.key)
+Index("ix_site_scenario_site_id", SiteScenario.site_id)
+Index("ix_site_scenario_status", SiteScenario.status)
+Index("ix_site_scenario_template_key", SiteScenario.template_key)
+Index("ix_site_scenario_site_current", SiteScenario.site_id, SiteScenario.is_current)
+Index("ix_site_scenario_site_headline", SiteScenario.site_id, SiteScenario.is_headline)
+Index(
+    "ix_site_scenario_geometry_revision_id",
+    SiteScenario.site_geometry_revision_id,
+)
+Index("ix_scenario_review_scenario_id", ScenarioReview.scenario_id)
+Index("ix_scenario_review_reviewed_at", ScenarioReview.reviewed_at)

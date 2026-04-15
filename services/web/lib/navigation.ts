@@ -51,7 +51,7 @@ export const navGroups: NavGroup[] = [
       {
         href: '/scenarios',
         label: 'Scenarios',
-        description: 'Scenario template shell'
+        description: 'Scenario templates and workflow entry'
       },
       {
         href: '/assessments',
@@ -121,7 +121,7 @@ export const surfaceCatalog = [
   {
     href: '/scenarios',
     title: 'Scenario editor',
-    summary: 'Inspect the scenario shell that will later host confirmed proposal inputs.',
+    summary: 'Generate, compare, and confirm deterministic scenario hypotheses for each site.',
     tag: 'scenario'
   },
   {

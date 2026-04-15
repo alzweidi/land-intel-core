@@ -11,6 +11,10 @@ from landintel.domain.schemas import (
     SiteGeometryUpdateRequest,
     SiteListResponse,
 )
+from landintel.jobs.service import (
+    enqueue_site_scenario_geometry_refresh_job,
+    enqueue_site_scenario_suggest_refresh_job,
+)
 from landintel.planning.enrich import refresh_site_planning_context
 from landintel.planning.extant_permission import (
     audit_extant_permission_check,
@@ -40,6 +44,11 @@ def create_site_from_cluster(
         site = build_or_refresh_site_from_cluster(
             session=session,
             cluster_id=cluster_id,
+            requested_by=request.requested_by if request is not None else None,
+        )
+        enqueue_site_scenario_suggest_refresh_job(
+            session=session,
+            site_id=str(site.id),
             requested_by=request.requested_by if request is not None else None,
         )
         session.commit()
@@ -106,6 +115,11 @@ def create_site_geometry(
             reason=request.reason,
             created_by=request.created_by,
             raw_asset_id=request.raw_asset_id,
+        )
+        enqueue_site_scenario_geometry_refresh_job(
+            session=session,
+            site_id=str(site.id),
+            requested_by=request.created_by,
         )
         session.commit()
         session.expire_all()
