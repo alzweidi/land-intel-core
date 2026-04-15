@@ -1,2 +1,13 @@
-"""Geospatial placeholders."""
+from landintel.geospatial.geometry import (
+    CANONICAL_EPSG,
+    DISPLAY_EPSG,
+    TRIVIAL_CROSS_LPA_OVERLAP_PCT,
+    TRIVIAL_CROSS_LPA_OVERLAP_SQM,
+)
 
+__all__ = [
+    "CANONICAL_EPSG",
+    "DISPLAY_EPSG",
+    "TRIVIAL_CROSS_LPA_OVERLAP_PCT",
+    "TRIVIAL_CROSS_LPA_OVERLAP_SQM",
+]

@@ -27,12 +27,16 @@ from landintel.domain.enums import (
     ConnectorType,
     DocumentExtractionStatus,
     DocumentType,
+    GeomConfidence,
+    GeomSourceType,
     JobStatus,
     JobType,
     ListingClusterStatus,
     ListingStatus,
     ListingType,
     PriceBasisType,
+    SiteMarketEventType,
+    SiteStatus,
     SourceFreshnessStatus,
     SourceParseStatus,
 )
@@ -309,6 +313,9 @@ class ListingCluster(Base):
         back_populates="listing_cluster",
         cascade="all, delete-orphan",
     )
+    site_candidates: Mapped[list["SiteCandidate"]] = relationship(
+        back_populates="listing_cluster"
+    )
 
 
 class ListingClusterMember(Base):
@@ -340,6 +347,292 @@ class ListingClusterMember(Base):
 
     listing_cluster: Mapped[ListingCluster] = relationship(back_populates="members")
     listing_item: Mapped[ListingItem] = relationship(back_populates="cluster_members")
+
+
+class LpaBoundary(Base):
+    __tablename__ = "lpa_boundary"
+
+    id: Mapped[str] = mapped_column(String(100), primary_key=True)
+    name: Mapped[str] = mapped_column(String(255), nullable=False)
+    external_ref: Mapped[str | None] = mapped_column(String(100), unique=True)
+    authority_level: Mapped[str] = mapped_column(String(50), nullable=False, default="BOROUGH")
+    geom_27700: Mapped[str] = mapped_column(Text, nullable=False)
+    geom_4326: Mapped[dict[str, object]] = mapped_column(JSON, nullable=False, default=dict)
+    geom_hash: Mapped[str] = mapped_column(String(64), nullable=False)
+    area_sqm: Mapped[float] = mapped_column(Float, nullable=False)
+    source_snapshot_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid,
+        ForeignKey("source_snapshot.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        default=utc_now,
+        server_default=func.now(),
+    )
+
+    site_candidates: Mapped[list["SiteCandidate"]] = relationship(back_populates="borough")
+    site_lpa_links: Mapped[list["SiteLpaLink"]] = relationship(back_populates="lpa")
+
+
+class HmlrTitlePolygon(Base):
+    __tablename__ = "hmlr_title_polygon"
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
+    title_number: Mapped[str] = mapped_column(String(100), nullable=False)
+    address_text: Mapped[str | None] = mapped_column(Text)
+    normalized_address: Mapped[str | None] = mapped_column(String(500))
+    geom_27700: Mapped[str] = mapped_column(Text, nullable=False)
+    geom_4326: Mapped[dict[str, object]] = mapped_column(JSON, nullable=False, default=dict)
+    geom_hash: Mapped[str] = mapped_column(String(64), nullable=False)
+    area_sqm: Mapped[float] = mapped_column(Float, nullable=False)
+    source_snapshot_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid,
+        ForeignKey("source_snapshot.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        default=utc_now,
+        server_default=func.now(),
+    )
+
+    site_title_links: Mapped[list["SiteTitleLink"]] = relationship(
+        back_populates="title_polygon"
+    )
+
+
+class SiteCandidate(Base):
+    __tablename__ = "site_candidate"
+    __table_args__ = (UniqueConstraint("listing_cluster_id"),)
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
+    listing_cluster_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid,
+        ForeignKey("listing_cluster.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    display_name: Mapped[str] = mapped_column(String(255), nullable=False)
+    borough_id: Mapped[str | None] = mapped_column(
+        String(100),
+        ForeignKey("lpa_boundary.id", ondelete="SET NULL"),
+    )
+    geom_27700: Mapped[str] = mapped_column(Text, nullable=False)
+    geom_4326: Mapped[dict[str, object]] = mapped_column(JSON, nullable=False, default=dict)
+    geom_hash: Mapped[str] = mapped_column(String(64), nullable=False)
+    geom_source_type: Mapped[GeomSourceType] = mapped_column(
+        Enum(GeomSourceType, name="geom_source_type"),
+        nullable=False,
+    )
+    geom_confidence: Mapped[GeomConfidence] = mapped_column(
+        Enum(GeomConfidence, name="geom_confidence"),
+        nullable=False,
+    )
+    site_area_sqm: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)
+    current_listing_id: Mapped[uuid.UUID | None] = mapped_column(
+        Uuid,
+        ForeignKey("listing_item.id", ondelete="SET NULL"),
+    )
+    current_price_gbp: Mapped[int | None] = mapped_column(BigInteger)
+    current_price_basis_type: Mapped[PriceBasisType] = mapped_column(
+        Enum(PriceBasisType, name="price_basis_type", create_type=False),
+        nullable=False,
+        default=PriceBasisType.UNKNOWN,
+    )
+    site_status: Mapped[SiteStatus] = mapped_column(
+        Enum(SiteStatus, name="site_status"),
+        nullable=False,
+        default=SiteStatus.DRAFT,
+    )
+    manual_review_required: Mapped[bool] = mapped_column(
+        Boolean,
+        nullable=False,
+        default=False,
+    )
+    warning_json: Mapped[dict[str, object]] = mapped_column(JSON, nullable=False, default=dict)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        default=utc_now,
+        server_default=func.now(),
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        default=utc_now,
+        onupdate=utc_now,
+        server_default=func.now(),
+    )
+
+    listing_cluster: Mapped[ListingCluster] = relationship(back_populates="site_candidates")
+    borough: Mapped[LpaBoundary | None] = relationship(back_populates="site_candidates")
+    current_listing: Mapped[ListingItem | None] = relationship(foreign_keys=[current_listing_id])
+    geometry_revisions: Mapped[list["SiteGeometryRevision"]] = relationship(
+        back_populates="site",
+        cascade="all, delete-orphan",
+        order_by="SiteGeometryRevision.created_at.desc()",
+    )
+    title_links: Mapped[list["SiteTitleLink"]] = relationship(
+        back_populates="site",
+        cascade="all, delete-orphan",
+    )
+    lpa_links: Mapped[list["SiteLpaLink"]] = relationship(
+        back_populates="site",
+        cascade="all, delete-orphan",
+    )
+    market_events: Mapped[list["SiteMarketEvent"]] = relationship(
+        back_populates="site",
+        cascade="all, delete-orphan",
+        order_by="SiteMarketEvent.event_at.desc()",
+    )
+
+
+class SiteGeometryRevision(Base):
+    __tablename__ = "site_geometry_revision"
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
+    site_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid,
+        ForeignKey("site_candidate.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    geom_27700: Mapped[str] = mapped_column(Text, nullable=False)
+    geom_4326: Mapped[dict[str, object]] = mapped_column(JSON, nullable=False, default=dict)
+    geom_hash: Mapped[str] = mapped_column(String(64), nullable=False)
+    source_type: Mapped[GeomSourceType] = mapped_column(
+        Enum(GeomSourceType, name="geom_source_type", create_type=False),
+        nullable=False,
+    )
+    confidence: Mapped[GeomConfidence] = mapped_column(
+        Enum(GeomConfidence, name="geom_confidence", create_type=False),
+        nullable=False,
+    )
+    site_area_sqm: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)
+    reason: Mapped[str | None] = mapped_column(Text)
+    created_by: Mapped[str | None] = mapped_column(String(255))
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        default=utc_now,
+        server_default=func.now(),
+    )
+    raw_asset_id: Mapped[uuid.UUID | None] = mapped_column(
+        Uuid,
+        ForeignKey("raw_asset.id", ondelete="SET NULL"),
+    )
+    warning_json: Mapped[dict[str, object]] = mapped_column(JSON, nullable=False, default=dict)
+
+    site: Mapped[SiteCandidate] = relationship(back_populates="geometry_revisions")
+    raw_asset: Mapped[RawAsset | None] = relationship(foreign_keys=[raw_asset_id])
+
+
+class SiteTitleLink(Base):
+    __tablename__ = "site_title_link"
+    __table_args__ = (UniqueConstraint("site_id", "title_number"),)
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
+    site_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid,
+        ForeignKey("site_candidate.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    title_polygon_id: Mapped[uuid.UUID | None] = mapped_column(
+        Uuid,
+        ForeignKey("hmlr_title_polygon.id", ondelete="SET NULL"),
+    )
+    title_number: Mapped[str] = mapped_column(String(100), nullable=False)
+    source_snapshot_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid,
+        ForeignKey("source_snapshot.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    overlap_pct: Mapped[float] = mapped_column(Float, nullable=False)
+    overlap_sqm: Mapped[float] = mapped_column(Float, nullable=False)
+    confidence: Mapped[GeomConfidence] = mapped_column(
+        Enum(GeomConfidence, name="geom_confidence", create_type=False),
+        nullable=False,
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        default=utc_now,
+        server_default=func.now(),
+    )
+
+    site: Mapped[SiteCandidate] = relationship(back_populates="title_links")
+    title_polygon: Mapped[HmlrTitlePolygon | None] = relationship(back_populates="site_title_links")
+
+
+class SiteLpaLink(Base):
+    __tablename__ = "site_lpa_link"
+    __table_args__ = (UniqueConstraint("site_id", "lpa_id"),)
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
+    site_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid,
+        ForeignKey("site_candidate.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    lpa_id: Mapped[str] = mapped_column(
+        String(100),
+        ForeignKey("lpa_boundary.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    overlap_pct: Mapped[float] = mapped_column(Float, nullable=False)
+    overlap_sqm: Mapped[float] = mapped_column(Float, nullable=False)
+    is_primary: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        default=utc_now,
+        server_default=func.now(),
+    )
+
+    site: Mapped[SiteCandidate] = relationship(back_populates="lpa_links")
+    lpa: Mapped[LpaBoundary] = relationship(back_populates="site_lpa_links")
+
+
+class SiteMarketEvent(Base):
+    __tablename__ = "site_market_event"
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
+    site_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid,
+        ForeignKey("site_candidate.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    event_type: Mapped[SiteMarketEventType] = mapped_column(
+        Enum(SiteMarketEventType, name="site_market_event_type"),
+        nullable=False,
+        default=SiteMarketEventType.LISTING_EVIDENCE,
+    )
+    event_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        default=utc_now,
+    )
+    price_gbp: Mapped[int | None] = mapped_column(BigInteger)
+    basis_type: Mapped[PriceBasisType] = mapped_column(
+        Enum(PriceBasisType, name="price_basis_type", create_type=False),
+        nullable=False,
+        default=PriceBasisType.UNKNOWN,
+    )
+    listing_item_id: Mapped[uuid.UUID | None] = mapped_column(
+        Uuid,
+        ForeignKey("listing_item.id", ondelete="SET NULL"),
+    )
+    notes: Mapped[str | None] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        default=utc_now,
+        server_default=func.now(),
+    )
+
+    site: Mapped[SiteCandidate] = relationship(back_populates="market_events")
+    listing_item: Mapped[ListingItem | None] = relationship(foreign_keys=[listing_item_id])
 
 
 class AuthUser(Base):
@@ -463,3 +756,16 @@ Index("ix_listing_snapshot_source_snapshot_id", ListingSnapshot.source_snapshot_
 Index("ix_listing_document_listing_item_id", ListingDocument.listing_item_id)
 Index("ix_listing_cluster_status", ListingCluster.cluster_status)
 Index("ix_listing_cluster_member_cluster", ListingClusterMember.listing_cluster_id)
+Index("ix_lpa_boundary_external_ref", LpaBoundary.external_ref)
+Index("ix_hmlr_title_polygon_title_number", HmlrTitlePolygon.title_number)
+Index("ix_hmlr_title_polygon_normalized_address", HmlrTitlePolygon.normalized_address)
+Index("ix_site_candidate_borough_id", SiteCandidate.borough_id)
+Index("ix_site_candidate_status", SiteCandidate.site_status)
+Index(
+    "ix_site_geometry_revision_site_created",
+    SiteGeometryRevision.site_id,
+    SiteGeometryRevision.created_at,
+)
+Index("ix_site_title_link_site_id", SiteTitleLink.site_id)
+Index("ix_site_lpa_link_site_id", SiteLpaLink.site_id)
+Index("ix_site_market_event_site_event_at", SiteMarketEvent.site_id, SiteMarketEvent.event_at)

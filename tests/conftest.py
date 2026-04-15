@@ -9,6 +9,7 @@ from landintel.db.session import create_session_factory, create_sqlalchemy_engin
 from landintel.domain import models  # noqa: F401
 from landintel.domain.enums import ComplianceMode, ConnectorType, StorageBackend
 from landintel.domain.models import ListingSource
+from landintel.geospatial.reference_data import import_hmlr_title_polygons, import_lpa_boundaries
 from landintel.storage.local import LocalFileStorageAdapter
 from sqlalchemy.orm import Session
 
@@ -119,3 +120,25 @@ def drain_jobs(
         return processed
 
     return _drain
+
+
+@pytest.fixture()
+def seed_reference_data(
+    db_session: Session,
+    storage: LocalFileStorageAdapter,
+) -> dict[str, object]:
+    fixtures_root = Path(__file__).parent / "fixtures" / "reference"
+    lpa_result = import_lpa_boundaries(
+        session=db_session,
+        storage=storage,
+        fixture_path=fixtures_root / "london_borough_boundaries.geojson",
+        requested_by="pytest",
+    )
+    title_result = import_hmlr_title_polygons(
+        session=db_session,
+        storage=storage,
+        fixture_path=fixtures_root / "hmlr_title_polygons.geojson",
+        requested_by="pytest",
+    )
+    db_session.commit()
+    return {"lpa": lpa_result, "titles": title_result}

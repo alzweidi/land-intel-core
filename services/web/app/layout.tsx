@@ -1,6 +1,7 @@
 import type { Metadata } from 'next';
 import type { ReactNode } from 'react';
 import { Cormorant_Garamond, IBM_Plex_Mono, IBM_Plex_Sans } from 'next/font/google';
+import 'maplibre-gl/dist/maplibre-gl.css';
 
 import { AppShell } from '@/components/app-shell';
 import './globals.css';
@@ -27,7 +28,7 @@ export const metadata: Metadata = {
     default: 'Land Intel',
     template: '%s · Land Intel'
   },
-  description: 'Phase 1A frontend for the London-first land intelligence platform.'
+  description: 'Phase 2 site geometry and evidence workflow for the London-first land intelligence platform.'
 };
 
 export default function RootLayout({

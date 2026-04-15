@@ -9,12 +9,15 @@ from landintel.domain.enums import (
     ConnectorType,
     DocumentExtractionStatus,
     DocumentType,
+    GeomConfidence,
+    GeomSourceType,
     JobStatus,
     JobType,
     ListingClusterStatus,
     ListingStatus,
     ListingType,
     PriceBasisType,
+    SiteStatus,
     SourceFreshnessStatus,
     SourceParseStatus,
 )
@@ -181,6 +184,116 @@ class ListingClusterDetailRead(BaseModel):
 
 class ListingClusterListResponse(BaseModel):
     items: list[ListingClusterSummaryRead]
+    total: int
+
+
+class SiteFromClusterRequest(BaseModel):
+    requested_by: str | None = Field(default=None, max_length=255)
+
+
+class SiteGeometryUpdateRequest(BaseModel):
+    geom_4326: dict[str, Any]
+    source_type: GeomSourceType = GeomSourceType.ANALYST_DRAWN
+    confidence: GeomConfidence | None = None
+    reason: str | None = Field(default=None, max_length=1000)
+    created_by: str | None = Field(default=None, max_length=255)
+    raw_asset_id: UUID | None = None
+
+
+class SiteWarningRead(BaseModel):
+    code: str
+    message: str
+
+
+class SiteGeometryRead(BaseModel):
+    geom_4326: dict[str, Any]
+    geom_hash: str
+    geom_source_type: GeomSourceType
+    geom_confidence: GeomConfidence
+    site_area_sqm: float
+
+
+class SiteGeometryRevisionRead(BaseModel):
+    id: UUID
+    geom_hash: str
+    geom_4326: dict[str, Any]
+    source_type: GeomSourceType
+    confidence: GeomConfidence
+    site_area_sqm: float
+    reason: str | None
+    created_by: str | None
+    created_at: datetime
+    raw_asset_id: UUID | None
+    warnings: list[SiteWarningRead] = Field(default_factory=list)
+
+
+class SiteLpaLinkRead(BaseModel):
+    lpa_id: str
+    lpa_name: str
+    overlap_pct: float
+    overlap_sqm: float
+    is_primary: bool
+
+
+class SiteTitleLinkRead(BaseModel):
+    title_number: str
+    overlap_pct: float
+    overlap_sqm: float
+    confidence: GeomConfidence
+
+
+class SiteMarketEventRead(BaseModel):
+    id: UUID
+    event_type: str
+    event_at: datetime
+    price_gbp: int | None
+    basis_type: PriceBasisType
+    listing_item_id: UUID | None
+    notes: str | None
+
+
+class SiteClusterSummaryRead(BaseModel):
+    id: UUID
+    cluster_key: str
+    cluster_status: ListingClusterStatus
+    member_count: int
+
+
+class SiteListingSummaryRead(BaseModel):
+    id: UUID
+    headline: str | None
+    canonical_url: str
+    latest_status: ListingStatus
+    guide_price_gbp: int | None
+    price_basis_type: PriceBasisType
+    address_text: str | None
+    source_name: str
+
+
+class SiteSummaryRead(BaseModel):
+    id: UUID
+    display_name: str
+    borough_id: str | None
+    borough_name: str | None
+    site_status: SiteStatus
+    manual_review_required: bool
+    warnings: list[SiteWarningRead]
+    current_geometry: SiteGeometryRead
+    current_listing: SiteListingSummaryRead | None
+    listing_cluster: SiteClusterSummaryRead
+
+
+class SiteDetailRead(SiteSummaryRead):
+    geometry_revisions: list[SiteGeometryRevisionRead]
+    lpa_links: list[SiteLpaLinkRead]
+    title_links: list[SiteTitleLinkRead]
+    market_events: list[SiteMarketEventRead]
+    source_documents: list[ListingDocumentRead]
+    source_snapshots: list[SourceSnapshotRead]
+
+
+class SiteListResponse(BaseModel):
+    items: list[SiteSummaryRead]
     total: int
 
 

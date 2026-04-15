@@ -87,6 +87,51 @@ def enqueue_cluster_rebuild_job(
     )
 
 
+def enqueue_site_build_job(
+    session: Session,
+    *,
+    cluster_id: str,
+    requested_by: str | None,
+) -> JobRun:
+    return _deduplicated_job(
+        session=session,
+        job_type=JobType.SITE_BUILD_REFRESH,
+        dedupe_key=f"cluster:{cluster_id}",
+        payload_json={"cluster_id": cluster_id},
+        requested_by=requested_by,
+    )
+
+
+def enqueue_site_lpa_refresh_job(
+    session: Session,
+    *,
+    site_id: str,
+    requested_by: str | None,
+) -> JobRun:
+    return _deduplicated_job(
+        session=session,
+        job_type=JobType.SITE_LPA_LINK_REFRESH,
+        dedupe_key=f"site:{site_id}",
+        payload_json={"site_id": site_id},
+        requested_by=requested_by,
+    )
+
+
+def enqueue_site_title_refresh_job(
+    session: Session,
+    *,
+    site_id: str,
+    requested_by: str | None,
+) -> JobRun:
+    return _deduplicated_job(
+        session=session,
+        job_type=JobType.SITE_TITLE_LINK_REFRESH,
+        dedupe_key=f"site:{site_id}",
+        payload_json={"site_id": site_id},
+        requested_by=requested_by,
+    )
+
+
 def _create_job(
     *,
     session: Session,
@@ -106,6 +151,34 @@ def _create_job(
     session.flush()
     JOB_STATUS_TOTAL.labels(job_type=job.job_type.value, status=job.status.value).inc()
     return job
+
+
+def _deduplicated_job(
+    *,
+    session: Session,
+    job_type: JobType,
+    dedupe_key: str,
+    payload_json: dict[str, object],
+    requested_by: str | None,
+) -> JobRun:
+    existing_jobs = session.execute(
+        select(JobRun)
+        .where(
+            JobRun.job_type == job_type,
+            JobRun.status.in_([JobStatus.QUEUED, JobStatus.RUNNING]),
+        )
+        .order_by(JobRun.created_at.asc())
+    ).scalars()
+    for existing in existing_jobs:
+        if str(existing.payload_json.get("dedupe_key")) == dedupe_key:
+            return existing
+
+    return _create_job(
+        session=session,
+        job_type=job_type,
+        payload_json={**payload_json, "dedupe_key": dedupe_key},
+        requested_by=requested_by,
+    )
 
 
 def _claimable_jobs_stmt() -> Select[tuple[JobRun]]:

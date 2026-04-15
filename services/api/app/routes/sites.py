@@ -1,45 +1,121 @@
+from __future__ import annotations
+
 from uuid import UUID
 
-from fastapi import APIRouter, HTTPException, status
-from landintel.domain.schemas import PlaceholderResponse
+from fastapi import APIRouter, Depends, HTTPException, Query, status
+from landintel.domain.schemas import (
+    PlaceholderResponse,
+    SiteDetailRead,
+    SiteFromClusterRequest,
+    SiteGeometryUpdateRequest,
+    SiteListResponse,
+)
+from landintel.services.sites_readback import get_site, list_sites
+from landintel.sites.service import (
+    SiteBuildError,
+    build_or_refresh_site_from_cluster,
+    save_site_geometry_revision,
+)
+from sqlalchemy.orm import Session
+
+from ..dependencies import get_db_session
 
 router = APIRouter(prefix="/api/sites", tags=["sites"])
 
 
-@router.post("/from-cluster/{cluster_id}", response_model=PlaceholderResponse)
-def create_site_from_cluster(cluster_id: UUID) -> PlaceholderResponse:
-    raise HTTPException(
-        status_code=status.HTTP_501_NOT_IMPLEMENTED,
-        detail={
-            "message": "Site creation is deferred to Phase 2.",
-            "cluster_id": str(cluster_id),
-        },
+@router.post("/from-cluster/{cluster_id}", response_model=SiteDetailRead)
+def create_site_from_cluster(
+    cluster_id: UUID,
+    request: SiteFromClusterRequest | None = None,
+    session: Session = Depends(get_db_session),
+) -> SiteDetailRead:
+    try:
+        site = build_or_refresh_site_from_cluster(
+            session=session,
+            cluster_id=cluster_id,
+            requested_by=request.requested_by if request is not None else None,
+        )
+        session.commit()
+        session.expire_all()
+    except SiteBuildError as exc:
+        session.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=str(exc),
+        ) from exc
+
+    site_detail = get_site(session, site_id=site.id)
+    if site_detail is None:  # pragma: no cover - defensive only
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Site was not persisted.")
+    return site_detail
+
+
+@router.get("", response_model=SiteListResponse)
+def list_site_candidates(
+    q: str | None = Query(default=None),
+    borough: str | None = Query(default=None),
+    status_filter: str | None = Query(default=None, alias="status"),
+    limit: int = Query(default=100, ge=1, le=500),
+    offset: int = Query(default=0, ge=0),
+    session: Session = Depends(get_db_session),
+) -> SiteListResponse:
+    return list_sites(
+        session=session,
+        q=q,
+        borough=borough,
+        status=status_filter,
+        limit=limit,
+        offset=offset,
     )
 
 
-@router.get("/", response_model=PlaceholderResponse)
-def list_sites() -> PlaceholderResponse:
-    return PlaceholderResponse(
-        detail="Site browsing is deferred to Phase 2.",
-        surface="sites.index",
-        spec_phase="Phase 2",
-    )
+@router.get("/{site_id}", response_model=SiteDetailRead)
+def get_site_detail(
+    site_id: UUID,
+    session: Session = Depends(get_db_session),
+) -> SiteDetailRead:
+    site = get_site(session, site_id=site_id)
+    if site is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail={"message": "Site detail not found.", "site_id": str(site_id)},
+        )
+    return site
 
 
-@router.get("/{site_id}", response_model=PlaceholderResponse)
-def get_site(site_id: UUID) -> PlaceholderResponse:
-    raise HTTPException(
-        status_code=status.HTTP_501_NOT_IMPLEMENTED,
-        detail={"message": "Site detail is deferred to Phase 2.", "site_id": str(site_id)},
-    )
+@router.post("/{site_id}/geometry", response_model=SiteDetailRead)
+def create_site_geometry(
+    site_id: UUID,
+    request: SiteGeometryUpdateRequest,
+    session: Session = Depends(get_db_session),
+) -> SiteDetailRead:
+    try:
+        site = save_site_geometry_revision(
+            session=session,
+            site_id=site_id,
+            geom_4326=request.geom_4326,
+            source_type=request.source_type,
+            confidence=request.confidence,
+            reason=request.reason,
+            created_by=request.created_by,
+            raw_asset_id=request.raw_asset_id,
+        )
+        session.commit()
+        session.expire_all()
+    except SiteBuildError as exc:
+        session.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=str(exc),
+        ) from exc
 
-
-@router.post("/{site_id}/geometry", response_model=PlaceholderResponse)
-def create_site_geometry(site_id: UUID) -> PlaceholderResponse:
-    raise HTTPException(
-        status_code=status.HTTP_501_NOT_IMPLEMENTED,
-        detail={"message": "Geometry editing is deferred to Phase 2.", "site_id": str(site_id)},
-    )
+    site_detail = get_site(session, site_id=site.id)
+    if site_detail is None:  # pragma: no cover - defensive only
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Site detail not found after save.",
+        )
+    return site_detail
 
 
 @router.post("/{site_id}/extant-permission-check", response_model=PlaceholderResponse)
@@ -51,4 +127,3 @@ def rerun_extant_permission(site_id: UUID) -> PlaceholderResponse:
             "site_id": str(site_id),
         },
     )
-
