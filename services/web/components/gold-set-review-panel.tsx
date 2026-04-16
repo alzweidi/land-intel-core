@@ -181,7 +181,12 @@ export function GoldSetReviewPanel({ initialCase }: GoldSetReviewPanelProps) {
       </div>
 
       <div className="button-row" style={{ display: 'flex', gap: 12, marginTop: 16, flexWrap: 'wrap' }}>
-        <button className="button" disabled={loading} onClick={() => void handleSubmit()} type="button">
+        <button
+          className="button button--solid"
+          disabled={loading}
+          onClick={() => void handleSubmit()}
+          type="button"
+        >
           {loading ? 'Saving review...' : 'Save review'}
         </button>
       </div>

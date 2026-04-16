@@ -22,12 +22,18 @@ function toneForReview(value: string): 'neutral' | 'accent' | 'success' | 'warni
 export default async function AssessmentsPage({
   searchParams
 }: {
-  searchParams?: Record<string, string | string[] | undefined>;
+  searchParams?:
+    | Promise<Record<string, string | string[] | undefined>>
+    | Record<string, string | string[] | undefined>;
 }) {
+  const params = (await Promise.resolve(searchParams ?? {})) as Record<
+    string,
+    string | string[] | undefined
+  >;
   const auth = await getAuthContext();
   const role = auth.role ?? 'analyst';
-  const siteId = typeof searchParams?.siteId === 'string' ? searchParams.siteId : '';
-  const scenarioId = typeof searchParams?.scenarioId === 'string' ? searchParams.scenarioId : '';
+  const siteId = typeof params.siteId === 'string' ? params.siteId : '';
+  const scenarioId = typeof params.scenarioId === 'string' ? params.scenarioId : '';
   const result = await getAssessments({
     site_id: siteId || undefined,
     scenario_id: scenarioId || undefined
@@ -89,7 +95,7 @@ export default async function AssessmentsPage({
           </p>
         ) : (
           <div className="table-wrap">
-            <table className="table-shell">
+            <table className="table-shell table-shell--responsive">
               <thead>
                 <tr>
                   <th>Assessment</th>
@@ -104,19 +110,19 @@ export default async function AssessmentsPage({
               <tbody>
                 {items.map((item) => (
                   <tr key={item.id}>
-                    <td>
+                    <td data-label="Assessment">
                       <div className="table-primary">
                         <Link href={`/assessments/${item.id}`}>{item.id}</Link>
                       </div>
                       <div className="table-secondary">{item.state}</div>
                     </td>
-                    <td>
+                    <td data-label="Site">
                       <div className="table-primary">
                         {item.site_summary?.display_name ?? item.site_id}
                       </div>
                       <div className="table-secondary">{item.site_summary?.borough_name ?? 'Unknown borough'}</div>
                     </td>
-                    <td>
+                    <td data-label="Scenario">
                       <div className="table-primary">
                         {item.scenario_summary?.template_key ?? item.scenario_id}
                       </div>
@@ -126,17 +132,17 @@ export default async function AssessmentsPage({
                           : 'Scenario summary unavailable'}
                       </div>
                     </td>
-                    <td>{item.as_of_date}</td>
-                    <td>
+                    <td data-label="As of">{item.as_of_date}</td>
+                    <td data-label="Estimate">
                       <Badge tone="danger">{item.estimate_status}</Badge>
                     </td>
-                    <td>
+                    <td data-label="Valuation">
                       <div className="table-primary">
                         {item.estimate_status === 'NONE' ? 'Pre-score only' : 'See detail'}
                       </div>
                       <div className="table-secondary">Valuation block available on ready detail</div>
                     </td>
-                    <td>
+                    <td data-label="Review">
                       <Badge tone={toneForReview(item.review_status)}>{item.review_status}</Badge>
                     </td>
                   </tr>

@@ -268,7 +268,7 @@ export default async function SiteDetailPage({
             note="Linked records on or near the site with deterministic match metadata."
           >
             <div className="dense-table">
-              <table className="table-shell">
+              <table className="table-shell table-shell--responsive">
                 <thead>
                   <tr>
                     <th>Application</th>
@@ -281,26 +281,26 @@ export default async function SiteDetailPage({
                 <tbody>
                   {planningHistory.map((record) => (
                     <tr key={record.id}>
-                      <td>
+                      <td data-label="Application">
                         <div className="table-primary">{record.planning_application.external_ref}</div>
                         <div className="table-secondary">{record.planning_application.proposal_description}</div>
                       </td>
-                      <td>
+                      <td data-label="Status">
                         <Badge tone="accent">{record.planning_application.status}</Badge>
                         <div className="table-secondary">{record.planning_application.route_normalized ?? 'Route unavailable'}</div>
                       </td>
-                      <td>
+                      <td data-label="Decision">
                         <div className="table-primary">{record.planning_application.decision ?? 'Pending'}</div>
                         <div className="table-secondary">{record.planning_application.decision_date ?? 'No decision date'}</div>
                       </td>
-                      <td>
+                      <td data-label="Match">
                         <div className="table-primary">{record.link_type}</div>
                         <div className="table-secondary">
                           {record.distance_m ? `${Math.round(record.distance_m)}m` : 'Distance unavailable'} ·{' '}
                           {record.overlap_pct ? `${Math.round(record.overlap_pct)}% overlap` : 'Overlap unavailable'}
                         </div>
                       </td>
-                      <td>
+                      <td data-label="Source">
                         <div className="table-primary">{record.planning_application.source_system}</div>
                         <div className="table-secondary">{record.match_confidence}</div>
                       </td>

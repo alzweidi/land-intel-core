@@ -185,7 +185,7 @@ export default async function OpportunitiesPage({
         note="Planning band always takes precedence over economics. Economics never leapfrog a stronger planning state."
       >
         <div className="dense-table">
-          <table className="table-shell">
+          <table className="table-shell table-shell--responsive">
             <thead>
               <tr>
                 <th>Site</th>
@@ -199,7 +199,7 @@ export default async function OpportunitiesPage({
             <tbody>
               {items.map((item) => (
                 <tr key={item.site_id}>
-                  <td>
+                  <td data-label="Site">
                     <div className="table-primary">
                       <Link href={`/sites/${item.site_id}`}>
                         {item.display_name || item.site_summary?.display_name || item.site_id}
@@ -210,14 +210,14 @@ export default async function OpportunitiesPage({
                     </div>
                     <div className="table-secondary">{item.ranking_reason}</div>
                   </td>
-                  <td>
+                  <td data-label="Planning band">
                     <Badge tone={bandTone(item.probability_band)}>{item.probability_band}</Badge>
                     <div className="table-secondary">{item.hold_reason ?? 'Rankable'}</div>
                     <div className="table-secondary">
                       {item.hidden_mode_only ? 'Hidden-only support' : 'Standard queue'}
                     </div>
                   </td>
-                  <td>
+                  <td data-label="Valuation">
                     <Badge tone={valuationTone(item.valuation_quality)}>{item.valuation_quality ?? 'Unknown'}</Badge>
                     <div className="table-secondary">
                       Post-permission {currency(item.post_permission_value_mid)}
@@ -226,19 +226,19 @@ export default async function OpportunitiesPage({
                       Quality gates stay visible when uplift is incomplete.
                     </div>
                   </td>
-                  <td>
+                  <td data-label="Expected uplift">
                     <div className="table-primary">
                       {includeHidden ? currency(item.expected_uplift_mid) : 'Hidden'}
                     </div>
                     <div className="table-secondary">Uplift {currency(item.uplift_mid)}</div>
                   </td>
-                  <td>
+                  <td data-label="Asking price">
                     <div className="table-primary">{currency(item.asking_price_gbp)}</div>
                     <div className="table-secondary">
                       {item.asking_price_basis_type ?? 'Basis unavailable'}
                     </div>
                   </td>
-                  <td>
+                  <td data-label="Review / links">
                     <Badge tone={item.manual_review_required ? 'warning' : 'success'}>
                       {item.manual_review_required ? 'Review required' : 'No review flag'}
                     </Badge>

@@ -45,7 +45,7 @@ export default async function SourceRunsPage() {
 
       <Panel eyebrow="Approval" title="Source compliance table">
         <div className="table-wrap">
-          <table className="table-shell">
+          <table className="table-shell table-shell--responsive">
             <thead>
               <tr>
                 <th>Source key</th>
@@ -58,18 +58,18 @@ export default async function SourceRunsPage() {
             <tbody>
               {phase1ASources.map((source) => (
                 <tr key={source.source_key}>
-                  <td>
+                  <td data-label="Source key">
                     <div className="table-primary">{source.name}</div>
                     <div className="table-secondary">{source.source_key}</div>
                   </td>
-                  <td>{source.connector_type}</td>
-                  <td>
+                  <td data-label="Connector">{source.connector_type}</td>
+                  <td data-label="Compliance mode">
                     <Badge tone={source.compliance_mode === 'COMPLIANT_AUTOMATED' ? 'success' : source.compliance_mode === 'BLOCKED' ? 'danger' : 'warning'}>
                       {source.compliance_mode}
                     </Badge>
                   </td>
-                  <td>{source.active ? 'Yes' : 'No'}</td>
-                  <td>{source.coverage_note}</td>
+                  <td data-label="Active">{source.active ? 'Yes' : 'No'}</td>
+                  <td data-label="Coverage note">{source.coverage_note}</td>
                 </tr>
               ))}
             </tbody>

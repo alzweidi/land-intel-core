@@ -21,8 +21,9 @@
 .title {
   margin: 6px 0 0;
   font-family: var(--font-display), serif;
-  font-size: 1.9rem;
+  font-size: clamp(1.5rem, 3vw, 1.9rem);
   line-height: 1.05;
+  overflow-wrap: anywhere;
 }
 
 .badges {
@@ -153,5 +154,16 @@
 
   .formGrid {
     grid-template-columns: 1fr;
+  }
+
+  .mapShell {
+    min-height: 360px;
+  }
+
+  .mapNote {
+    left: 12px;
+    right: 12px;
+    bottom: 12px;
+    font-size: 0.84rem;
   }
 }

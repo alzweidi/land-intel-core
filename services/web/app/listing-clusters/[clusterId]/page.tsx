@@ -114,7 +114,7 @@ export default async function ListingClusterDetailPage({ params }: ClusterPagePr
 
       <Panel eyebrow="Members" title="Cluster members">
         <div className="table-wrap">
-          <table className="table-shell">
+          <table className="table-shell table-shell--responsive">
             <thead>
               <tr>
                 <th>Listing</th>
@@ -126,7 +126,7 @@ export default async function ListingClusterDetailPage({ params }: ClusterPagePr
             <tbody>
               {members.map((member) => (
                 <tr key={member.id}>
-                  <td>
+                  <td data-label="Listing">
                     <div className="table-primary">
                       <Link href={`/listings/${member.listing_item_id}`}>
                         {getListingLabel({
@@ -138,13 +138,13 @@ export default async function ListingClusterDetailPage({ params }: ClusterPagePr
                     </div>
                     <div className="table-secondary">{member.canonical_url}</div>
                   </td>
-                  <td>{getSourceLabel(member.source_name, null)}</td>
-                  <td>
+                  <td data-label="Source">{getSourceLabel(member.source_name, null)}</td>
+                  <td data-label="Confidence">
                     <Badge tone={member.confidence >= 0.95 ? 'success' : member.confidence >= 0.9 ? 'warning' : 'neutral'}>
                       {(member.confidence * 100).toFixed(0)}%
                     </Badge>
                   </td>
-                  <td>{member.latest_status}</td>
+                  <td data-label="Status">{member.latest_status}</td>
                 </tr>
               ))}
             </tbody>

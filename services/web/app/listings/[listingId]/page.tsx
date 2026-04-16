@@ -135,7 +135,7 @@ export default async function ListingDetailPage({ params }: ListingPageProps) {
 
       <Panel eyebrow="Documents" title="Linked documents and extraction state">
         <div className="table-wrap">
-          <table className="table-shell">
+          <table className="table-shell table-shell--responsive">
             <thead>
               <tr>
                 <th>Document</th>
@@ -148,19 +148,19 @@ export default async function ListingDetailPage({ params }: ListingPageProps) {
             <tbody>
               {listing.documents.map((document) => (
                 <tr key={document.id}>
-                  <td>
+                  <td data-label="Document">
                     <div className="table-primary">{document.filename}</div>
                     <div className="table-secondary">{document.id}</div>
                   </td>
-                  <td>{document.doc_type}</td>
-                  <td>{document.page_count ?? 'n/a'}</td>
-                  <td>
+                  <td data-label="Type">{document.doc_type}</td>
+                  <td data-label="Pages">{document.page_count ?? 'n/a'}</td>
+                  <td data-label="Extraction">
                     <Badge tone={document.extraction_status === 'EXTRACTED' ? 'success' : document.extraction_status === 'FAILED' ? 'danger' : 'warning'}>
                       {document.extraction_status}
                     </Badge>
                     <div className="table-secondary">{document.extracted_text ?? 'No extracted text preserved'}</div>
                   </td>
-                  <td>{document.asset_id}</td>
+                  <td data-label="Asset">{document.asset_id}</td>
                 </tr>
               ))}
             </tbody>
@@ -170,4 +170,3 @@ export default async function ListingDetailPage({ params }: ListingPageProps) {
     </div>
   );
 }
-

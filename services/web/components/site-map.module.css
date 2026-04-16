@@ -62,3 +62,26 @@
   letter-spacing: 0.12em;
   text-transform: uppercase;
 }
+
+@media (max-width: 820px) {
+  .overlay {
+    inset: 12px;
+    flex-direction: column;
+    justify-content: flex-start;
+    align-items: stretch;
+  }
+
+  .card {
+    max-width: none;
+    padding: 10px 12px;
+  }
+
+  .help {
+    font-size: 0.84rem;
+    line-height: 1.45;
+  }
+
+  .legendRow {
+    gap: 6px;
+  }
+}

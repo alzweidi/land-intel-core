@@ -30,7 +30,7 @@ export default function DataHealthPage() {
 
       <Panel eyebrow="Families" title="Health rows">
         <div className="table-wrap">
-          <table className="table-shell">
+          <table className="table-shell table-shell--responsive">
             <thead>
               <tr>
                 <th>Family</th>
@@ -42,12 +42,12 @@ export default function DataHealthPage() {
             <tbody>
               {healthRows.map((row) => (
                 <tr key={row.family}>
-                  <td className="table-primary">{row.family}</td>
-                  <td>{row.freshness}</td>
-                  <td>
+                  <td className="table-primary" data-label="Family">{row.family}</td>
+                  <td data-label="Freshness">{row.freshness}</td>
+                  <td data-label="Coverage">
                     <Badge tone={row.coverage === 'Stubbed' ? 'warning' : 'accent'}>{row.coverage}</Badge>
                   </td>
-                  <td>{row.gap}</td>
+                  <td data-label="Gap">{row.gap}</td>
                 </tr>
               ))}
             </tbody>
