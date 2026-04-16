@@ -336,7 +336,7 @@ export function AssessmentOverridePanel({
           </label>
           <div className="button-row">
             <button
-              className="button"
+              className="button button--solid"
               disabled={!canReview || loadingKey === 'review'}
               onClick={() => void resolveReviewDisposition()}
               type="button"

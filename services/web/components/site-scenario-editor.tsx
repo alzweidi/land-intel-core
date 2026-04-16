@@ -167,11 +167,16 @@ export function SiteScenarioEditor({ site, initialScenarios }: SiteScenarioEdito
         note="Scenarios are hypotheses. No scoring, valuation, or probability is shown in this phase."
       >
         <div className="button-row" style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
-          <button className="button" disabled={loading} onClick={() => void handleSuggest()} type="button">
+          <button
+            className="button button--ghost"
+            disabled={loading}
+            onClick={() => void handleSuggest()}
+            type="button"
+          >
             {loading ? 'Working...' : 'Refresh suggestions'}
           </button>
           <button
-            className="button button--ghost"
+            className="button button--solid"
             disabled={loading || !selectedScenario}
             onClick={() => void handleConfirm('CONFIRM')}
             type="button"

@@ -45,7 +45,7 @@ export default async function ListingClustersPage() {
 
       <Panel eyebrow="Cluster list" title="Duplicate opportunity groups">
         <div className="table-wrap">
-          <table className="table-shell cluster-table">
+          <table className="table-shell table-shell--responsive cluster-table">
             <thead>
               <tr>
                 <th>Cluster</th>
@@ -58,21 +58,23 @@ export default async function ListingClustersPage() {
             <tbody>
               {result.items.map((cluster) => (
                 <tr key={cluster.id}>
-                  <td>
+                  <td data-label="Cluster">
                     <div className="table-primary">
                       <Link href={`/listing-clusters/${cluster.id}`}>{cluster.cluster_key}</Link>
                     </div>
                     <div className="table-secondary">{cluster.id}</div>
                   </td>
-                  <td>{getClusterLabel(cluster.canonical_headline, cluster.cluster_key, cluster.id)}</td>
-                  <td>{cluster.borough}</td>
-                  <td>
+                  <td data-label="Headline">
+                    {getClusterLabel(cluster.canonical_headline, cluster.cluster_key, cluster.id)}
+                  </td>
+                  <td data-label="Borough">{cluster.borough}</td>
+                  <td data-label="Status">
                     <Badge tone={cluster.cluster_status === 'ACTIVE' ? 'success' : cluster.cluster_status === 'REVIEW' ? 'warning' : 'neutral'}>
                       {cluster.cluster_status}
                     </Badge>
                     <div className="table-secondary">{cluster.coverage_note}</div>
                   </td>
-                  <td>{cluster.member_count}</td>
+                  <td data-label="Members">{cluster.member_count}</td>
                 </tr>
               ))}
             </tbody>

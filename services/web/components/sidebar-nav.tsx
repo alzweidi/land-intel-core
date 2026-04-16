@@ -20,7 +20,7 @@ const roleOrder: Record<AppRole, number> = {
   admin: 2
 };
 
-export function SidebarNav({ role }: { role: AppRole }) {
+export function SidebarNav({ role, onNavigate }: { role: AppRole; onNavigate?: () => void }) {
   const pathname = usePathname();
 
   return (
@@ -38,6 +38,8 @@ export function SidebarNav({ role }: { role: AppRole }) {
                   className={active ? 'nav-link nav-link--active' : 'nav-link'}
                   href={item.href}
                   key={item.href}
+                  onClick={onNavigate}
+                  aria-current={active ? 'page' : undefined}
                 >
                   <span className="nav-link__title">{item.label}</span>
                   <span className="nav-link__desc">{item.description}</span>

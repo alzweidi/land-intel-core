@@ -114,7 +114,7 @@ export default async function SitesPage({ searchParams }: { searchParams?: Searc
           </form>
 
           <div className="table-wrap">
-            <table className="table-shell site-list-table">
+            <table className="table-shell table-shell--responsive site-list-table">
               <thead>
                 <tr>
                   <th>Site</th>
@@ -127,26 +127,26 @@ export default async function SitesPage({ searchParams }: { searchParams?: Searc
               <tbody>
                 {items.map((item) => (
                   <tr key={item.site_id}>
-                    <td>
+                    <td data-label="Site">
                       <div className="table-primary">
                         <Link href={`/sites/${item.site_id}`}>{item.display_name}</Link>
                       </div>
                       <div className="table-secondary">{item.cluster_key}</div>
                     </td>
-                    <td>
+                    <td data-label="Borough / LPA">
                       <div className="table-primary">{item.borough_name}</div>
                       <div className="table-secondary">{item.controlling_lpa_name}</div>
                     </td>
-                    <td>
+                    <td data-label="Geometry">
                       <Badge tone={confidenceTone(item.geometry_confidence)}>{item.geometry_source_type}</Badge>
                       <div className="table-secondary">{item.geometry_confidence}</div>
                       <div className="table-secondary">{item.site_area_sqm === null ? 'Area pending' : `${item.site_area_sqm.toLocaleString('en-GB')} sqm`}</div>
                     </td>
-                    <td>
+                    <td data-label="Listing">
                       <div className="table-primary">{item.current_listing_headline}</div>
                       <div className="table-secondary">{item.current_price_gbp === null ? 'Price pending' : `£${item.current_price_gbp.toLocaleString('en-GB')}`}</div>
                     </td>
-                    <td>
+                    <td data-label="Warnings">
                       <div className="table-secondary">{item.review_flags.join(', ') || 'No manual flags'}</div>
                       <div className="table-secondary">{item.warnings[0] ?? 'No warnings recorded'}</div>
                     </td>

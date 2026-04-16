@@ -22,11 +22,17 @@ function toneForStatus(value: string): 'neutral' | 'accent' | 'success' | 'warni
 export default async function ReviewQueuePage({
   searchParams
 }: {
-  searchParams?: Record<string, string | string[] | undefined>;
+  searchParams?:
+    | Promise<Record<string, string | string[] | undefined>>
+    | Record<string, string | string[] | undefined>;
 }) {
+  const params = (await Promise.resolve(searchParams ?? {})) as Record<
+    string,
+    string | string[] | undefined
+  >;
   const auth = await getAuthContext();
   const role = auth.role ?? 'reviewer';
-  const selectedCaseId = typeof searchParams?.caseId === 'string' ? searchParams.caseId : '';
+  const selectedCaseId = typeof params.caseId === 'string' ? params.caseId : '';
   const queue = await getReviewQueue();
   const result = await getGoldSetCases();
   const items = result.items;

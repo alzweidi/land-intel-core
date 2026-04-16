@@ -411,7 +411,7 @@ export default async function AssessmentDetailPage({
               note="Explanation infrastructure only. Similarity uses governed interpretable dimensions."
             >
               <div className="dense-table">
-                <table className="table-shell">
+                <table className="table-shell table-shell--responsive">
                   <thead>
                     <tr>
                       <th>Reference</th>
@@ -423,18 +423,20 @@ export default async function AssessmentDetailPage({
                   <tbody>
                     {(comparables?.approved_members ?? []).map((item) => (
                       <tr key={item.id}>
-                        <td>
+                        <td data-label="Reference">
                           <div className="table-primary">{item.planning_application.external_ref}</div>
                           <div className="table-secondary">
                             {item.planning_application.proposal_description}
                           </div>
                         </td>
-                        <td>
+                        <td data-label="Similarity">
                           <div className="table-primary">{item.similarity_score.toFixed(3)}</div>
                           <div className="table-secondary">Rank {item.rank}</div>
                         </td>
-                        <td>{item.fallback_path}</td>
-                        <td>{item.planning_application.decision ?? 'Unavailable'}</td>
+                        <td data-label="Fallback">{item.fallback_path}</td>
+                        <td data-label="Decision">
+                          {item.planning_application.decision ?? 'Unavailable'}
+                        </td>
                       </tr>
                     ))}
                   </tbody>
@@ -447,7 +449,7 @@ export default async function AssessmentDetailPage({
               note="Refused cases remain visible so the analyst can inspect contrary support."
             >
               <div className="dense-table">
-                <table className="table-shell">
+                <table className="table-shell table-shell--responsive">
                   <thead>
                     <tr>
                       <th>Reference</th>
@@ -459,18 +461,20 @@ export default async function AssessmentDetailPage({
                   <tbody>
                     {(comparables?.refused_members ?? []).map((item) => (
                       <tr key={item.id}>
-                        <td>
+                        <td data-label="Reference">
                           <div className="table-primary">{item.planning_application.external_ref}</div>
                           <div className="table-secondary">
                             {item.planning_application.proposal_description}
                           </div>
                         </td>
-                        <td>
+                        <td data-label="Similarity">
                           <div className="table-primary">{item.similarity_score.toFixed(3)}</div>
                           <div className="table-secondary">Rank {item.rank}</div>
                         </td>
-                        <td>{item.fallback_path}</td>
-                        <td>{item.planning_application.decision ?? 'Unavailable'}</td>
+                        <td data-label="Fallback">{item.fallback_path}</td>
+                        <td data-label="Decision">
+                          {item.planning_application.decision ?? 'Unavailable'}
+                        </td>
                       </tr>
                     ))}
                   </tbody>

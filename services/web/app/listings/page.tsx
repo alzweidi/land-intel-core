@@ -140,7 +140,7 @@ export default async function ListingsPage({ searchParams }: { searchParams?: Se
         note="Each row is an immutable listing record. Cluster links are a review aid, not a site decision."
       >
         <div className="dense-table">
-          <table className="table-shell">
+          <table className="table-shell table-shell--responsive">
             <thead>
               <tr>
                 <th>Listing</th>
@@ -153,13 +153,13 @@ export default async function ListingsPage({ searchParams }: { searchParams?: Se
             <tbody>
               {listingResult.items.map((item) => (
                 <tr key={item.id}>
-                  <td>
+                  <td data-label="Listing">
                     <div className="table-primary">
                       <Link href={`/listings/${item.id}`}>{getListingLabel(item)}</Link>
                     </div>
                     <div className="table-secondary">{item.canonical_url}</div>
                   </td>
-                  <td>
+                  <td data-label="Source">
                     <div className="table-primary">{getSourceLabel(item.source_name, item.source_key)}</div>
                     <div className="table-secondary">
                       {item.source_key
@@ -167,13 +167,13 @@ export default async function ListingsPage({ searchParams }: { searchParams?: Se
                         : item.borough || 'Unknown borough'}
                     </div>
                   </td>
-                  <td>
+                  <td data-label="Status">
                     <Badge tone={item.latest_status === 'LIVE' ? 'success' : item.latest_status === 'UNDER OFFER' ? 'warning' : 'neutral'}>
                       {item.latest_status}
                     </Badge>
                     <div className="table-secondary">{item.parse_status}</div>
                   </td>
-                  <td>
+                  <td data-label="Cluster">
                     {item.cluster_id ? (
                       <Link className="inline-link" href={`/listing-clusters/${item.cluster_id}`}>
                         {item.cluster_key ?? item.cluster_id}
@@ -182,7 +182,7 @@ export default async function ListingsPage({ searchParams }: { searchParams?: Se
                       <span className="table-secondary">Unclustered</span>
                     )}
                   </td>
-                  <td>{item.coverage_note}</td>
+                  <td data-label="Coverage">{item.coverage_note}</td>
                 </tr>
               ))}
             </tbody>

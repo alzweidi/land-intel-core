@@ -115,7 +115,12 @@ export function ReleaseScopeControls({ release, activeScopes }: ReleaseScopeCont
       note={<Badge tone={release.status === 'ACTIVE' ? 'success' : release.status === 'NOT_READY' ? 'warning' : 'accent'}>{release.status}</Badge>}
     >
       <div className="button-row" style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
-        <button className="button" disabled={loadingKey === `activate:${release.id}`} onClick={() => void handleActivate()} type="button">
+        <button
+          className="button button--solid"
+          disabled={loadingKey === `activate:${release.id}`}
+          onClick={() => void handleActivate()}
+          type="button"
+        >
           {loadingKey === `activate:${release.id}` ? 'Activating...' : 'Activate release'}
         </button>
         <button className="button button--ghost" disabled={loadingKey === `retire:${release.id}`} onClick={() => void handleRetire()} type="button">
@@ -153,7 +158,7 @@ export function ReleaseScopeControls({ release, activeScopes }: ReleaseScopeCont
               </label>
               <div className="button-row" style={{ display: 'flex', gap: 12, marginTop: 12, flexWrap: 'wrap' }}>
                 <button
-                  className="button"
+                  className="button button--ghost"
                   disabled={loadingKey === `visibility:${scope.scope_key}:HIDDEN_ONLY`}
                   onClick={() => void handleVisibility(scope.scope_key, 'HIDDEN_ONLY')}
                   type="button"
@@ -161,7 +166,7 @@ export function ReleaseScopeControls({ release, activeScopes }: ReleaseScopeCont
                   Hidden only
                 </button>
                 <button
-                  className="button"
+                  className="button button--solid"
                   disabled={loadingKey === `visibility:${scope.scope_key}:VISIBLE_REVIEWER_ONLY`}
                   onClick={() => void handleVisibility(scope.scope_key, 'VISIBLE_REVIEWER_ONLY')}
                   type="button"

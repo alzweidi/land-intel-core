@@ -39,7 +39,7 @@ export default function ScenariosPage() {
 
       <Panel eyebrow="Templates" title="Enabled v1 scenario templates">
         <div className="table-wrap">
-          <table className="table-shell">
+          <table className="table-shell table-shell--responsive">
             <thead>
               <tr>
                 <th>Template</th>
@@ -52,13 +52,13 @@ export default function ScenariosPage() {
             <tbody>
               {templateRows.map((row) => (
                 <tr key={row.key}>
-                  <td className="table-primary">{row.key}</td>
-                  <td>{row.units}</td>
-                  <td>{row.route}</td>
-                  <td>
+                  <td className="table-primary" data-label="Template">{row.key}</td>
+                  <td data-label="Units">{row.units}</td>
+                  <td data-label="Route">{row.route}</td>
+                  <td data-label="Status">
                     <Badge tone="accent">Enabled</Badge>
                   </td>
-                  <td>{row.note}</td>
+                  <td data-label="Note">{row.note}</td>
                 </tr>
               ))}
             </tbody>
