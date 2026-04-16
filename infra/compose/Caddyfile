@@ -1,0 +1,28 @@
+{
+	email {$ACME_EMAIL}
+}
+
+{$API_DOMAIN} {
+	encode gzip zstd
+
+	header {
+		Referrer-Policy no-referrer
+		X-Content-Type-Options nosniff
+		X-Frame-Options DENY
+	}
+
+	@health path /healthz /readyz
+	handle @health {
+		reverse_proxy api:8000
+	}
+
+	@api path /api/*
+	handle @api {
+		basic_auth {
+			{$BACKEND_BASIC_AUTH_USER} {$BACKEND_BASIC_AUTH_PASSWORD_HASH}
+		}
+		reverse_proxy api:8000
+	}
+
+	respond 404
+}

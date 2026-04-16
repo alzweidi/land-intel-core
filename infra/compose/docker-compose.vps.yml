@@ -4,34 +4,52 @@ services:
       context: ../..
       dockerfile: services/api/Dockerfile
     env_file:
-      - ../../.env
+      - ../../.env.production
     environment:
       RUN_DB_MIGRATIONS: "false"
       STORAGE_BACKEND: supabase
     restart: unless-stopped
     ports:
-      - "8000:8000"
+      - "127.0.0.1:8000:8000"
 
   worker:
     build:
       context: ../..
       dockerfile: services/worker/Dockerfile
     env_file:
-      - ../../.env
+      - ../../.env.production
     environment:
       RUN_DB_MIGRATIONS: "false"
       STORAGE_BACKEND: supabase
     restart: unless-stopped
     ports:
-      - "9101:9101"
+      - "127.0.0.1:9101:9101"
 
   scheduler:
     build:
       context: ../..
       dockerfile: services/scheduler/Dockerfile
     env_file:
-      - ../../.env
+      - ../../.env.production
     environment:
       RUN_DB_MIGRATIONS: "false"
     restart: unless-stopped
 
+  caddy:
+    image: caddy:2.10-alpine
+    depends_on:
+      - api
+    env_file:
+      - ../../.env.production
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+
+volumes:
+  caddy_data:
+  caddy_config:

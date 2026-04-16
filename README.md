@@ -30,6 +30,8 @@ Phase 8A is implemented here. The repo now covers the Phase 1A listing pipeline,
 
 Broader operational signoff and real visible-pilot readiness remain deferred even though the Phase 8A code paths now exist.
 
+Production deployment hardening assets now live in [DEPLOY.md](/Users/atta/land-intel-core/DEPLOY.md:1) and [OPERATIONS.md](/Users/atta/land-intel-core/OPERATIONS.md:1).
+
 ## Repo Layout
 
 - `services/api`: FastAPI API
