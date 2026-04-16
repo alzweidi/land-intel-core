@@ -6,6 +6,12 @@ This deployment is private and low-ops by design:
 - one VPS runs `api`, `worker`, `scheduler`, and `caddy`
 - Supabase hosts Postgres/PostGIS, Storage, and future Auth readiness
 
+## Current Auth Posture
+
+- Netlify site protection and backend basic auth are the effective deployment boundary today.
+- The web app still signs users in through the built-in local role adapter in `services/web/lib/auth/local-adapter.ts`.
+- Do not treat the current app login as a production-grade auth control until it is replaced with a real identity provider flow.
+
 ## Daily Checks
 
 On the VPS:
@@ -163,6 +169,6 @@ export BACKEND_BASIC_AUTH_PASSWORD='<backend-basic-auth-password>'
 ## What Remains Operational Rather Than Code-Complete
 
 - Netlify site protection setup is still a manual operator step.
-- Supabase Auth is provisioned, but the current app still does not enforce Supabase sessions/roles.
+- Supabase Auth is provisioned in the target architecture, but the current app still uses the built-in local role adapter instead of enforcing Supabase sessions/roles.
 - Reviewer-visible rollout remains a manual signoff decision.
 - Database restore and PITR operations remain Supabase-admin tasks.

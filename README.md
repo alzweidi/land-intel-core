@@ -1,6 +1,6 @@
 # land-intel-core
 
-London-first land intelligence monorepo. The controlling spec for this repo is [docs/london_land_intelligence_implementation_spec_v1 (2).md](/Users/atta/land-intel-core/docs/london_land_intelligence_implementation_spec_v1%20(2).md).
+London-first land intelligence monorepo. The controlling spec for this repo is [docs/specs/london-land-intelligence-implementation-spec-v1.md](docs/specs/london-land-intelligence-implementation-spec-v1.md).
 
 Phase 8A is implemented here. The repo now covers the Phase 1A listing pipeline, Phase 2 site geometry, Phase 3A planning context, Phase 4A scenario foundations, Phase 5A assessment foundations, Phase 6A hidden-only scoring, the Phase 7A valuation/ranking layer, and the Phase 8A safety/control plane:
 - compliant connector framework and immutable listing snapshots
@@ -30,7 +30,15 @@ Phase 8A is implemented here. The repo now covers the Phase 1A listing pipeline,
 
 Broader operational signoff and real visible-pilot readiness remain deferred even though the Phase 8A code paths now exist.
 
-Production deployment hardening assets now live in [DEPLOY.md](/Users/atta/land-intel-core/DEPLOY.md:1) and [OPERATIONS.md](/Users/atta/land-intel-core/OPERATIONS.md:1).
+Production deployment hardening assets now live in [docs/operations/deployment.md](docs/operations/deployment.md) and [docs/operations/runbook.md](docs/operations/runbook.md).
+
+## Documentation
+
+- [docs/README.md](docs/README.md): documentation index and current auth/runtime notes
+- [docs/specs/london-land-intelligence-implementation-spec-v1.md](docs/specs/london-land-intelligence-implementation-spec-v1.md): controlling implementation spec
+- [docs/guides/local-usage.md](docs/guides/local-usage.md): local bootstrap and analyst workflow
+- [docs/operations/deployment.md](docs/operations/deployment.md): private deployment guide
+- [docs/operations/runbook.md](docs/operations/runbook.md): operational checks and recovery
 
 ## Repo Layout
 
@@ -131,6 +139,12 @@ npm run dev
 ```bash
 docker compose up --build
 ```
+
+11. Sign in to the web app at `http://localhost:3000/login` with one of the built-in local accounts:
+
+- `analyst@landintel.local` / `analyst-demo`
+- `reviewer@landintel.local` / `reviewer-demo`
+- `admin@landintel.local` / `admin-demo`
 
 ## Local Smoke Commands
 

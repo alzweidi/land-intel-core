@@ -10,7 +10,7 @@ The production privacy model is:
 
 - Netlify site protection on `app.<domain>`
 - Caddy basic auth on `api.<domain>` for `/api/*`
-- Supabase Auth provisioned now, but not relied on for runtime enforcement yet because the current app does not enforce Supabase sessions/roles
+- the current Next.js app still uses the built-in local role accounts in `services/web/lib/auth/local-adapter.ts` with a signed cookie session, so site protection and backend basic auth remain the real deployment boundary until app auth is replaced
 
 ## Commands To Run First
 
@@ -208,7 +208,11 @@ Set these Netlify secret env vars as well:
 BACKEND_API_ORIGIN=https://api.<domain>
 BACKEND_BASIC_AUTH_USER=<same value as VPS>
 BACKEND_BASIC_AUTH_PASSWORD=<plaintext password used to generate the Caddy hash>
+LANDINTEL_WEB_AUTH_SECRET=<openssl rand -base64 32>
+LANDINTEL_WEB_PUBLIC_ORIGIN=https://app.<domain>
 ```
+
+Do not leave `LANDINTEL_WEB_AUTH_SECRET` unset in production. The local fallback is only acceptable for local/dev.
 
 Enable Netlify site protection so the frontend stays private:
 
@@ -216,6 +220,8 @@ Enable Netlify site protection so the frontend stays private:
 2. Open site access / password protection.
 3. Turn site protection on.
 4. Save the single-owner password.
+
+The app login behind that outer layer is still the built-in role adapter today. Treat it as an internal convenience, not a production-grade auth boundary.
 
 ## 6. First Deploy
 

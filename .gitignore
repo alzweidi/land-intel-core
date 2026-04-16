@@ -1,16 +1,69 @@
+# Environment and secrets
+.env
+.env.local
+.env.*.local
+
+# Python
 .venv/
+venv/
 __pycache__/
+*.py[cod]
 .pytest_cache/
 .ruff_cache/
 .mypy_cache/
+.pyre/
+.hypothesis/
+.tox/
+.nox/
 .coverage
+.coverage.*
+coverage.xml
 htmlcov/
-.env
-node_modules/
-services/web/.next/
-services/web/out/
-dist/
 build/
-data/storage/
+dist/
+site/
+.eggs/
 *.egg-info/
+pip-wheel-metadata/
+
+# Node / Next.js
+node_modules/
+.npm/
+.pnpm-store/
+.turbo/
+.parcel-cache/
+.next/
+out/
+coverage/
+.eslintcache
 *.tsbuildinfo
+
+# Playwright and browser automation
+.playwright-cli/
+playwright-report/
+blob-report/
+test-results/
+output/
+.tmp/
+services/.tmp/
+*.trace
+*.har
+
+# Logs and runtime files
+*.log
+*.pid
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# IDEs and OS files
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+.direnv/
+
+# Local data
+data/storage/
+backups/

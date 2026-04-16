@@ -49,6 +49,18 @@ Wait until you see output like the screenshot — all services green. You now ha
 
 **Leave this terminal running.**
 
+## Step 1.5: Sign In To The Web UI
+
+The current Phase 8A web app uses built-in local role accounts with a signed cookie session.
+
+| Role | Email | Password |
+|---|---|---|
+| Analyst | `analyst@landintel.local` | `analyst-demo` |
+| Reviewer | `reviewer@landintel.local` | `reviewer-demo` |
+| Admin | `admin@landintel.local` | `admin-demo` |
+
+Open `http://localhost:3000/login`, choose the role you want to test, and then continue with the setup flow below.
+
 ## Step 2: Run The Setup Script (one command, does everything)
 
 Open a **new terminal** and run:
@@ -377,7 +389,7 @@ Then open http://localhost:3000 and explore.
 
 ## What's Next: Going To Production
 
-See [DEPLOY.md](/DEPLOY.md) for the full production deployment guide covering:
+See [../operations/deployment.md](../operations/deployment.md) for the full production deployment guide covering:
 - Supabase setup (Postgres, Storage, Auth)
 - VPS deployment with Docker + Caddy
 - Netlify frontend deployment

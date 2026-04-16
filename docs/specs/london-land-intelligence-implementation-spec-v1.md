@@ -205,7 +205,9 @@ A v1 target opportunity is:
 ### Database and storage
 - **Supabase Postgres + PostGIS**
 - **Supabase Storage** for immutable-by-convention raw snapshots, documents, and model artifacts
-- **Supabase Auth** for analyst authentication and role bootstrap
+- **Supabase Auth** as the intended analyst authentication and role-bootstrap path
+
+> **Implementation note (2026-04-17):** The current Phase 8A repository still uses the local role-based cookie adapter in `services/web` for web sign-in. Supabase Auth is provisioned/targeted in the architecture but is not yet the live end-to-end auth path.
 
 ### Frontend
 - **Next.js + TypeScript**
@@ -2124,9 +2126,13 @@ No in-place overwrite.
 
 ## 21.2 Authentication
 
-Use Supabase Auth for v1:
+Target runtime auth for v1 is Supabase Auth:
 - email magic link and/or Google sign-in
 - all authorization enforced again in API by role table
+
+Current repository status:
+- the web app still signs in through the built-in local role adapter in `services/web/lib/auth/local-adapter.ts`
+- Supabase Auth is not yet the live enforcement path in Phase 8A
 
 ## 21.3 Secrets
 
