@@ -45,7 +45,7 @@ export default async function ListingClustersPage() {
 
       <Panel eyebrow="Cluster list" title="Duplicate opportunity groups">
         <div className="table-wrap">
-          <table className="table-shell">
+          <table className="table-shell cluster-table">
             <thead>
               <tr>
                 <th>Cluster</th>
