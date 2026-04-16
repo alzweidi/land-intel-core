@@ -524,6 +524,11 @@ export type AssessmentFeatureSnapshot = {
   created_at: string;
 };
 
+export type AssessmentResultJson = {
+  explanation?: Record<string, unknown> | null;
+  score_execution_reason?: string | null;
+};
+
 export type AssessmentResult = {
   id: string;
   model_release_id: string | null;
@@ -541,7 +546,7 @@ export type AssessmentResult = {
   ood_quality: string | null;
   ood_status: string | null;
   manual_review_required: boolean;
-  result_json: Record<string, unknown>;
+  result_json: AssessmentResultJson;
   published_at: string | null;
 };
 
@@ -1109,6 +1114,10 @@ function mapListingSummary(value: unknown): Phase1AListingSummary {
     throw new Error('Invalid listing summary');
   }
 
+  const currentSnapshot =
+    getRecord(value, 'current_snapshot') ?? getRecord(value, 'currentSnapshot');
+  const rawRecordJson = getRecord(currentSnapshot ?? {}, 'raw_record_json');
+
   return {
     id: toStringValue(value.id),
     source_id: toStringValue(value.source_id ?? value.sourceId),
@@ -1117,15 +1126,32 @@ function mapListingSummary(value: unknown): Phase1AListingSummary {
     source_listing_id: toStringValue(value.source_listing_id ?? value.sourceListingId),
     canonical_url: toStringValue(value.canonical_url ?? value.canonicalUrl),
     listing_type: toStringValue(value.listing_type ?? value.listingType, 'UNKNOWN'),
-    headline: toStringValue(value.headline ?? value.title),
-    borough: toStringValue(value.borough, 'Unknown'),
-    latest_status: toStringValue(value.latest_status ?? value.status, 'UNKNOWN'),
+    headline: toStringValue(
+      value.headline ??
+        value.title ??
+        currentSnapshot?.headline ??
+        rawRecordJson?.headline
+    ),
+    borough: toStringValue(
+      value.borough ??
+        rawRecordJson?.borough,
+      'Unknown'
+    ),
+    latest_status: toStringValue(
+      value.latest_status ?? value.status ?? currentSnapshot?.status,
+      'UNKNOWN'
+    ),
     parse_status: (toStringValue(value.parse_status ?? value.parseStatus, 'PARTIAL') as Phase1AListingSummary['parse_status']),
     cluster_id: value.cluster_id === null || value.cluster_id === undefined ? null : toStringValue(value.cluster_id),
     cluster_key: value.cluster_key === null || value.cluster_key === undefined ? null : toStringValue(value.cluster_key),
     first_seen_at: toStringValue(value.first_seen_at ?? value.firstSeenAt),
     last_seen_at: toStringValue(value.last_seen_at ?? value.lastSeenAt),
-    price_display: toStringValue(value.price_display ?? value.priceDisplay, 'No price recorded'),
+    price_display: toStringValue(
+      value.price_display ??
+        value.priceDisplay ??
+        currentSnapshot?.guide_price_gbp,
+      'No price recorded'
+    ),
     coverage_note: toStringValue(value.coverage_note ?? value.coverageNote, '')
   };
 }
@@ -1179,14 +1205,27 @@ function mapClusterSummary(value: unknown): Phase1AClusterSummary {
     throw new Error('Invalid cluster');
   }
 
+  const members = pickCollection(value.members as ApiCollectionResponse<unknown>);
+  const firstMember = members.find((member) => isRecord(member));
+  const listing = firstMember ? getRecord(firstMember, 'listing') : null;
+  const currentSnapshot = listing ? getRecord(listing, 'current_snapshot') : null;
+
   return {
     id: toStringValue(value.id),
     cluster_key: toStringValue(value.cluster_key ?? value.clusterKey),
     cluster_status: (toStringValue(value.cluster_status ?? value.clusterStatus, 'REVIEW') as Phase1AClusterSummary['cluster_status']),
     created_at: toStringValue(value.created_at ?? value.createdAt),
-    member_count: toNumberValue(value.member_count ?? value.memberCount) ?? 0,
-    canonical_headline: toStringValue(value.canonical_headline ?? value.headline ?? value.title, 'Untitled cluster'),
-    borough: toStringValue(value.borough, 'Unknown'),
+    member_count: toNumberValue(value.member_count ?? value.memberCount) ?? members.length,
+    canonical_headline: toStringValue(
+      value.canonical_headline ??
+        value.display_name ??
+        value.headline ??
+        value.title ??
+        listing?.headline ??
+        currentSnapshot?.headline,
+      'Untitled cluster'
+    ),
+    borough: toStringValue(value.borough ?? listing?.borough, 'Unknown'),
     coverage_note: toStringValue(value.coverage_note ?? value.coverageNote, '')
   };
 }
@@ -1346,14 +1385,30 @@ export async function getCluster(clusterId: string): Promise<{ item: Phase1AClus
           throw new Error('Invalid cluster member');
         }
 
+        const listing = getRecord(member, 'listing');
+        const currentSnapshot = listing ? getRecord(listing, 'current_snapshot') : null;
+
         return {
           id: toStringValue(member.id),
-          listing_item_id: toStringValue(member.listing_item_id ?? member.listingItemId),
-          listing_headline: toStringValue(member.listing_headline ?? member.listingHeadline),
-          source_name: toStringValue(member.source_name ?? member.sourceName),
-          canonical_url: toStringValue(member.canonical_url ?? member.canonicalUrl),
+          listing_item_id: toStringValue(
+            member.listing_item_id ?? member.listingItemId ?? listing?.id
+          ),
+          listing_headline: toStringValue(
+            member.listing_headline ??
+              member.listingHeadline ??
+              listing?.headline ??
+              currentSnapshot?.headline
+          ),
+          source_name: toStringValue(
+            member.source_name ?? member.sourceName ?? listing?.source_name
+          ),
+          canonical_url: toStringValue(
+            member.canonical_url ?? member.canonicalUrl ?? listing?.canonical_url
+          ),
           confidence: toNumberValue(member.confidence) ?? 0,
-          latest_status: toStringValue(member.latest_status ?? member.latestStatus),
+          latest_status: toStringValue(
+            member.latest_status ?? member.latestStatus ?? listing?.latest_status ?? currentSnapshot?.status
+          ),
           created_at: toStringValue(member.created_at ?? member.createdAt)
         };
       });

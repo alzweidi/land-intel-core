@@ -27,9 +27,9 @@ export default function ScenariosPage() {
   return (
     <div className="page-stack">
       <PageHeader
-        eyebrow="Phase 5A"
-        title="Scenario engine foundation"
-        summary="The enabled v1 templates are seeded and operational. Generate, compare, and confirm scenarios from each site detail page; no scoring or probability is exposed here."
+        eyebrow="Scenarios"
+        title="Scenario template index"
+        summary="The enabled v1 templates are seeded and operational. Generate, compare, and confirm scenarios from site detail; no scoring or probability is exposed here."
         actions={
           <Link className="button button--ghost" href="/sites">
             Open site registry

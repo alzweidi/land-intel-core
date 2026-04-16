@@ -1,0 +1,352 @@
+- generic [active] [ref=e1]:
+  - generic [ref=e2]:
+    - complementary [ref=e3]:
+      - generic [ref=e4]:
+        - generic [ref=e5]: LI
+        - generic [ref=e6]:
+          - generic [ref=e7]: Land Intel
+          - generic [ref=e8]: Private London-first analyst workspace
+      - generic [ref=e9]:
+        - generic [ref=e10]:
+          - generic [ref=e11]: reviewer
+          - generic [ref=e12]: Signed in
+          - generic [ref=e13]: Visible probability off
+        - generic [ref=e14]: Listings, sites, scenarios, assessments, opportunities, review, and control-plane surfaces all run against the same local API. Hidden scoring stays non-speaking unless a scoped internal view is explicitly requested and permitted.
+      - generic [ref=e15]:
+        - generic [ref=e16]:
+          - generic [ref=e17]:
+            - generic [ref=e18]: Session
+            - heading "Current operator" [level=2] [ref=e19]
+          - generic [ref=e21]: Role reviewer
+        - generic [ref=e22]:
+          - generic [ref=e23]:
+            - term [ref=e24]: Name
+            - definition [ref=e25]: Reviewer User
+          - generic [ref=e26]:
+            - term [ref=e27]: Email
+            - definition [ref=e28]: reviewer@landintel.local
+          - generic [ref=e29]:
+            - term [ref=e30]: Session
+            - definition [ref=e31]: Signed cookie session
+          - generic [ref=e32]:
+            - term [ref=e33]: Expires
+            - definition [ref=e34]: 2026-04-16T23:08:04.000Z
+        - button "Sign out" [ref=e36] [cursor=pointer]
+      - navigation "Primary":
+        - generic [ref=e37]:
+          - generic [ref=e38]: Intake
+          - generic [ref=e39]:
+            - link "Dashboard Live queues, health, and release posture" [ref=e40] [cursor=pointer]:
+              - /url: /
+              - generic [ref=e41]: Dashboard
+              - generic [ref=e42]: Live queues, health, and release posture
+            - link "Listings Manual intake and immutable snapshots" [ref=e43] [cursor=pointer]:
+              - /url: /listings
+              - generic [ref=e44]: Listings
+              - generic [ref=e45]: Manual intake and immutable snapshots
+            - link "Clusters Deterministic duplicate review" [ref=e46] [cursor=pointer]:
+              - /url: /listing-clusters
+              - generic [ref=e47]: Clusters
+              - generic [ref=e48]: Deterministic duplicate review
+            - link "Source runs Connector operations and compliance" [ref=e49] [cursor=pointer]:
+              - /url: /admin/source-runs
+              - generic [ref=e50]: Source runs
+              - generic [ref=e51]: Connector operations and compliance
+        - generic [ref=e52]:
+          - generic [ref=e53]: Delivery
+          - generic [ref=e54]:
+            - link "Sites Geometry, planning context, and evidence" [ref=e55] [cursor=pointer]:
+              - /url: /sites
+              - generic [ref=e56]: Sites
+              - generic [ref=e57]: Geometry, planning context, and evidence
+            - link "Scenarios Scenario hypotheses and confirmation" [ref=e58] [cursor=pointer]:
+              - /url: /scenarios
+              - generic [ref=e59]: Scenarios
+              - generic [ref=e60]: Scenario hypotheses and confirmation
+            - link "Assessments Frozen runs, valuation, and provenance" [ref=e61] [cursor=pointer]:
+              - /url: /assessments
+              - generic [ref=e62]: Assessments
+              - generic [ref=e63]: Frozen runs, valuation, and provenance
+            - link "Opportunities Planning-first acquisition queue" [ref=e64] [cursor=pointer]:
+              - /url: /opportunities
+              - generic [ref=e65]: Opportunities
+              - generic [ref=e66]: Planning-first acquisition queue
+        - generic [ref=e67]:
+          - generic [ref=e68]: Review
+          - link "Review queue Manual review, blocked cases, and gold set" [ref=e70] [cursor=pointer]:
+            - /url: /review-queue
+            - generic [ref=e71]: Review queue
+            - generic [ref=e72]: Manual review, blocked cases, and gold set
+        - generic [ref=e74]: Control
+      - generic [ref=e75]:
+        - generic [ref=e76]: Workspace posture
+        - generic [ref=e77]: Hidden-only by default
+        - generic [ref=e78]: Release visibility, incidents, overrides, and replay checks remain active safety rails.
+    - generic [ref=e79]:
+      - generic [ref=e80]:
+        - generic [ref=e81]:
+          - generic [ref=e82]: Intake
+          - generic [ref=e83]: Listings
+          - generic [ref=e84]: Manual intake and immutable snapshots
+        - generic [ref=e85]:
+          - generic [ref=e86]: Role reviewer
+          - generic [ref=e87]: Local live-data shell
+          - generic [ref=e88]: Visible probability blocked
+      - main [ref=e89]:
+        - generic [ref=e90]:
+          - generic [ref=e91]:
+            - generic [ref=e92]:
+              - generic [ref=e93]: Listings
+              - heading "Listing intake ledger" [level=1] [ref=e94]
+              - paragraph [ref=e95]: Search live London listing intake, inspect immutable snapshot rows, and move quickly into cluster review. Listing text remains market evidence only, never planning truth.
+            - generic [ref=e97]:
+              - link "View clusters" [ref=e98] [cursor=pointer]:
+                - /url: /listing-clusters
+              - link "Run connector" [ref=e99] [cursor=pointer]:
+                - /url: /admin/source-runs
+          - generic [ref=e100]:
+            - article [ref=e101]:
+              - generic [ref=e102]: Listings
+              - generic [ref=e103]: "8"
+              - paragraph [ref=e104]: Live API rows in the current query
+            - article [ref=e105]:
+              - generic [ref=e106]: Sources
+              - generic [ref=e107]: "4"
+              - paragraph [ref=e108]: Manual, CSV, and approved public sources
+            - article [ref=e109]:
+              - generic [ref=e110]: Query
+              - generic [ref=e111]: All rows
+              - paragraph [ref=e112]: GET form filters the visible list
+            - article [ref=e113]:
+              - generic [ref=e114]: Compliance
+              - generic [ref=e115]: Enforced
+              - paragraph [ref=e116]: Public-page runs remain blocked unless approved
+          - generic [ref=e117]:
+            - generic [ref=e118]:
+              - generic [ref=e119]:
+                - generic [ref=e120]:
+                  - generic [ref=e121]: Filters
+                  - heading "Search listings" [level=2] [ref=e122]
+                - generic [ref=e123]: Deep-linkable GET filters keep review states shareable.
+              - generic [ref=e124]:
+                - generic [ref=e125]:
+                  - generic [ref=e126]: Search
+                  - textbox "Search" [ref=e127]:
+                    - /placeholder: Headline, URL, borough, source
+                - generic [ref=e128]:
+                  - generic [ref=e129]: Source key
+                  - combobox "Source key" [ref=e130]:
+                    - option "All sources" [selected]
+                    - option "manual_url"
+                    - option "broker_drop"
+                    - option "approved_public_page"
+                    - option "blocked_public_page"
+                - generic [ref=e131]:
+                  - generic [ref=e132]: Status
+                  - combobox "Status" [ref=e133]:
+                    - option "Any" [selected]
+                    - option "LIVE"
+                    - option "UNDER OFFER"
+                    - option "SOLD"
+                    - option "WITHDRAWN"
+                - generic [ref=e134]:
+                  - generic [ref=e135]: Listing type
+                  - combobox "Listing type" [ref=e136]:
+                    - option "Any" [selected]
+                    - option "LAND"
+                    - option "AUCTION"
+                    - option "BROKER_DROP"
+                - generic [ref=e137]:
+                  - generic [ref=e138]: Cluster key
+                  - textbox "Cluster key" [ref=e139]:
+                    - /placeholder: riverside-yard
+                - generic [ref=e140]:
+                  - button "Apply filters" [ref=e141] [cursor=pointer]
+                  - link "Reset" [ref=e142] [cursor=pointer]:
+                    - /url: /listings
+            - generic [ref=e143]:
+              - generic [ref=e145]:
+                - generic [ref=e146]: Source posture
+                - heading "Approved source modes" [level=2] [ref=e147]
+              - generic [ref=e148]:
+                - generic [ref=e149]:
+                  - term [ref=e150]: manual_url
+                  - definition [ref=e151]: MANUAL_ONLY · Always allowed for analyst-pasted URLs
+                - generic [ref=e152]:
+                  - term [ref=e153]: broker_drop
+                  - definition [ref=e154]: MANUAL_ONLY · Approved for internal CSV and email broker drops
+                - generic [ref=e155]:
+                  - term [ref=e156]: approved_public_page
+                  - definition [ref=e157]: COMPLIANT_AUTOMATED · Approved after compliance review
+                - generic [ref=e158]:
+                  - term [ref=e159]: blocked_public_page
+                  - definition [ref=e160]: BLOCKED · Must remain blocked until approved
+          - generic [ref=e161]:
+            - generic [ref=e163]:
+              - generic [ref=e164]: Listing rows
+              - generic [ref=e165]: Each row is an immutable listing record. Cluster links are a review aid, not a site decision.
+            - table [ref=e168]:
+              - rowgroup [ref=e169]:
+                - row "Listing Source Status Cluster Coverage" [ref=e170]:
+                  - columnheader "Listing" [ref=e171]
+                  - columnheader "Source" [ref=e172]
+                  - columnheader "Status" [ref=e173]
+                  - columnheader "Cluster" [ref=e174]
+                  - columnheader "Coverage" [ref=e175]
+              - rowgroup [ref=e176]:
+                - row "https://auctions.savills.co.uk/auctions/3--4-september-2024-154/56-hadley-street-camden-london-nw1-8ta-11140 manual_url · Unknown WITHDRAWN PARTIAL ac1b78aa-317a-5bfb-8cab-ecd0373b7f85" [ref=e177]:
+                  - cell "https://auctions.savills.co.uk/auctions/3--4-september-2024-154/56-hadley-street-camden-london-nw1-8ta-11140" [ref=e178]:
+                    - generic:
+                      - link:
+                        - /url: /listings/627d8461-393e-464a-bc52-48a4b6d6e2dd
+                    - generic [ref=e179]: https://auctions.savills.co.uk/auctions/3--4-september-2024-154/56-hadley-street-camden-london-nw1-8ta-11140
+                  - cell "manual_url · Unknown" [ref=e180]:
+                    - generic [ref=e181]: manual_url
+                    - generic [ref=e182]: · Unknown
+                  - cell "WITHDRAWN PARTIAL" [ref=e183]:
+                    - generic [ref=e184]: WITHDRAWN
+                    - generic [ref=e185]: PARTIAL
+                  - cell "ac1b78aa-317a-5bfb-8cab-ecd0373b7f85" [ref=e186]:
+                    - link "ac1b78aa-317a-5bfb-8cab-ecd0373b7f85" [ref=e187] [cursor=pointer]:
+                      - /url: /listing-clusters/ac1b78aa-317a-5bfb-8cab-ecd0373b7f85
+                  - cell [ref=e188]
+                - row "https://auctions.savills.co.uk/auctions/february-2020-5/71-prospect-valewoolwich-londonse18-5ht-159 manual_url · Unknown WITHDRAWN PARTIAL bb663c0d-191c-5373-bfd6-23d4bd7ddc69" [ref=e189]:
+                  - cell "https://auctions.savills.co.uk/auctions/february-2020-5/71-prospect-valewoolwich-londonse18-5ht-159" [ref=e190]:
+                    - generic:
+                      - link:
+                        - /url: /listings/94dfa284-a52b-4ac0-9840-87e369316b42
+                    - generic [ref=e191]: https://auctions.savills.co.uk/auctions/february-2020-5/71-prospect-valewoolwich-londonse18-5ht-159
+                  - cell "manual_url · Unknown" [ref=e192]:
+                    - generic [ref=e193]: manual_url
+                    - generic [ref=e194]: · Unknown
+                  - cell "WITHDRAWN PARTIAL" [ref=e195]:
+                    - generic [ref=e196]: WITHDRAWN
+                    - generic [ref=e197]: PARTIAL
+                  - cell "bb663c0d-191c-5373-bfd6-23d4bd7ddc69" [ref=e198]:
+                    - link "bb663c0d-191c-5373-bfd6-23d4bd7ddc69" [ref=e199] [cursor=pointer]:
+                      - /url: /listing-clusters/bb663c0d-191c-5373-bfd6-23d4bd7ddc69
+                  - cell [ref=e200]
+                - row "https://auctions.savills.co.uk/auctions/8--9-may-2024-149/land-adjacent-to-2-manor-park-lewisham-london-se13-5rn-10895 manual_url · Unknown WITHDRAWN PARTIAL 931b505b-3094-5fb2-8884-857e76b636c2" [ref=e201]:
+                  - cell "https://auctions.savills.co.uk/auctions/8--9-may-2024-149/land-adjacent-to-2-manor-park-lewisham-london-se13-5rn-10895" [ref=e202]:
+                    - generic:
+                      - link:
+                        - /url: /listings/0bf556c9-5693-45d1-8587-5feea9dde348
+                    - generic [ref=e203]: https://auctions.savills.co.uk/auctions/8--9-may-2024-149/land-adjacent-to-2-manor-park-lewisham-london-se13-5rn-10895
+                  - cell "manual_url · Unknown" [ref=e204]:
+                    - generic [ref=e205]: manual_url
+                    - generic [ref=e206]: · Unknown
+                  - cell "WITHDRAWN PARTIAL" [ref=e207]:
+                    - generic [ref=e208]: WITHDRAWN
+                    - generic [ref=e209]: PARTIAL
+                  - cell "931b505b-3094-5fb2-8884-857e76b636c2" [ref=e210]:
+                    - link "931b505b-3094-5fb2-8884-857e76b636c2" [ref=e211] [cursor=pointer]:
+                      - /url: /listing-clusters/931b505b-3094-5fb2-8884-857e76b636c2
+                  - cell [ref=e212]
+                - row "https://auctions.savills.co.uk/auctions/19--26-november-2024-158/1-wilmot-place-camden-london-nw1-9js-13597 manual_url · Unknown WITHDRAWN PARTIAL 4a6b548c-55fe-5064-94bc-79039fe82b41" [ref=e213]:
+                  - cell "https://auctions.savills.co.uk/auctions/19--26-november-2024-158/1-wilmot-place-camden-london-nw1-9js-13597" [ref=e214]:
+                    - generic:
+                      - link:
+                        - /url: /listings/8a67e34e-1844-40ae-b6ae-bd96a403456d
+                    - generic [ref=e215]: https://auctions.savills.co.uk/auctions/19--26-november-2024-158/1-wilmot-place-camden-london-nw1-9js-13597
+                  - cell "manual_url · Unknown" [ref=e216]:
+                    - generic [ref=e217]: manual_url
+                    - generic [ref=e218]: · Unknown
+                  - cell "WITHDRAWN PARTIAL" [ref=e219]:
+                    - generic [ref=e220]: WITHDRAWN
+                    - generic [ref=e221]: PARTIAL
+                  - cell "4a6b548c-55fe-5064-94bc-79039fe82b41" [ref=e222]:
+                    - link "4a6b548c-55fe-5064-94bc-79039fe82b41" [ref=e223] [cursor=pointer]:
+                      - /url: /listing-clusters/4a6b548c-55fe-5064-94bc-79039fe82b41
+                  - cell [ref=e224]
+                - row "https://auctions.savills.co.uk/auctions/23-april-2025-186/82-mare-street-hackney-london-e8-3sg-16148 manual_url · Unknown WITHDRAWN PARTIAL c54dfadb-f182-5fdd-9fde-97f5fdfb7925" [ref=e225]:
+                  - cell "https://auctions.savills.co.uk/auctions/23-april-2025-186/82-mare-street-hackney-london-e8-3sg-16148" [ref=e226]:
+                    - generic:
+                      - link:
+                        - /url: /listings/603e1f3f-3886-4c5c-aff0-602a5f2e56fd
+                    - generic [ref=e227]: https://auctions.savills.co.uk/auctions/23-april-2025-186/82-mare-street-hackney-london-e8-3sg-16148
+                  - cell "manual_url · Unknown" [ref=e228]:
+                    - generic [ref=e229]: manual_url
+                    - generic [ref=e230]: · Unknown
+                  - cell "WITHDRAWN PARTIAL" [ref=e231]:
+                    - generic [ref=e232]: WITHDRAWN
+                    - generic [ref=e233]: PARTIAL
+                  - cell "c54dfadb-f182-5fdd-9fde-97f5fdfb7925" [ref=e234]:
+                    - link "c54dfadb-f182-5fdd-9fde-97f5fdfb7925" [ref=e235] [cursor=pointer]:
+                      - /url: /listing-clusters/c54dfadb-f182-5fdd-9fde-97f5fdfb7925
+                  - cell [ref=e236]
+                - row "https://auctions.savills.co.uk/auctions/3--4-september-2024-154/land-and-buildings-adjoining-121-grosvenor-park-camberwell-london-se5-0nj-12653 manual_url · Unknown WITHDRAWN PARTIAL b9e80f9b-4451-5153-bbd7-d057167a1095" [ref=e237]:
+                  - cell "https://auctions.savills.co.uk/auctions/3--4-september-2024-154/land-and-buildings-adjoining-121-grosvenor-park-camberwell-london-se5-0nj-12653" [ref=e238]:
+                    - generic:
+                      - link:
+                        - /url: /listings/d99ca5e1-9660-4950-82a4-367a301b5ed8
+                    - generic [ref=e239]: https://auctions.savills.co.uk/auctions/3--4-september-2024-154/land-and-buildings-adjoining-121-grosvenor-park-camberwell-london-se5-0nj-12653
+                  - cell "manual_url · Unknown" [ref=e240]:
+                    - generic [ref=e241]: manual_url
+                    - generic [ref=e242]: · Unknown
+                  - cell "WITHDRAWN PARTIAL" [ref=e243]:
+                    - generic [ref=e244]: WITHDRAWN
+                    - generic [ref=e245]: PARTIAL
+                  - cell "b9e80f9b-4451-5153-bbd7-d057167a1095" [ref=e246]:
+                    - link "b9e80f9b-4451-5153-bbd7-d057167a1095" [ref=e247] [cursor=pointer]:
+                      - /url: /listing-clusters/b9e80f9b-4451-5153-bbd7-d057167a1095
+                  - cell [ref=e248]
+                - row "https://auctions.savills.co.uk/auctions/23-april-2025-186/mnuchah-392-camden-road-london-n7-0sj-15730 manual_url · Unknown WITHDRAWN PARTIAL accf6b17-4116-59d1-a842-b802ba874203" [ref=e249]:
+                  - cell "https://auctions.savills.co.uk/auctions/23-april-2025-186/mnuchah-392-camden-road-london-n7-0sj-15730" [ref=e250]:
+                    - generic:
+                      - link:
+                        - /url: /listings/3e83d7ac-6a59-4ba9-b819-5826848ae473
+                    - generic [ref=e251]: https://auctions.savills.co.uk/auctions/23-april-2025-186/mnuchah-392-camden-road-london-n7-0sj-15730
+                  - cell "manual_url · Unknown" [ref=e252]:
+                    - generic [ref=e253]: manual_url
+                    - generic [ref=e254]: · Unknown
+                  - cell "WITHDRAWN PARTIAL" [ref=e255]:
+                    - generic [ref=e256]: WITHDRAWN
+                    - generic [ref=e257]: PARTIAL
+                  - cell "accf6b17-4116-59d1-a842-b802ba874203" [ref=e258]:
+                    - link "accf6b17-4116-59d1-a842-b802ba874203" [ref=e259] [cursor=pointer]:
+                      - /url: /listing-clusters/accf6b17-4116-59d1-a842-b802ba874203
+                  - cell [ref=e260]
+                - row "https://auctions.savills.co.uk/auctions/june-2022-94/land-lying-to-the-east-of-parkhurst-road-holloway-london-n7-0sd-3953 manual_url · Unknown WITHDRAWN PARTIAL e0e82f3a-164a-5c11-a91e-3885ba31c829" [ref=e261]:
+                  - cell "https://auctions.savills.co.uk/auctions/june-2022-94/land-lying-to-the-east-of-parkhurst-road-holloway-london-n7-0sd-3953" [ref=e262]:
+                    - generic:
+                      - link:
+                        - /url: /listings/9053198c-0ba5-4f21-8e00-ad924a6f7e5d
+                    - generic [ref=e263]: https://auctions.savills.co.uk/auctions/june-2022-94/land-lying-to-the-east-of-parkhurst-road-holloway-london-n7-0sd-3953
+                  - cell "manual_url · Unknown" [ref=e264]:
+                    - generic [ref=e265]: manual_url
+                    - generic [ref=e266]: · Unknown
+                  - cell "WITHDRAWN PARTIAL" [ref=e267]:
+                    - generic [ref=e268]: WITHDRAWN
+                    - generic [ref=e269]: PARTIAL
+                  - cell "e0e82f3a-164a-5c11-a91e-3885ba31c829" [ref=e270]:
+                    - link "e0e82f3a-164a-5c11-a91e-3885ba31c829" [ref=e271] [cursor=pointer]:
+                      - /url: /listing-clusters/e0e82f3a-164a-5c11-a91e-3885ba31c829
+                  - cell [ref=e272]
+          - generic [ref=e273]:
+            - generic [ref=e274]:
+              - generic [ref=e276]:
+                - generic [ref=e277]: Source approval
+                - heading "Connector guardrails" [level=2] [ref=e278]
+              - generic [ref=e279]:
+                - generic [ref=e280]:
+                  - term [ref=e281]: manual_url
+                  - definition [ref=e282]: MANUAL_ONLY · Always allowed for analyst-pasted URLs
+                - generic [ref=e283]:
+                  - term [ref=e284]: broker_drop
+                  - definition [ref=e285]: MANUAL_ONLY · Approved for internal CSV and email broker drops
+                - generic [ref=e286]:
+                  - term [ref=e287]: approved_public_page
+                  - definition [ref=e288]: COMPLIANT_AUTOMATED · Approved after compliance review
+                - generic [ref=e289]:
+                  - term [ref=e290]: blocked_public_page
+                  - definition [ref=e291]: BLOCKED · Must remain blocked until approved
+            - generic [ref=e292]:
+              - generic [ref=e294]:
+                - generic [ref=e295]: Notes
+                - heading "Analyst reminders" [level=2] [ref=e296]
+              - list [ref=e297]:
+                - listitem [ref=e298]: Manual URL intake always remains available.
+                - listitem [ref=e299]: CSV broker drops can be imported without portal scraping.
+                - listitem [ref=e300]: Public-page runs stay blocked unless the source is approved.
+                - listitem [ref=e301]: Snapshot rows are immutable and never overwritten.
+  - alert [ref=e302]

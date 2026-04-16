@@ -1,0 +1,51 @@
+- generic [ref=e2]:
+  - generic [ref=e3]:
+    - generic [ref=e4]: Internal analyst access
+    - heading "Sign in to the London land intelligence workspace." [level=1] [ref=e5]
+    - paragraph [ref=e6]: "Local/dev access uses the same role model the product expects in production: analyst, reviewer, and admin. Hidden probability stays non-speaking by default unless a scoped reviewer/admin context explicitly asks for internal mode."
+    - generic [ref=e7]:
+      - article [ref=e8]:
+        - generic [ref=e9]: Protected routes
+        - generic [ref=e10]: Listings, sites, assessments, opportunities, admin
+      - article [ref=e11]:
+        - generic [ref=e12]: Role-aware UI
+        - generic [ref=e13]: Reviewer queue and admin controls appear only when allowed
+      - article [ref=e14]:
+        - generic [ref=e15]: Local mode
+        - generic [ref=e16]: Signed cookie session, no auth bypass in normal flow
+  - generic [ref=e17]:
+    - generic [ref=e18]:
+      - generic [ref=e19]:
+        - generic [ref=e20]: Sign in
+        - heading "Use a local demo account" [level=2] [ref=e21]
+      - generic [ref=e23]: Hidden-only by default
+    - generic [ref=e24]:
+      - generic [ref=e25]:
+        - generic [ref=e26]: Email
+        - textbox "Email" [active] [ref=e27]:
+          - /placeholder: reviewer@landintel.local
+      - generic [ref=e28]:
+        - generic [ref=e29]: Password
+        - textbox "Password" [ref=e30]:
+          - /placeholder: reviewer-demo
+      - generic [ref=e31]:
+        - button "Sign in" [ref=e32] [cursor=pointer]
+        - generic [ref=e33]: 12 hour signed session
+    - generic [ref=e34]:
+      - generic [ref=e35]: Local accounts
+      - generic [ref=e36]:
+        - article [ref=e37]:
+          - generic [ref=e38]: analyst
+          - generic [ref=e39]: Analyst User
+          - generic [ref=e40]: analyst@landintel.local
+          - generic [ref=e41]: analyst-demo
+        - article [ref=e42]:
+          - generic [ref=e43]: reviewer
+          - generic [ref=e44]: Reviewer User
+          - generic [ref=e45]: reviewer@landintel.local
+          - generic [ref=e46]: reviewer-demo
+        - article [ref=e47]:
+          - generic [ref=e48]: admin
+          - generic [ref=e49]: Admin User
+          - generic [ref=e50]: admin@landintel.local
+          - generic [ref=e51]: admin-demo

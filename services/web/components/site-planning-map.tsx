@@ -249,7 +249,7 @@ export function SitePlanningMap({ site }: { site: SiteDetail }) {
   }, [site]);
 
   return (
-    <div className={styles.shell} style={{ minHeight: 420 }}>
+    <div className={styles.shell} style={{ minHeight: 560 }}>
       <div className={styles.map} ref={containerRef} />
       <div className={styles.overlay}>
         <div className={styles.card}>

@@ -1,7 +1,9 @@
 import Link from 'next/link';
 
 import { Badge, PageHeader, Panel, StatCard } from '@/components/ui';
+import { getAuthContext } from '@/lib/auth/server';
 import { getClusters } from '@/lib/landintel-api';
+import { getClusterLabel } from '@/lib/presentation';
 
 export const dynamic = 'force-dynamic';
 
@@ -10,31 +12,35 @@ function displayCount(count: number): string {
 }
 
 export default async function ListingClustersPage() {
+  const auth = await getAuthContext();
+  const role = auth.role ?? 'analyst';
   const result = await getClusters();
 
   return (
     <div className="page-stack">
       <PageHeader
         eyebrow="Clusters"
-        title="Deterministic duplicate cluster review"
-        summary="Clusters are built from boring rules only: source listing IDs, canonical URLs, normalized address matches, brochure hashes, and nearby coordinates. No irreversible merge behavior."
+        title="Cluster review queue"
+        summary="Review deterministic duplicate groups built from source listing IDs, canonical URLs, address similarity, brochure hashes, and nearby coordinates. No irreversible merge behavior."
         actions={
           <div className="page-actions__group">
             <Link className="button button--solid" href="/listings">
               Back to listings
             </Link>
-            <Link className="button button--ghost" href="/admin/source-runs">
-              Connector runs
-            </Link>
+            {role === 'admin' ? (
+              <Link className="button button--ghost" href="/admin/source-runs">
+                Connector runs
+              </Link>
+            ) : null}
           </div>
         }
       />
 
       <section className="stat-grid">
-        <StatCard tone="accent" label="Clusters" value={displayCount(result.items.length)} detail="Sample fixture set or live API result" />
+        <StatCard tone="accent" label="Clusters" value={displayCount(result.items.length)} detail="Current duplicate groups in the review queue" />
         <StatCard tone="warning" label="Review" value="Needed" detail="Cluster scores are advisory only" />
-        <StatCard tone="success" label="API" value={result.apiAvailable ? 'Live' : 'Fallback'} detail="The page renders either way" />
-        <StatCard tone="neutral" label="Merge rule" value="Off" detail="No irreversible merges in Phase 1A" />
+        <StatCard tone="success" label="Mode" value={result.apiAvailable ? 'Live API' : 'Fallback'} detail="Live data is preferred whenever the API is reachable" />
+        <StatCard tone="neutral" label="Merge rule" value="Disabled" detail="Nothing merges permanently in this review surface" />
       </section>
 
       <Panel eyebrow="Cluster list" title="Duplicate opportunity groups">
@@ -58,7 +64,7 @@ export default async function ListingClustersPage() {
                     </div>
                     <div className="table-secondary">{cluster.id}</div>
                   </td>
-                  <td>{cluster.canonical_headline}</td>
+                  <td>{getClusterLabel(cluster.canonical_headline, cluster.cluster_key, cluster.id)}</td>
                   <td>{cluster.borough}</td>
                   <td>
                     <Badge tone={cluster.cluster_status === 'ACTIVE' ? 'success' : cluster.cluster_status === 'REVIEW' ? 'warning' : 'neutral'}>
@@ -76,4 +82,3 @@ export default async function ListingClustersPage() {
     </div>
   );
 }
-

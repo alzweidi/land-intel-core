@@ -41,7 +41,7 @@ export default async function AdminModelReleasesPage() {
       <PageHeader
         eyebrow="Admin / model releases"
         title="Release registry and visibility"
-        summary="Phase 8A adds scope-level visibility gating, incident controls, and rollback paths on top of the hidden release registry. Hidden-only remains the safe default."
+        summary="Inspect hidden releases, scope-level visibility gating, incident controls, and rollback posture. Hidden-only remains the safe default."
         actions={
           <div className="page-actions__group">
             <Link className="button button--ghost" href="/admin/health">

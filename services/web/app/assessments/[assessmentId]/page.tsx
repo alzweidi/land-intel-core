@@ -1,16 +1,23 @@
 import Link from 'next/link';
 
 import { AssessmentOverridePanel } from '@/components/assessment-override-panel';
-import { Badge, DefinitionList, PageHeader, Panel, StatCard } from '@/components/ui';
+import {
+  Badge,
+  Callout,
+  DefinitionList,
+  EvidenceList,
+  PageHeader,
+  Panel,
+  ProvenanceList,
+  StatCard,
+  TableShell
+} from '@/components/ui';
+import { getAuthContext } from '@/lib/auth/server';
 import { getAssessment, type AppRole } from '@/lib/landintel-api';
 
 export const dynamic = 'force-dynamic';
 
-function formatList(items: string[]): string {
-  return items.length > 0 ? items.join(', ') : 'None recorded';
-}
-
-function formatCurrency(value: number | null | undefined): string {
+function currency(value: number | null | undefined): string {
   if (value === null || value === undefined) {
     return 'Unavailable';
   }
@@ -18,7 +25,9 @@ function formatCurrency(value: number | null | undefined): string {
   return `£${Math.round(value).toLocaleString('en-GB')}`;
 }
 
-function toneForVisibility(mode: string | null | undefined): 'neutral' | 'accent' | 'success' | 'warning' | 'danger' {
+function toneForVisibility(
+  mode: string | null | undefined
+): 'neutral' | 'accent' | 'success' | 'warning' | 'danger' {
   if (mode === 'VISIBLE_REVIEWER_ONLY') {
     return 'success';
   }
@@ -41,16 +50,29 @@ function toneForReview(value: string): 'neutral' | 'accent' | 'success' | 'warni
   return 'accent';
 }
 
-function parseViewerRole(
-  searchParams?: Record<string, string | string[] | undefined>,
-  hiddenMode?: boolean
-): AppRole {
-  if (typeof searchParams?.role === 'string') {
-    if (searchParams.role === 'admin' || searchParams.role === 'reviewer' || searchParams.role === 'analyst') {
-      return searchParams.role;
-    }
+function toneForEstimate(value: string | null | undefined): 'neutral' | 'accent' | 'success' | 'warning' | 'danger' {
+  if (value === 'PASS' || value === 'HIDDEN_ESTIMATE_AVAILABLE') {
+    return 'success';
   }
-  return hiddenMode ? 'reviewer' : 'analyst';
+  if (value === 'ABSTAIN' || value === 'NONE') {
+    return 'warning';
+  }
+  if (value === 'FAIL') {
+    return 'danger';
+  }
+  return 'accent';
+}
+
+function canSeeHidden(role: AppRole): boolean {
+  return role === 'reviewer' || role === 'admin';
+}
+
+function firstValue(value: string | string[] | undefined): string {
+  if (Array.isArray(value)) {
+    return value[0] ?? '';
+  }
+
+  return value ?? '';
 }
 
 export default async function AssessmentDetailPage({
@@ -58,15 +80,21 @@ export default async function AssessmentDetailPage({
   searchParams
 }: {
   params: Promise<{ assessmentId: string }> | { assessmentId: string };
-  searchParams?: Record<string, string | string[] | undefined>;
+  searchParams?: Promise<Record<string, string | string[] | undefined>> | Record<string, string | string[] | undefined>;
 }) {
   const { assessmentId } = await Promise.resolve(params);
-  const hiddenMode =
-    typeof searchParams?.mode === 'string' && searchParams.mode.toLowerCase() === 'hidden';
-  const viewerRole = parseViewerRole(searchParams, hiddenMode);
+  const query = (await Promise.resolve(searchParams ?? {})) as Record<
+    string,
+    string | string[] | undefined
+  >;
+  const auth = await getAuthContext();
+  const role = (auth.role ?? 'analyst') as AppRole;
+  const requestedHidden = firstValue(query.mode).toLowerCase() === 'hidden';
+  const hiddenMode = requestedHidden && canSeeHidden(role);
+
   const result = await getAssessment(assessmentId, {
     hidden_mode: hiddenMode,
-    viewer_role: viewerRole,
+    viewer_role: role
   });
   const assessment = result.item;
 
@@ -74,7 +102,7 @@ export default async function AssessmentDetailPage({
     return (
       <div className="page-stack">
         <PageHeader
-          eyebrow="Phase 8A"
+          eyebrow="Assessments"
           title="Assessment not found"
           summary={`No frozen assessment run is available for ${assessmentId}.`}
           actions={
@@ -89,84 +117,97 @@ export default async function AssessmentDetailPage({
 
   const evidence = assessment.evidence ?? { for: [], against: [], unknown: [] };
   const comparables = assessment.comparable_case_set;
-  const featureValues = (assessment.feature_snapshot?.feature_json.values ?? {}) as Record<string, unknown>;
-  const sourceCoverage = assessment.feature_snapshot?.coverage_json.source_coverage;
-  const hiddenExplanation = assessment.result?.result_json?.explanation as Record<string, unknown> | undefined;
-  const topPositiveDrivers = Array.isArray(hiddenExplanation?.top_positive_drivers)
-    ? hiddenExplanation.top_positive_drivers
+  const explanation = assessment.result?.result_json?.explanation as Record<string, unknown> | undefined;
+  const topPositiveDrivers = Array.isArray(explanation?.top_positive_drivers)
+    ? explanation.top_positive_drivers
     : [];
-  const topNegativeDrivers = Array.isArray(hiddenExplanation?.top_negative_drivers)
-    ? hiddenExplanation.top_negative_drivers
+  const topNegativeDrivers = Array.isArray(explanation?.top_negative_drivers)
+    ? explanation.top_negative_drivers
     : [];
-  const unknowns = Array.isArray(hiddenExplanation?.unknowns) ? hiddenExplanation.unknowns : [];
+  const unknowns = Array.isArray(explanation?.unknowns) ? explanation.unknowns : [];
   const overrideSummary = assessment.override_summary;
   const effectiveValuation = overrideSummary?.effective_valuation ?? assessment.valuation;
-  const visibleModeBadge = assessment.visibility?.visibility_mode ?? 'HIDDEN_ONLY';
-  const exposureMode = assessment.visibility?.exposure_mode ?? 'REDACTED';
   const blocked = assessment.visibility?.blocked ?? false;
-  const redactionNote = blocked
-    ? assessment.visibility?.blocked_reason_text ?? 'Visible publication is blocked.'
-    : exposureMode === 'VISIBLE_REVIEWER_ONLY'
-      ? 'Reviewer-visible rounded probability is allowed for this scope.'
-      : hiddenMode
-        ? 'Hidden internal evaluation mode is active for this view.'
-        : 'Standard analyst view remains non-speaking/redacted.';
+  const visibilityMode = assessment.visibility?.visibility_mode ?? 'HIDDEN_ONLY';
+  const exposureMode = assessment.visibility?.exposure_mode ?? 'REDACTED';
+  const probabilityReason =
+    blocked
+      ? assessment.visibility?.blocked_reason_text ?? 'Visible or hidden publication is blocked for this scope.'
+      : assessment.result?.approval_probability_display
+        ? hiddenMode
+          ? 'Hidden/internal estimate available for this request context.'
+          : 'Standard analyst view remains non-speaking/redacted.'
+        : assessment.result?.estimate_status === 'NONE'
+          ? 'Scoring is not honestly available for this run.'
+          : assessment.result?.result_json?.score_execution_reason ?? 'No probability was published.';
 
   return (
     <div className="page-stack">
       <PageHeader
-        eyebrow="Phase 8A"
-        title={`Assessment ${assessment.id}`}
-        summary={assessment.note}
+        eyebrow="Assessment detail"
+        title={
+          assessment.site_summary?.display_name
+            ? `${assessment.site_summary.display_name} assessment`
+            : `Assessment ${assessment.id}`
+        }
+        summary={
+          assessment.note ||
+          (assessment.scenario_summary
+            ? `${assessment.scenario_summary.template_key} · ${assessment.scenario_summary.units_assumed} units`
+            : 'Frozen assessment run')
+        }
         actions={
           <div className="page-actions__group">
             <Link className="button button--ghost" href="/assessments">
               Back to assessments
             </Link>
-            <Link
-              className="button button--ghost"
-              href={
-                hiddenMode
-                  ? `/assessments/${assessment.id}`
-                  : `/assessments/${assessment.id}?mode=hidden&role=reviewer`
-              }
-            >
-              {hiddenMode ? 'Open standard view' : 'Open hidden evaluation mode'}
+            <Link className="button button--ghost" href={`/sites/${assessment.site_id}`}>
+              Open site
             </Link>
-            <Link className="button button--ghost" href="/admin/model-releases">
-              Model releases
-            </Link>
-            {assessment.site_summary ? (
-              <Link className="button button--ghost" href={`/sites/${assessment.site_summary.site_id}`}>
-                Open site detail
+            {canSeeHidden(role) ? (
+              <Link
+                className="button button--ghost"
+                href={hiddenMode ? `/assessments/${assessment.id}` : `/assessments/${assessment.id}?mode=hidden`}
+              >
+                {hiddenMode ? 'Open standard view' : 'Open hidden evaluation'}
               </Link>
             ) : null}
           </div>
         }
+        badges={
+          <div className="status-strip">
+            <Badge tone={toneForEstimate(assessment.result?.estimate_status)}>{assessment.result?.estimate_status ?? 'NONE'}</Badge>
+            <Badge tone={toneForReview(overrideSummary?.effective_review_status ?? assessment.review_status)}>
+              {overrideSummary?.effective_review_status ?? assessment.review_status}
+            </Badge>
+            <Badge tone={toneForVisibility(visibilityMode)}>{exposureMode}</Badge>
+          </div>
+        }
       />
+
+      {!hiddenMode && requestedHidden && !canSeeHidden(role) ? (
+        <Callout title="Hidden mode blocked" tone="warning">
+          Your current role cannot open hidden/internal probability readback. This page is showing
+          the standard redacted view instead.
+        </Callout>
+      ) : null}
 
       <section className="stat-grid">
         <StatCard
-          tone={blocked ? 'danger' : hiddenMode ? 'danger' : 'accent'}
-          label="Visibility"
-          value={visibleModeBadge}
-          detail={redactionNote}
+          tone={toneForEstimate(assessment.result?.estimate_status)}
+          label="Eligibility"
+          value={assessment.eligibility_status}
+          detail={assessment.result?.estimate_status ?? 'Pre-score only'}
         />
         <StatCard
-          tone={toneForReview(overrideSummary?.effective_review_status ?? assessment.review_status)}
-          label="Review"
-          value={overrideSummary?.effective_review_status ?? assessment.review_status}
-          detail={
-            overrideSummary?.effective_manual_review_required ?? assessment.manual_review_required
-              ? 'Manual review remains required or was explicitly resolved via override.'
-              : 'No manual review requirement is currently active.'
+          tone={hiddenMode && assessment.result?.approval_probability_display ? 'danger' : 'accent'}
+          label="Probability"
+          value={
+            hiddenMode
+              ? assessment.result?.approval_probability_display ?? 'Unavailable'
+              : 'Redacted'
           }
-        />
-        <StatCard
-          tone="accent"
-          label="Comparables"
-          value={String((comparables?.approved_count ?? 0) + (comparables?.refused_count ?? 0))}
-          detail="Explanation infrastructure only, not a substitute model"
+          detail={probabilityReason}
         />
         <StatCard
           tone={
@@ -178,11 +219,7 @@ export default async function AssessmentDetailPage({
           }
           label="Valuation"
           value={effectiveValuation?.valuation_quality ?? 'Unavailable'}
-          detail={
-            overrideSummary?.effective_valuation
-              ? 'An active override changes the effective valuation shown here.'
-              : 'Original immutable valuation run.'
-          }
+          detail={`Post-permission mid ${currency(effectiveValuation?.post_permission_value_mid)}`}
         />
         <StatCard
           tone={assessment.visibility?.replay_verified ? 'success' : 'danger'}
@@ -192,262 +229,340 @@ export default async function AssessmentDetailPage({
         />
       </section>
 
-      <div className="split-grid">
-        <Panel
-          eyebrow="Visibility gate"
-          title="Exposure and blocking state"
-          note={<Badge tone={toneForVisibility(visibleModeBadge)}>{exposureMode}</Badge>}
-        >
-          <DefinitionList
-            items={[
-              { label: 'Viewer role', value: viewerRole },
-              { label: 'Scope key', value: assessment.visibility?.scope_key ?? 'Unavailable' },
-              { label: 'Blocked', value: blocked ? 'Yes' : 'No' },
-              { label: 'Blocked reason', value: assessment.visibility?.blocked_reason_text ?? 'None' },
-              { label: 'Replay verified', value: assessment.visibility?.replay_verified ? 'Yes' : 'No' },
-              { label: 'Artifact hashes match', value: assessment.visibility?.artifact_hashes_match ? 'Yes' : 'No' },
-              { label: 'Scope/release match', value: assessment.visibility?.scope_release_matches_result ? 'Yes' : 'No' },
-            ]}
-          />
-        </Panel>
+      <div className="detail-layout">
+        <div className="detail-main">
+          <div className="split-grid">
+            <Panel eyebrow="Overview" title="Scenario statement">
+              <DefinitionList
+                items={[
+                  {
+                    label: 'Site',
+                    value: assessment.site_summary?.display_name ?? assessment.site_id
+                  },
+                  {
+                    label: 'Scenario',
+                    value: assessment.scenario_summary
+                      ? `${assessment.scenario_summary.template_key} · ${assessment.scenario_summary.units_assumed} units`
+                      : assessment.scenario_id
+                  },
+                  {
+                    label: 'Proposal form',
+                    value: assessment.scenario_summary?.proposal_form ?? 'Unavailable'
+                  },
+                  { label: 'As of date', value: assessment.as_of_date },
+                  { label: 'Feature version', value: assessment.feature_snapshot?.feature_version ?? 'Unavailable' },
+                  { label: 'Feature hash', value: assessment.feature_snapshot?.feature_hash ?? 'Unavailable' }
+                ]}
+              />
+            </Panel>
 
-        <Panel eyebrow="Run" title="Frozen metadata">
-          <DefinitionList
-            items={[
-              { label: 'Site', value: assessment.site_summary?.display_name ?? assessment.site_id },
-              {
-                label: 'Scenario',
-                value: assessment.scenario_summary
-                  ? `${assessment.scenario_summary.template_key} · ${assessment.scenario_summary.units_assumed} units`
-                  : assessment.scenario_id
-              },
-              { label: 'As-of date', value: assessment.as_of_date },
-              { label: 'Eligibility', value: assessment.eligibility_status },
-              { label: 'Feature version', value: assessment.feature_snapshot?.feature_version ?? 'Unavailable' },
-              { label: 'Feature hash', value: assessment.feature_snapshot?.feature_hash ?? 'Unavailable' }
-            ]}
-          />
-        </Panel>
+            <Panel eyebrow="Eligibility" title="Gate state">
+              <DefinitionList
+                items={[
+                  { label: 'Eligibility', value: assessment.eligibility_status },
+                  { label: 'Estimate status', value: assessment.result?.estimate_status ?? 'NONE' },
+                  {
+                    label: 'Manual review required',
+                    value:
+                      (overrideSummary?.effective_manual_review_required ??
+                        assessment.manual_review_required)
+                        ? 'Yes'
+                        : 'No'
+                  },
+                  {
+                    label: 'Review status',
+                    value: overrideSummary?.effective_review_status ?? assessment.review_status
+                  },
+                  { label: 'Viewer role', value: role }
+                ]}
+              />
+            </Panel>
+          </div>
+
+          <div className="split-grid">
+            <Panel eyebrow="Probability and quality" title="Estimate posture">
+              <DefinitionList
+                items={[
+                  {
+                    label: 'Display probability',
+                    value:
+                      hiddenMode
+                        ? assessment.result?.approval_probability_display ?? 'Unavailable'
+                        : 'Redacted'
+                  },
+                  {
+                    label: 'Raw probability',
+                    value:
+                      hiddenMode && assessment.result?.approval_probability_raw !== null
+                        ? assessment.result?.approval_probability_raw?.toFixed(6) ?? 'Unavailable'
+                        : 'Hidden'
+                  },
+                  { label: 'Estimate quality', value: assessment.result?.estimate_quality ?? 'Unavailable' },
+                  { label: 'OOD status', value: assessment.result?.ood_status ?? 'Unavailable' },
+                  { label: 'Coverage quality', value: assessment.result?.source_coverage_quality ?? 'Unavailable' },
+                  { label: 'Geometry quality', value: assessment.result?.geometry_quality ?? 'Unavailable' },
+                  { label: 'Support quality', value: assessment.result?.support_quality ?? 'Unavailable' },
+                  { label: 'Scenario quality', value: assessment.result?.scenario_quality ?? 'Unavailable' },
+                  { label: 'OOD quality', value: assessment.result?.ood_quality ?? 'Unavailable' }
+                ]}
+              />
+            </Panel>
+
+            <Panel eyebrow="Valuation" title="Residual outcome">
+              <DefinitionList
+                items={[
+                  { label: 'Post-permission low', value: currency(effectiveValuation?.post_permission_value_low) },
+                  { label: 'Post-permission mid', value: currency(effectiveValuation?.post_permission_value_mid) },
+                  { label: 'Post-permission high', value: currency(effectiveValuation?.post_permission_value_high) },
+                  { label: 'Uplift mid', value: currency(effectiveValuation?.uplift_mid) },
+                  { label: 'Expected uplift mid', value: currency(effectiveValuation?.expected_uplift_mid) },
+                  { label: 'Basis type', value: typeof effectiveValuation?.basis_json?.basis_type === 'string' ? effectiveValuation.basis_json.basis_type : 'Unavailable' },
+                  { label: 'Assumption version', value: effectiveValuation?.valuation_assumption_version ?? 'Unavailable' }
+                ]}
+              />
+            </Panel>
+          </div>
+
+          <div className="split-grid">
+            <Panel eyebrow="Evidence for" title="Supportive evidence">
+              <EvidenceList
+                items={evidence.for.map((item) => ({
+                  label: item.topic,
+                  note: item.claim_text,
+                  tone: 'success',
+                  meta: (
+                    <span className="table-secondary">
+                      {item.source_label} · {item.verified_status}
+                    </span>
+                  )
+                }))}
+                emptyLabel="No supportive evidence was returned for this run."
+              />
+            </Panel>
+
+            <Panel eyebrow="Evidence against" title="Weakening evidence">
+              <EvidenceList
+                items={evidence.against.map((item) => ({
+                  label: item.topic,
+                  note: item.claim_text,
+                  tone: 'danger',
+                  meta: (
+                    <span className="table-secondary">
+                      {item.source_label} · {item.verified_status}
+                    </span>
+                  )
+                }))}
+                emptyLabel="No weakening evidence was returned for this run."
+              />
+            </Panel>
+          </div>
+
+          <Panel eyebrow="Unknowns" title="Coverage gaps and missing evidence">
+            <EvidenceList
+              items={[
+                ...evidence.unknown.map((item) => ({
+                  label: item.topic,
+                  note: item.claim_text,
+                  tone: 'warning' as const,
+                  meta: (
+                    <span className="table-secondary">
+                      {item.source_label} · {item.verified_status}
+                    </span>
+                  )
+                })),
+                ...unknowns.map((item, index) => ({
+                  label: `Unknown ${index + 1}`,
+                  note: String(item),
+                  tone: 'warning' as const,
+                  meta: <span className="table-secondary">Model explanation</span>
+                }))
+              ]}
+              emptyLabel="No unknown or gap evidence was returned for this run."
+            />
+          </Panel>
+
+          <div className="split-grid">
+            <Panel eyebrow="Drivers" title="Top positive drivers">
+              <EvidenceList
+                emptyLabel="No positive drivers were recorded."
+                items={topPositiveDrivers.map((item, index) => ({
+                  label: `Positive ${index + 1}`,
+                  note: typeof item === 'string' ? item : JSON.stringify(item),
+                  tone: 'success'
+                }))}
+              />
+            </Panel>
+
+            <Panel eyebrow="Drivers" title="Top negative drivers">
+              <EvidenceList
+                emptyLabel="No negative drivers were recorded."
+                items={topNegativeDrivers.map((item, index) => ({
+                  label: `Negative ${index + 1}`,
+                  note: typeof item === 'string' ? item : JSON.stringify(item),
+                  tone: 'danger'
+                }))}
+              />
+            </Panel>
+          </div>
+
+          <div className="split-grid">
+            <TableShell
+              title="Comparable approved cases"
+              note="Explanation infrastructure only. Similarity uses governed interpretable dimensions."
+            >
+              <div className="dense-table">
+                <table className="table-shell">
+                  <thead>
+                    <tr>
+                      <th>Reference</th>
+                      <th>Similarity</th>
+                      <th>Fallback</th>
+                      <th>Decision</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {(comparables?.approved_members ?? []).map((item) => (
+                      <tr key={item.id}>
+                        <td>
+                          <div className="table-primary">{item.planning_application.external_ref}</div>
+                          <div className="table-secondary">
+                            {item.planning_application.proposal_description}
+                          </div>
+                        </td>
+                        <td>
+                          <div className="table-primary">{item.similarity_score.toFixed(3)}</div>
+                          <div className="table-secondary">Rank {item.rank}</div>
+                        </td>
+                        <td>{item.fallback_path}</td>
+                        <td>{item.planning_application.decision ?? 'Unavailable'}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </TableShell>
+
+            <TableShell
+              title="Comparable refused cases"
+              note="Refused cases remain visible so the analyst can inspect contrary support."
+            >
+              <div className="dense-table">
+                <table className="table-shell">
+                  <thead>
+                    <tr>
+                      <th>Reference</th>
+                      <th>Similarity</th>
+                      <th>Fallback</th>
+                      <th>Decision</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {(comparables?.refused_members ?? []).map((item) => (
+                      <tr key={item.id}>
+                        <td>
+                          <div className="table-primary">{item.planning_application.external_ref}</div>
+                          <div className="table-secondary">
+                            {item.planning_application.proposal_description}
+                          </div>
+                        </td>
+                        <td>
+                          <div className="table-primary">{item.similarity_score.toFixed(3)}</div>
+                          <div className="table-secondary">Rank {item.rank}</div>
+                        </td>
+                        <td>{item.fallback_path}</td>
+                        <td>{item.planning_application.decision ?? 'Unavailable'}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </TableShell>
+          </div>
+        </div>
+
+        <div className="detail-rail">
+          <Panel eyebrow="Visibility" title="Release and gate state" compact>
+            <DefinitionList
+              compact
+              items={[
+                { label: 'Visibility mode', value: visibilityMode },
+                { label: 'Exposure mode', value: exposureMode },
+                { label: 'Blocked', value: blocked ? 'Yes' : 'No' },
+                {
+                  label: 'Blocked reason',
+                  value: assessment.visibility?.blocked_reason_text ?? 'None'
+                },
+                {
+                  label: 'Replay verified',
+                  value: assessment.visibility?.replay_verified ? 'Yes' : 'No'
+                }
+              ]}
+            />
+          </Panel>
+
+          <Panel eyebrow="Provenance" title="Ledger and artifacts" compact>
+            <ProvenanceList
+              items={[
+                {
+                  label: 'Feature hash',
+                  value: assessment.prediction_ledger?.feature_hash ?? 'Unavailable'
+                },
+                {
+                  label: 'Payload hash',
+                  value: assessment.prediction_ledger?.result_payload_hash ?? 'Unavailable'
+                },
+                {
+                  label: 'Model artifact hash',
+                  value: assessment.prediction_ledger?.model_artifact_hash ?? 'Unavailable'
+                },
+                {
+                  label: 'Validation artifact hash',
+                  value: assessment.prediction_ledger?.validation_artifact_hash ?? 'Unavailable'
+                }
+              ]}
+            />
+          </Panel>
+
+          <Panel eyebrow="Frozen payload" title="Raw snapshots" compact>
+            <div className="details-block">
+              <details className="json-details">
+                <summary>Feature payload</summary>
+                <pre className="code-block">
+                  {JSON.stringify(assessment.feature_snapshot?.feature_json ?? {}, null, 2)}
+                </pre>
+              </details>
+              <details className="json-details">
+                <summary>Result payload</summary>
+                <pre className="code-block">
+                  {JSON.stringify(assessment.result?.result_json ?? {}, null, 2)}
+                </pre>
+              </details>
+              <details className="json-details">
+                <summary>Valuation payload</summary>
+                <pre className="code-block">
+                  {JSON.stringify(effectiveValuation?.result_json ?? {}, null, 2)}
+                </pre>
+              </details>
+            </div>
+          </Panel>
+        </div>
       </div>
 
       <AssessmentOverridePanel
-        assessmentId={assessment.id}
         activeOverrides={overrideSummary?.active_overrides ?? []}
-        visibility={assessment.visibility}
+        assessmentId={assessment.id}
         currentAssumptionVersion={effectiveValuation?.valuation_assumption_version ?? null}
         currentBasisType={
           typeof effectiveValuation?.basis_json?.basis_type === 'string'
             ? effectiveValuation.basis_json.basis_type
             : null
         }
+        currentRole={role}
         manualReviewRequired={
           overrideSummary?.effective_manual_review_required ?? assessment.manual_review_required
         }
+        visibility={assessment.visibility}
       />
-
-      <div className="split-grid">
-        <Panel eyebrow="Original" title="Original frozen result">
-          <DefinitionList
-            items={[
-              { label: 'Estimate status', value: assessment.result?.estimate_status ?? 'NONE' },
-              { label: 'Display probability', value: assessment.result?.approval_probability_display ?? 'Redacted' },
-              { label: 'Estimate quality', value: assessment.result?.estimate_quality ?? 'Unavailable' },
-              { label: 'Review status', value: assessment.review_status },
-              { label: 'Expected uplift', value: formatCurrency(assessment.valuation?.expected_uplift_mid) },
-              { label: 'Valuation quality', value: assessment.valuation?.valuation_quality ?? 'Unavailable' },
-            ]}
-          />
-        </Panel>
-
-        <Panel eyebrow="Effective" title="Override-adjusted readback">
-          <DefinitionList
-            items={[
-              { label: 'Review status', value: overrideSummary?.effective_review_status ?? assessment.review_status },
-              {
-                label: 'Manual review required',
-                value:
-                  (overrideSummary?.effective_manual_review_required ?? assessment.manual_review_required)
-                    ? 'Yes'
-                    : 'No'
-              },
-              { label: 'Expected uplift', value: formatCurrency(effectiveValuation?.expected_uplift_mid) },
-              { label: 'Uplift mid', value: formatCurrency(effectiveValuation?.uplift_mid) },
-              { label: 'Valuation quality', value: effectiveValuation?.valuation_quality ?? 'Unavailable' },
-              { label: 'Ranking suppression', value: overrideSummary?.ranking_suppressed ? 'Yes' : 'No' },
-            ]}
-          />
-        </Panel>
-      </div>
-
-      <div className="split-grid">
-        <Panel eyebrow="Provenance" title="Replay-safe ledger">
-          <DefinitionList
-            items={[
-              { label: 'Geometry hash', value: assessment.prediction_ledger?.site_geom_hash ?? 'Unavailable' },
-              { label: 'Payload hash', value: assessment.prediction_ledger?.result_payload_hash ?? 'Unavailable' },
-              { label: 'Model artifact hash', value: assessment.prediction_ledger?.model_artifact_hash ?? 'Unavailable' },
-              { label: 'Validation artifact hash', value: assessment.prediction_ledger?.validation_artifact_hash ?? 'Unavailable' },
-              { label: 'Source snapshots', value: formatList(assessment.prediction_ledger?.source_snapshot_ids_json ?? []) },
-              { label: 'Raw assets', value: formatList(assessment.prediction_ledger?.raw_asset_ids_json ?? []) }
-            ]}
-          />
-        </Panel>
-
-        <Panel eyebrow="Valuation" title="Residual valuation summary">
-          <DefinitionList
-            items={[
-              { label: 'Post-permission low', value: formatCurrency(effectiveValuation?.post_permission_value_low) },
-              { label: 'Post-permission mid', value: formatCurrency(effectiveValuation?.post_permission_value_mid) },
-              { label: 'Post-permission high', value: formatCurrency(effectiveValuation?.post_permission_value_high) },
-              { label: 'Uplift mid', value: formatCurrency(effectiveValuation?.uplift_mid) },
-              { label: 'Expected uplift mid', value: formatCurrency(effectiveValuation?.expected_uplift_mid) },
-              { label: 'Valuation quality', value: effectiveValuation?.valuation_quality ?? 'Unavailable' },
-              { label: 'Basis type', value: typeof effectiveValuation?.basis_json?.basis_type === 'string' ? effectiveValuation.basis_json.basis_type : 'Unavailable' },
-              { label: 'Assumption version', value: effectiveValuation?.valuation_assumption_version ?? 'Unavailable' },
-            ]}
-          />
-          <pre className="code-block" style={{ marginTop: 16, whiteSpace: 'pre-wrap' }}>
-            {JSON.stringify(effectiveValuation?.sense_check_json ?? {}, null, 2)}
-          </pre>
-        </Panel>
-      </div>
-
-      <div className="split-grid">
-        <Panel eyebrow="Features" title="Frozen feature summary">
-          <DefinitionList
-            items={[
-              {
-                label: 'Site area',
-                value:
-                  typeof featureValues?.site_area_sqm === 'number'
-                    ? `${featureValues.site_area_sqm.toLocaleString('en-GB')} sqm`
-                    : 'Unknown'
-              },
-              {
-                label: 'Units assumed',
-                value:
-                  typeof featureValues?.scenario_units_assumed === 'number'
-                    ? featureValues.scenario_units_assumed
-                    : assessment.scenario_summary?.units_assumed ?? 'Unknown'
-              },
-              {
-                label: 'Proposal form',
-                value:
-                  typeof featureValues?.scenario_proposal_form === 'string'
-                    ? featureValues.scenario_proposal_form
-                    : assessment.scenario_summary?.proposal_form ?? 'Unknown'
-              },
-              { label: 'Coverage rows', value: Array.isArray(sourceCoverage) ? sourceCoverage.length : 0 }
-            ]}
-          />
-          <pre className="code-block" style={{ marginTop: 16, whiteSpace: 'pre-wrap' }}>
-            {JSON.stringify(assessment.feature_snapshot?.feature_json ?? {}, null, 2)}
-          </pre>
-        </Panel>
-
-        <Panel eyebrow="Result payload" title={hiddenMode ? 'Hidden/internal result view' : 'Standard result view'}>
-          <DefinitionList
-            items={[
-              { label: 'Estimate status', value: assessment.result?.estimate_status ?? 'NONE' },
-              { label: 'Coverage quality', value: assessment.result?.source_coverage_quality ?? 'Unknown' },
-              { label: 'Geometry quality', value: assessment.result?.geometry_quality ?? 'Unknown' },
-              { label: 'Support quality', value: assessment.result?.support_quality ?? 'Unknown' },
-              { label: 'Scenario quality', value: assessment.result?.scenario_quality ?? 'Unknown' },
-              { label: 'OOD quality', value: assessment.result?.ood_quality ?? 'Unknown' }
-            ]}
-          />
-          <pre className="code-block" style={{ marginTop: 16, whiteSpace: 'pre-wrap' }}>
-            {JSON.stringify(assessment.result?.result_json ?? {}, null, 2)}
-          </pre>
-        </Panel>
-      </div>
-
-      <div className="split-grid">
-        <Panel eyebrow="Drivers" title="Top positive drivers">
-          {topPositiveDrivers.length === 0 ? (
-            <p className="empty-note">No positive driver explanation is available.</p>
-          ) : (
-            <div className="card-stack">
-              {topPositiveDrivers.map((item, index) => (
-                <article className="mini-card" key={`positive-${index}`}>
-                  <div className="table-primary">
-                    {typeof item === 'object' && item !== null && 'feature' in item ? String((item as { feature: unknown }).feature) : 'Driver'}
-                  </div>
-                  <div className="table-secondary">{JSON.stringify(item)}</div>
-                </article>
-              ))}
-            </div>
-          )}
-        </Panel>
-
-        <Panel eyebrow="Drivers" title="Top negative drivers">
-          {topNegativeDrivers.length === 0 ? (
-            <p className="empty-note">No negative driver explanation is available.</p>
-          ) : (
-            <div className="card-stack">
-              {topNegativeDrivers.map((item, index) => (
-                <article className="mini-card" key={`negative-${index}`}>
-                  <div className="table-primary">
-                    {typeof item === 'object' && item !== null && 'feature' in item ? String((item as { feature: unknown }).feature) : 'Driver'}
-                  </div>
-                  <div className="table-secondary">{JSON.stringify(item)}</div>
-                </article>
-              ))}
-            </div>
-          )}
-        </Panel>
-      </div>
-
-      <div className="split-grid">
-        <Panel eyebrow="Unknowns" title="Missing evidence and unknowns">
-          {unknowns.length === 0 ? (
-            <p className="empty-note">No unknown-driver list is available.</p>
-          ) : (
-            <div className="card-stack">
-              {unknowns.map((item, index) => (
-                <article className="mini-card" key={`unknown-${index}`}>
-                  <div className="table-secondary">{JSON.stringify(item)}</div>
-                </article>
-              ))}
-            </div>
-          )}
-        </Panel>
-
-        <Panel eyebrow="Comparables" title="Comparable set">
-          <DefinitionList
-            items={[
-              { label: 'Approved', value: comparables?.approved_count ?? 0 },
-              { label: 'Refused', value: comparables?.refused_count ?? 0 },
-              { label: 'Same-borough support', value: comparables?.same_borough_count ?? 0 },
-              { label: 'London-wide support', value: comparables?.london_count ?? 0 },
-            ]}
-          />
-        </Panel>
-      </div>
-
-      <div className="split-grid">
-        <Panel eyebrow="Evidence" title="Evidence FOR">
-          <div className="card-stack">
-            {evidence.for.slice(0, 6).map((item, index) => (
-              <article className="mini-card" key={`for-${index}`}>
-                <div className="table-primary">{item.topic}</div>
-                <div className="table-secondary">{item.claim_text}</div>
-              </article>
-            ))}
-          </div>
-        </Panel>
-
-        <Panel eyebrow="Evidence" title="Evidence AGAINST / UNKNOWN">
-          <div className="card-stack">
-            {[...evidence.against.slice(0, 3), ...evidence.unknown.slice(0, 3)].map((item, index) => (
-              <article className="mini-card" key={`mixed-${index}`}>
-                <div className="table-primary">{item.topic}</div>
-                <div className="table-secondary">{item.claim_text}</div>
-              </article>
-            ))}
-          </div>
-        </Panel>
-      </div>
     </div>
   );
 }

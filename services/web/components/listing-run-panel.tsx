@@ -31,7 +31,7 @@ export function ListingRunPanel() {
   const [manualUrl, setManualUrl] = useState('https://example.com/listings/land-at-riverside-yard');
   const [csvText, setCsvText] = useState('source_listing_id,headline,borough,guide_price_gbp\nbroker-drop-17,Rear Yard off Albion Street,Lambeth,875000');
   const [sourceKey, setSourceKey] = useState('approved_public_page');
-  const [coverageNote, setCoverageNote] = useState('Phase 1A internal analyst run');
+  const [coverageNote, setCoverageNote] = useState('Internal analyst run');
   const [csvFile, setCsvFile] = useState<File | null>(null);
   const [pending, setPending] = useState<ActionKey | null>(null);
   const [response, setResponse] = useState<unknown | null>(null);
@@ -147,4 +147,3 @@ export function ListingRunPanel() {
     </div>
   );
 }
-

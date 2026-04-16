@@ -2,6 +2,7 @@ import Link from 'next/link';
 
 import { AssessmentRunBuilder } from '@/components/assessment-run-builder';
 import { Badge, PageHeader, Panel, StatCard } from '@/components/ui';
+import { getAuthContext } from '@/lib/auth/server';
 import { getAssessments } from '@/lib/landintel-api';
 
 export const dynamic = 'force-dynamic';
@@ -23,6 +24,8 @@ export default async function AssessmentsPage({
 }: {
   searchParams?: Record<string, string | string[] | undefined>;
 }) {
+  const auth = await getAuthContext();
+  const role = auth.role ?? 'analyst';
   const siteId = typeof searchParams?.siteId === 'string' ? searchParams.siteId : '';
   const scenarioId = typeof searchParams?.scenarioId === 'string' ? searchParams.scenarioId : '';
   const result = await getAssessments({
@@ -37,9 +40,9 @@ export default async function AssessmentsPage({
   return (
     <div className="page-stack">
       <PageHeader
-        eyebrow="Phase 8A"
-        title="Frozen hidden-score assessments"
-        summary="Assessment runs now freeze point-in-time features, provenance, evidence, comparables, replay metadata, hidden-only scoring when a valid release exists, immutable valuation results, and the Phase 8A override/visibility state. Standard analyst reads remain non-speaking."
+        eyebrow="Assessments"
+        title="Frozen assessment runs"
+        summary="Assessment runs freeze point-in-time features, provenance, evidence, comparables, replay metadata, hidden-only scoring when a valid release exists, immutable valuation results, and the current override/visibility state."
         actions={
           <div className="page-actions__group">
             <Link className="button button--ghost" href="/sites">
@@ -48,12 +51,16 @@ export default async function AssessmentsPage({
             <Link className="button button--ghost" href="/opportunities">
               Opportunities
             </Link>
-            <Link className="button button--ghost" href="/review-queue">
-              Open gold-set review
-            </Link>
-            <Link className="button button--ghost" href="/admin/model-releases">
-              Model releases
-            </Link>
+            {role === 'reviewer' || role === 'admin' ? (
+              <Link className="button button--ghost" href="/review-queue">
+                Open review queue
+              </Link>
+            ) : null}
+            {role === 'admin' ? (
+              <Link className="button button--ghost" href="/admin/model-releases">
+                Model releases
+              </Link>
+            ) : null}
           </div>
         }
       />
@@ -72,8 +79,8 @@ export default async function AssessmentsPage({
         title="Assessment history"
         note={
           result.apiAvailable
-            ? 'Live API. Open an assessment and add ?mode=hidden for internal evaluation mode and valuation-backed readback.'
-            : 'API unavailable, showing current query result only'
+            ? 'Live API. Reviewer/admin users can append ?mode=hidden for internal probability readback.'
+            : 'API unavailable, showing the current query result only.'
         }
       >
         {items.length === 0 ? (

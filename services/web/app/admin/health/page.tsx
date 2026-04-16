@@ -36,7 +36,7 @@ export default async function AdminHealthPage() {
       <PageHeader
         eyebrow="Admin / health"
         title="Operational health"
-        summary="Phase 8A turns the admin shell into a usable internal control panel: data freshness, model calibration, economic-health summary, and scope visibility state are now surfaced together."
+        summary="Check data freshness, model calibration, economic-health summary, and scope visibility state in one internal control surface."
         actions={
           <div className="page-actions__group">
             <Link className="button button--solid" href="/review-queue">

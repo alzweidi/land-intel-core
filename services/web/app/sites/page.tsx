@@ -55,9 +55,9 @@ export default async function SitesPage({ searchParams }: { searchParams?: Searc
   return (
     <div className="page-stack">
       <PageHeader
-        eyebrow="Phase 5A"
-        title="Site candidates"
-        summary="Confirmed site records now carry planning context, source coverage visibility, and extant-permission screening inputs. The map and detail records stay explicit about geometry confidence, borough assignment, and what is only indicative evidence."
+        eyebrow="Sites"
+        title="Site registry"
+        summary="Work through confirmed site candidates with map, geometry confidence, borough assignment, planning context, and extant-permission posture in one dense review surface."
         actions={
           selectedSite ? (
             <Link className="button button--ghost" href={`/sites/${selectedSite.site_id}`}>
@@ -78,9 +78,9 @@ export default async function SitesPage({ searchParams }: { searchParams?: Searc
         <Panel
           eyebrow="Map"
           title="Candidate map"
-          note="MapLibre shows site evidence only. It is a working map, not a declaration of legal boundary truth. Planning context appears on the site detail view."
+          note="MapLibre shows site evidence only. It is a working map, not a declaration of legal boundary truth."
         >
-          <SiteMap sites={items} selectedSiteId={selectedSiteId} />
+          <SiteMap height={560} sites={items} selectedSiteId={selectedSiteId} />
         </Panel>
 
         <Panel eyebrow="Filters" title="Candidate list">

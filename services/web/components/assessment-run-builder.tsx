@@ -27,7 +27,7 @@ export function AssessmentRunBuilder({
   const [scenarioId, setScenarioId] = useState(initialScenarioId);
   const [asOfDate, setAsOfDate] = useState(initialAsOfDate ?? todayIsoDate());
   const [message, setMessage] = useState(
-    'A confirmed scenario is required. The run freezes PIT artifacts, may execute a hidden internal score if an active hidden release exists, can build an immutable valuation result, and now respects Phase 8A visibility and override controls.'
+    'A confirmed scenario is required. The run freezes PIT artifacts, may execute a hidden internal score if an active hidden release exists, can build an immutable valuation result, and respects the current visibility and override controls.'
   );
   const [loading, setLoading] = useState(false);
 

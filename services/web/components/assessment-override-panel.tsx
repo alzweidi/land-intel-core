@@ -6,9 +6,10 @@ import { useMemo, useState } from 'react';
 import {
   getAssessmentAuditExport,
   overrideAssessment,
+  type AppRole,
   type AssessmentOverride,
   type AuditExport,
-  type VisibilityGate,
+  type VisibilityGate
 } from '@/lib/landintel-api';
 
 import { Badge, DefinitionList, Panel } from './ui';
@@ -20,9 +21,15 @@ type AssessmentOverridePanelProps = {
   currentAssumptionVersion: string | null;
   currentBasisType: string | null;
   manualReviewRequired: boolean;
+  currentRole: AppRole;
 };
 
 const PRICE_BASIS_TYPES = ['GUIDE_PRICE', 'ASKING_PRICE', 'FIXED_PRICE', 'UNKNOWN'] as const;
+const ROLE_ORDER: Record<AppRole, number> = {
+  analyst: 0,
+  reviewer: 1,
+  admin: 2
+};
 
 function overrideTone(type: string): 'neutral' | 'accent' | 'success' | 'warning' | 'danger' {
   if (type === 'REVIEW_DISPOSITION') {
@@ -44,6 +51,7 @@ export function AssessmentOverridePanel({
   currentAssumptionVersion,
   currentBasisType,
   manualReviewRequired,
+  currentRole
 }: AssessmentOverridePanelProps) {
   const router = useRouter();
   const [basisValue, setBasisValue] = useState('');
@@ -54,10 +62,14 @@ export function AssessmentOverridePanel({
   const [reviewNote, setReviewNote] = useState('Reviewer sign-off after manual review.');
   const [rankingReason, setRankingReason] = useState('Suppress ranking display pending reviewer/admin sign-off.');
   const [loadingKey, setLoadingKey] = useState<string | null>(null);
-  const [message, setMessage] = useState('Overrides are append-only. Original scored and valuation outputs remain preserved.');
+  const [message, setMessage] = useState(
+    'Overrides are append-only. Original scored and valuation outputs remain preserved side by side.'
+  );
   const [exportRecord, setExportRecord] = useState<AuditExport | null>(null);
 
-  const activeOverrideCount = activeOverrides.length;
+  const canReview = ROLE_ORDER[currentRole] >= ROLE_ORDER.reviewer;
+  const canAdminister = ROLE_ORDER[currentRole] >= ROLE_ORDER.admin;
+
   const visibilitySummary = useMemo(() => {
     if (!visibility) {
       return 'No visibility gate data returned.';
@@ -83,12 +95,12 @@ export function AssessmentOverridePanel({
 
     setLoadingKey('basis');
     const response = await overrideAssessment(assessmentId, {
-      actor_role: 'analyst',
+      actor_role: currentRole,
       override_type: 'ACQUISITION_BASIS',
       reason: basisReason,
       acquisition_basis_gbp: parsed,
       acquisition_basis_type: basisType,
-      requested_by: 'web-ui',
+      requested_by: 'web-ui'
     });
     setLoadingKey(null);
 
@@ -97,7 +109,9 @@ export function AssessmentOverridePanel({
       return;
     }
 
-    setMessage('Acquisition basis override saved. Original valuation remains preserved alongside the override.');
+    setMessage(
+      'Acquisition basis override saved. The original valuation remains preserved alongside the override.'
+    );
     router.refresh();
   }
 
@@ -109,11 +123,11 @@ export function AssessmentOverridePanel({
 
     setLoadingKey('assumption');
     const response = await overrideAssessment(assessmentId, {
-      actor_role: 'analyst',
+      actor_role: currentRole,
       override_type: 'VALUATION_ASSUMPTION_SET',
       reason: assumptionReason,
       valuation_assumption_set_id: assumptionSetId.trim(),
-      requested_by: 'web-ui',
+      requested_by: 'web-ui'
     });
     setLoadingKey(null);
 
@@ -127,14 +141,19 @@ export function AssessmentOverridePanel({
   }
 
   async function resolveReviewDisposition() {
+    if (!canReview) {
+      setMessage('Reviewer role is required to resolve manual-review cases.');
+      return;
+    }
+
     setLoadingKey('review');
     const response = await overrideAssessment(assessmentId, {
-      actor_role: 'reviewer',
+      actor_role: currentRole,
       override_type: 'REVIEW_DISPOSITION',
       reason: reviewNote,
       review_resolution_note: reviewNote,
       resolve_manual_review: true,
-      requested_by: 'web-ui',
+      requested_by: 'web-ui'
     });
     setLoadingKey(null);
 
@@ -148,14 +167,19 @@ export function AssessmentOverridePanel({
   }
 
   async function suppressRanking() {
+    if (!canAdminister) {
+      setMessage('Admin role is required to suppress ranking display.');
+      return;
+    }
+
     setLoadingKey('ranking');
     const response = await overrideAssessment(assessmentId, {
-      actor_role: 'admin',
+      actor_role: currentRole,
       override_type: 'RANKING_SUPPRESSION',
       reason: rankingReason,
       ranking_suppressed: true,
       display_block_reason: rankingReason,
-      requested_by: 'web-ui',
+      requested_by: 'web-ui'
     });
     setLoadingKey(null);
 
@@ -164,15 +188,22 @@ export function AssessmentOverridePanel({
       return;
     }
 
-    setMessage('Ranking suppression override saved. Original planning/valuation outputs remain unchanged.');
+    setMessage(
+      'Ranking suppression override saved. Original planning and valuation outputs remain unchanged.'
+    );
     router.refresh();
   }
 
   async function buildAuditExport() {
+    if (!canReview) {
+      setMessage('Reviewer or admin role is required to build an audit export.');
+      return;
+    }
+
     setLoadingKey('export');
     const response = await getAssessmentAuditExport(assessmentId, {
-      actor_role: 'reviewer',
-      requested_by: 'web-ui',
+      actor_role: currentRole,
+      requested_by: 'web-ui'
     });
     setLoadingKey(null);
 
@@ -187,21 +218,26 @@ export function AssessmentOverridePanel({
 
   return (
     <Panel
-      eyebrow="Phase 8A"
-      title="Overrides and audit controls"
-      note={<Badge tone={visibility?.blocked ? 'danger' : 'accent'}>{visibility?.visibility_mode ?? 'HIDDEN_ONLY'}</Badge>}
+      eyebrow="Overrides"
+      title="Original vs effective controls"
+      note={
+        <Badge tone={visibility?.blocked ? 'danger' : 'accent'}>
+          {visibility?.visibility_mode ?? 'HIDDEN_ONLY'}
+        </Badge>
+      }
     >
       <DefinitionList
         items={[
+          { label: 'Current role', value: currentRole },
           { label: 'Visibility gate', value: visibilitySummary },
-          { label: 'Active overrides', value: String(activeOverrideCount) },
+          { label: 'Active overrides', value: String(activeOverrides.length) },
           { label: 'Current assumption version', value: currentAssumptionVersion ?? 'Unavailable' },
-          { label: 'Manual review required', value: manualReviewRequired ? 'Yes' : 'No' },
+          { label: 'Manual review required', value: manualReviewRequired ? 'Yes' : 'No' }
         ]}
       />
 
       {activeOverrides.length > 0 ? (
-        <div className="card-stack" style={{ marginTop: 16 }}>
+        <div className="card-stack">
           {activeOverrides.map((item) => (
             <article className="mini-card" key={item.id}>
               <div className="mini-card__top">
@@ -219,11 +255,11 @@ export function AssessmentOverridePanel({
         </div>
       ) : null}
 
-      <div className="split-grid" style={{ marginTop: 20 }}>
-        <Panel eyebrow="Analyst" title="Valuation basis correction">
-          <div className="form-stack" style={{ display: 'grid', gap: 12 }}>
+      <div className="split-grid">
+        <Panel eyebrow="Analyst" title="Valuation basis correction" compact>
+          <div className="form-stack">
             <label className="field">
-              <span className="field__label">Acquisition basis GBP</span>
+              <span>Acquisition basis GBP</span>
               <input
                 min={0}
                 onChange={(event) => setBasisValue(event.target.value)}
@@ -233,7 +269,7 @@ export function AssessmentOverridePanel({
               />
             </label>
             <label className="field">
-              <span className="field__label">Basis type</span>
+              <span>Basis type</span>
               <select onChange={(event) => setBasisType(event.target.value)} value={basisType}>
                 {PRICE_BASIS_TYPES.map((value) => (
                   <option key={value} value={value}>
@@ -243,25 +279,21 @@ export function AssessmentOverridePanel({
               </select>
             </label>
             <label className="field">
-              <span className="field__label">Reason</span>
-              <textarea
-                onChange={(event) => setBasisReason(event.target.value)}
-                rows={3}
-                value={basisReason}
-              />
+              <span>Reason</span>
+              <textarea onChange={(event) => setBasisReason(event.target.value)} rows={3} value={basisReason} />
             </label>
           </div>
-          <div className="button-row" style={{ display: 'flex', gap: 12, marginTop: 16, flexWrap: 'wrap' }}>
-            <button className="button" disabled={loadingKey === 'basis'} onClick={() => void applyBasisOverride()} type="button">
-              {loadingKey === 'basis' ? 'Saving...' : 'Apply basis override'}
+          <div className="button-row">
+            <button className="button button--solid" disabled={loadingKey === 'basis'} onClick={() => void applyBasisOverride()} type="button">
+              {loadingKey === 'basis' ? 'Saving…' : 'Apply basis override'}
             </button>
           </div>
         </Panel>
 
-        <Panel eyebrow="Analyst" title="Assumption set override">
-          <div className="form-stack" style={{ display: 'grid', gap: 12 }}>
+        <Panel eyebrow="Analyst" title="Assumption set override" compact>
+          <div className="form-stack">
             <label className="field">
-              <span className="field__label">Assumption set UUID</span>
+              <span>Assumption set UUID</span>
               <input
                 onChange={(event) => setAssumptionSetId(event.target.value)}
                 placeholder="UUID"
@@ -270,7 +302,7 @@ export function AssessmentOverridePanel({
               />
             </label>
             <label className="field">
-              <span className="field__label">Reason</span>
+              <span>Reason</span>
               <textarea
                 onChange={(event) => setAssumptionReason(event.target.value)}
                 rows={3}
@@ -278,68 +310,85 @@ export function AssessmentOverridePanel({
               />
             </label>
           </div>
-          <div className="button-row" style={{ display: 'flex', gap: 12, marginTop: 16, flexWrap: 'wrap' }}>
+          <div className="button-row">
             <button
-              className="button"
+              className="button button--ghost"
               disabled={loadingKey === 'assumption'}
               onClick={() => void applyAssumptionOverride()}
               type="button"
             >
-              {loadingKey === 'assumption' ? 'Saving...' : 'Apply assumption override'}
+              {loadingKey === 'assumption' ? 'Saving…' : 'Apply assumption override'}
             </button>
           </div>
         </Panel>
       </div>
 
-      <div className="split-grid" style={{ marginTop: 20 }}>
-        <Panel eyebrow="Reviewer" title="Review disposition">
+      <div className="split-grid">
+        <Panel eyebrow="Reviewer" title="Review disposition" compact>
           <label className="field">
-            <span className="field__label">Resolution note</span>
+            <span>Resolution note</span>
             <textarea
+              disabled={!canReview}
               onChange={(event) => setReviewNote(event.target.value)}
               rows={3}
               value={reviewNote}
             />
           </label>
-          <div className="button-row" style={{ display: 'flex', gap: 12, marginTop: 16, flexWrap: 'wrap' }}>
-            <button className="button" disabled={loadingKey === 'review'} onClick={() => void resolveReviewDisposition()} type="button">
-              {loadingKey === 'review' ? 'Saving...' : 'Resolve review requirement'}
+          <div className="button-row">
+            <button
+              className="button"
+              disabled={!canReview || loadingKey === 'review'}
+              onClick={() => void resolveReviewDisposition()}
+              type="button"
+            >
+              {loadingKey === 'review' ? 'Saving…' : 'Resolve review requirement'}
             </button>
           </div>
         </Panel>
 
-        <Panel eyebrow="Admin" title="Safety suppression and export">
+        <Panel eyebrow="Admin" title="Suppression and export" compact>
           <label className="field">
-            <span className="field__label">Suppression reason</span>
+            <span>Suppression reason</span>
             <textarea
+              disabled={!canAdminister}
               onChange={(event) => setRankingReason(event.target.value)}
               rows={3}
               value={rankingReason}
             />
           </label>
-          <div className="button-row" style={{ display: 'flex', gap: 12, marginTop: 16, flexWrap: 'wrap' }}>
-            <button className="button button--ghost" disabled={loadingKey === 'ranking'} onClick={() => void suppressRanking()} type="button">
-              {loadingKey === 'ranking' ? 'Saving...' : 'Suppress ranking display'}
+          <div className="button-row">
+            <button
+              className="button button--ghost"
+              disabled={!canAdminister || loadingKey === 'ranking'}
+              onClick={() => void suppressRanking()}
+              type="button"
+            >
+              {loadingKey === 'ranking' ? 'Saving…' : 'Suppress ranking display'}
             </button>
-            <button className="button" disabled={loadingKey === 'export'} onClick={() => void buildAuditExport()} type="button">
-              {loadingKey === 'export' ? 'Building...' : 'Build audit export'}
+            <button
+              className="button button--solid"
+              disabled={!canReview || loadingKey === 'export'}
+              onClick={() => void buildAuditExport()}
+              type="button"
+            >
+              {loadingKey === 'export' ? 'Building…' : 'Build audit export'}
             </button>
           </div>
           {exportRecord ? (
-            <div className="card-stack" style={{ marginTop: 16 }}>
-              <article className="mini-card">
-                <div className="table-primary">Audit export</div>
-                <div className="table-secondary">Manifest hash {exportRecord.manifest_hash ?? 'Unavailable'}</div>
-                <div className="table-secondary">{exportRecord.manifest_path ?? 'No manifest path stored'}</div>
-              </article>
+            <div className="mini-card">
+              <div className="table-primary">Audit export</div>
+              <div className="table-secondary">
+                Manifest hash {exportRecord.manifest_hash ?? 'Unavailable'}
+              </div>
+              <div className="table-secondary">
+                {exportRecord.manifest_path ?? 'No manifest path stored'}
+              </div>
             </div>
           ) : null}
         </Panel>
       </div>
 
-      <p className="table-secondary" style={{ marginTop: 16 }}>
-        {message}
-      </p>
+      <p className="table-secondary">{message}</p>
     </Panel>
   );
 }

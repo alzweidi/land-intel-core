@@ -32,13 +32,13 @@ export default async function SourceRunsPage() {
         <StatCard tone="accent" label="Runs" value={new Intl.NumberFormat('en-GB').format(result.items.length)} detail="Manual intake, CSV, and connector triggers" />
         <StatCard tone="warning" label="Compliance" value="Required" detail="Public-page runs need approval first" />
         <StatCard tone="success" label="Source types" value={new Intl.NumberFormat('en-GB').format(phase1ASources.length)} detail="Manual, CSV, and public-page source records" />
-        <StatCard tone="neutral" label="API mode" value={result.apiAvailable ? 'Live' : 'Fallback'} detail="The admin page works offline against fixtures" />
+        <StatCard tone="neutral" label="API mode" value={result.apiAvailable ? 'Live API' : 'Fallback'} detail="Live rows are preferred whenever the API is reachable" />
       </section>
 
       <Panel
         eyebrow="Run forms"
         title="Trigger listing acquisition"
-        note="The connector forms post directly to the Phase 1A API routes expected by the backend."
+        note="The connector forms post directly to the existing intake routes. Manual URL intake stays available even when automated portals remain blocked."
       >
         <ListingRunPanel />
       </Panel>
@@ -79,4 +79,3 @@ export default async function SourceRunsPage() {
     </div>
   );
 }
-

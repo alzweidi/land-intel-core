@@ -1,11 +1,12 @@
 import Link from 'next/link';
 
-import { Badge, PageHeader, Panel, StatCard } from '@/components/ui';
+import { Badge, PageHeader, Panel, StatCard, TableShell } from '@/components/ui';
+import { getAuthContext } from '@/lib/auth/server';
 import { getOpportunities } from '@/lib/landintel-api';
 
 export const dynamic = 'force-dynamic';
 
-function formatCurrency(value: number | null): string {
+function currency(value: number | null): string {
   if (value === null) {
     return 'Unavailable';
   }
@@ -45,48 +46,36 @@ function valuationTone(value: string | null): 'neutral' | 'accent' | 'success' |
 export default async function OpportunitiesPage({
   searchParams
 }: {
-  searchParams?: Record<string, string | string[] | undefined>;
+  searchParams?: Promise<Record<string, string | string[] | undefined>> | Record<string, string | string[] | undefined>;
 }) {
-  const borough = typeof searchParams?.borough === 'string' ? searchParams.borough : '';
+  const query = (await Promise.resolve(searchParams ?? {})) as Record<
+    string,
+    string | string[] | undefined
+  >;
+  const auth = await getAuthContext();
+  const role = auth.role ?? 'analyst';
+  const includeHidden =
+    (role === 'reviewer' || role === 'admin') &&
+    typeof query.includeHidden === 'string' &&
+    query.includeHidden === 'true';
+
+  const borough = typeof query.borough === 'string' ? query.borough : '';
   const probabilityBand =
-    typeof searchParams?.probability_band === 'string' ? searchParams.probability_band : '';
+    typeof query.probability_band === 'string' ? query.probability_band : '';
   const valuationQuality =
-    typeof searchParams?.valuation_quality === 'string' ? searchParams.valuation_quality : '';
+    typeof query.valuation_quality === 'string' ? query.valuation_quality : '';
   const manualReviewRequired =
-    typeof searchParams?.manual_review_required === 'string'
-      ? searchParams.manual_review_required === 'true'
-      : undefined;
-  const auctionDeadlineDays =
-    typeof searchParams?.auction_deadline_days === 'string' &&
-    searchParams.auction_deadline_days.length > 0
-      ? Number(searchParams.auction_deadline_days)
-      : undefined;
-  const minPrice =
-    typeof searchParams?.min_price === 'string' && searchParams.min_price.length > 0
-      ? Number(searchParams.min_price)
-      : undefined;
-  const maxPrice =
-    typeof searchParams?.max_price === 'string' && searchParams.max_price.length > 0
-      ? Number(searchParams.max_price)
+    typeof query.manual_review_required === 'string'
+      ? query.manual_review_required === 'true'
       : undefined;
 
   const result = await getOpportunities({
     borough: borough || undefined,
-    probability_band: probabilityBand as
-      | 'Band A'
-      | 'Band B'
-      | 'Band C'
-      | 'Band D'
-      | 'Hold'
-      | '',
+    probability_band: probabilityBand as 'Band A' | 'Band B' | 'Band C' | 'Band D' | 'Hold' | '',
     valuation_quality: valuationQuality as 'HIGH' | 'MEDIUM' | 'LOW' | '',
     manual_review_required: manualReviewRequired,
-    auction_deadline_days:
-      auctionDeadlineDays !== undefined && Number.isFinite(auctionDeadlineDays)
-        ? auctionDeadlineDays
-        : undefined,
-    min_price: minPrice !== undefined && Number.isFinite(minPrice) ? minPrice : undefined,
-    max_price: maxPrice !== undefined && Number.isFinite(maxPrice) ? maxPrice : undefined
+    hidden_mode: includeHidden,
+    viewer_role: role
   });
 
   const items = result.items;
@@ -98,90 +87,90 @@ export default async function OpportunitiesPage({
   return (
     <div className="page-stack">
       <PageHeader
-        eyebrow="Phase 8A"
-        title="Internal opportunity ranking"
-        summary="Ranking stays planning-first: hidden planning band first, then expected uplift, valuation quality, urgency, asking-price presence, and same-borough support. Phase 8A visibility controls can block publication without mutating the frozen result."
+        eyebrow="Opportunities"
+        title="Planning-first opportunity queue"
+        summary="This queue always ranks planning state first, then economics and urgency inside each band. Hidden probability remains internal and is only included here when the current role explicitly requests hidden mode."
         actions={
           <div className="page-actions__group">
             <Link className="button button--ghost" href="/assessments">
               Assessments
             </Link>
-            <Link className="button button--ghost" href="/admin/model-releases">
-              Model releases
-            </Link>
+            {role === 'admin' ? (
+              <Link className="button button--ghost" href="/admin/model-releases">
+                Model releases
+              </Link>
+            ) : null}
+          </div>
+        }
+        badges={
+          <div className="status-strip">
+            <Badge tone={includeHidden ? 'danger' : 'warning'}>
+              {includeHidden ? 'Hidden/internal queue' : 'Standard redacted queue'}
+            </Badge>
+            <Badge tone="accent">{role}</Badge>
           </div>
         }
       />
 
       <section className="stat-grid">
-        <StatCard tone="success" label="Band A" value={String(bandACount)} detail="Highest hidden planning band with sufficient quality" />
+        <StatCard tone="success" label="Band A" value={String(bandACount)} detail="Strongest planning band in the current filtered queue" />
         <StatCard tone="danger" label="Hold" value={String(holdCount)} detail="Cases that are not honestly rankable yet" />
-        <StatCard tone="warning" label="Low quality" value={String(lowQualityCount)} detail="Valuation quality LOW forces manual review" />
-        <StatCard tone="accent" label="Manual review" value={String(reviewCount)} detail="Planning or valuation review flags remain visible" />
+        <StatCard tone="warning" label="Low quality" value={String(lowQualityCount)} detail="Low valuation quality forces manual review" />
+        <StatCard tone="accent" label="Manual review" value={String(reviewCount)} detail="Flags remain visible even when a row is ranked" />
       </section>
 
-      <Panel eyebrow="Filters" title="Opportunity filters" note={result.apiAvailable ? 'Live API' : 'API unavailable'}>
-        <form className="form-stack" method="get" style={{ display: 'grid', gap: 12 }}>
-          <div className="split-grid">
+      <Panel eyebrow="Filters" title="Queue filters" note={includeHidden ? 'Hidden/internal view' : 'Standard redacted view'}>
+        <form className="toolbar-form" method="get">
+          <label className="field">
+            <span>Borough</span>
+            <input defaultValue={borough} name="borough" placeholder="camden" type="text" />
+          </label>
+          <label className="field">
+            <span>Probability band</span>
+            <select defaultValue={probabilityBand} name="probability_band">
+              <option value="">All</option>
+              <option value="Band A">Band A</option>
+              <option value="Band B">Band B</option>
+              <option value="Band C">Band C</option>
+              <option value="Band D">Band D</option>
+              <option value="Hold">Hold</option>
+            </select>
+          </label>
+          <label className="field">
+            <span>Valuation quality</span>
+            <select defaultValue={valuationQuality} name="valuation_quality">
+              <option value="">All</option>
+              <option value="HIGH">HIGH</option>
+              <option value="MEDIUM">MEDIUM</option>
+              <option value="LOW">LOW</option>
+            </select>
+          </label>
+          <label className="field">
+            <span>Manual review</span>
+            <select
+              defaultValue={
+                manualReviewRequired === undefined ? '' : manualReviewRequired ? 'true' : 'false'
+              }
+              name="manual_review_required"
+            >
+              <option value="">All</option>
+              <option value="true">Required</option>
+              <option value="false">Not required</option>
+            </select>
+          </label>
+          {(role === 'reviewer' || role === 'admin') ? (
             <label className="field">
-              <span className="field__label">Borough</span>
-              <input defaultValue={borough} name="borough" placeholder="camden" type="text" />
-            </label>
-            <label className="field">
-              <span className="field__label">Probability band</span>
-              <select defaultValue={probabilityBand} name="probability_band">
-                <option value="">All</option>
-                <option value="Band A">Band A</option>
-                <option value="Band B">Band B</option>
-                <option value="Band C">Band C</option>
-                <option value="Band D">Band D</option>
-                <option value="Hold">Hold</option>
+              <span>Hidden mode</span>
+              <select defaultValue={includeHidden ? 'true' : 'false'} name="includeHidden">
+                <option value="false">Standard redacted</option>
+                <option value="true">Hidden/internal</option>
               </select>
             </label>
-            <label className="field">
-              <span className="field__label">Valuation quality</span>
-              <select defaultValue={valuationQuality} name="valuation_quality">
-                <option value="">All</option>
-                <option value="HIGH">HIGH</option>
-                <option value="MEDIUM">MEDIUM</option>
-                <option value="LOW">LOW</option>
-              </select>
-            </label>
-          </div>
-          <div className="split-grid">
-            <label className="field">
-              <span className="field__label">Manual review</span>
-              <select
-                defaultValue={
-                  manualReviewRequired === undefined ? '' : manualReviewRequired ? 'true' : 'false'
-                }
-                name="manual_review_required"
-              >
-                <option value="">All</option>
-                <option value="true">Required</option>
-                <option value="false">Not required</option>
-              </select>
-            </label>
-            <label className="field">
-              <span className="field__label">Auction deadline window (days)</span>
-              <input
-                defaultValue={auctionDeadlineDays ?? ''}
-                min={0}
-                name="auction_deadline_days"
-                type="number"
-              />
-            </label>
-            <label className="field">
-              <span className="field__label">Min asking price</span>
-              <input defaultValue={minPrice ?? ''} min={0} name="min_price" type="number" />
-            </label>
-            <label className="field">
-              <span className="field__label">Max asking price</span>
-              <input defaultValue={maxPrice ?? ''} min={0} name="max_price" type="number" />
-            </label>
-          </div>
-          <div className="button-row" style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
-            <button className="button" type="submit">
+          ) : (
+            <input name="includeHidden" type="hidden" value="false" />
+          )}
+          <div className="toolbar-form__actions">
+            <button className="button button--solid" type="submit">
               Apply filters
             </button>
             <Link className="button button--ghost" href="/opportunities">
@@ -191,82 +180,92 @@ export default async function OpportunitiesPage({
         </form>
       </Panel>
 
-      <Panel
-        eyebrow="Ranking"
-        title="Opportunity list"
-        note="This surface is hidden/internal only. It must not be treated as a visible-probability analyst queue."
+      <TableShell
+        title="Opportunity rows"
+        note="Planning band always takes precedence over economics. Economics never leapfrog a stronger planning state."
       >
-        {items.length === 0 ? (
-          <p className="empty-note">No ranked opportunities are available for the current filters.</p>
-        ) : (
-          <div className="table-wrap">
-            <table className="table-shell">
-              <thead>
-                <tr>
-                  <th>Site</th>
-                  <th>Band</th>
-                  <th>Valuation</th>
-                  <th>Expected uplift</th>
-                  <th>Asking price</th>
-                  <th>Review</th>
+        <div className="dense-table">
+          <table className="table-shell">
+            <thead>
+              <tr>
+                <th>Site</th>
+                <th>Planning band</th>
+                <th>Valuation</th>
+                <th>Expected uplift</th>
+                <th>Asking price</th>
+                <th>Review / links</th>
+              </tr>
+            </thead>
+            <tbody>
+              {items.map((item) => (
+                <tr key={item.site_id}>
+                  <td>
+                    <div className="table-primary">
+                      <Link href={`/sites/${item.site_id}`}>
+                        {item.display_name || item.site_summary?.display_name || item.site_id}
+                      </Link>
+                    </div>
+                    <div className="table-secondary">
+                      {item.borough_name ?? item.borough_id ?? 'Unknown borough'}
+                    </div>
+                    <div className="table-secondary">{item.ranking_reason}</div>
+                  </td>
+                  <td>
+                    <Badge tone={bandTone(item.probability_band)}>{item.probability_band}</Badge>
+                    <div className="table-secondary">{item.hold_reason ?? 'Rankable'}</div>
+                    <div className="table-secondary">
+                      {item.hidden_mode_only ? 'Hidden-only support' : 'Standard queue'}
+                    </div>
+                  </td>
+                  <td>
+                    <Badge tone={valuationTone(item.valuation_quality)}>{item.valuation_quality ?? 'Unknown'}</Badge>
+                    <div className="table-secondary">
+                      Post-permission {currency(item.post_permission_value_mid)}
+                    </div>
+                    <div className="table-secondary">
+                      Quality gates stay visible when uplift is incomplete.
+                    </div>
+                  </td>
+                  <td>
+                    <div className="table-primary">
+                      {includeHidden ? currency(item.expected_uplift_mid) : 'Hidden'}
+                    </div>
+                    <div className="table-secondary">Uplift {currency(item.uplift_mid)}</div>
+                  </td>
+                  <td>
+                    <div className="table-primary">{currency(item.asking_price_gbp)}</div>
+                    <div className="table-secondary">
+                      {item.asking_price_basis_type ?? 'Basis unavailable'}
+                    </div>
+                  </td>
+                  <td>
+                    <Badge tone={item.manual_review_required ? 'warning' : 'success'}>
+                      {item.manual_review_required ? 'Review required' : 'No review flag'}
+                    </Badge>
+                    <div className="table-secondary">
+                      Same-borough support {item.same_borough_support_count}
+                    </div>
+                    {item.assessment_id ? (
+                      <div className="table-secondary">
+                        <Link
+                          className="inline-link"
+                          href={
+                            includeHidden
+                              ? `/assessments/${item.assessment_id}?mode=hidden`
+                              : `/assessments/${item.assessment_id}`
+                          }
+                        >
+                          Open assessment
+                        </Link>
+                      </div>
+                    ) : null}
+                  </td>
                 </tr>
-              </thead>
-              <tbody>
-                {items.map((item) => (
-                  <tr key={item.site_id}>
-                    <td>
-                      <div className="table-primary">
-                        <Link href={`/sites/${item.site_id}`}>{item.display_name}</Link>
-                      </div>
-                      <div className="table-secondary">
-                        {item.borough_name ?? item.borough_id ?? 'Unknown borough'}
-                      </div>
-                      <div className="table-secondary">{item.ranking_reason}</div>
-                    </td>
-                    <td>
-                      <Badge tone={bandTone(item.probability_band)}>{item.probability_band}</Badge>
-                      <div className="table-secondary">{item.hold_reason ?? 'Rankable'}</div>
-                    </td>
-                    <td>
-                      <Badge tone={valuationTone(item.valuation_quality)}>{item.valuation_quality ?? 'Unknown'}</Badge>
-                      <div className="table-secondary">
-                        Post-permission {formatCurrency(item.post_permission_value_mid)}
-                      </div>
-                    </td>
-                    <td>
-                      <div className="table-primary">{formatCurrency(item.expected_uplift_mid)}</div>
-                      <div className="table-secondary">
-                        Uplift {formatCurrency(item.uplift_mid)}
-                      </div>
-                    </td>
-                    <td>
-                      <div className="table-primary">{formatCurrency(item.asking_price_gbp)}</div>
-                      <div className="table-secondary">
-                        {item.asking_price_basis_type ?? 'Basis unavailable'}
-                      </div>
-                    </td>
-                    <td>
-                      <Badge tone={item.manual_review_required ? 'warning' : 'success'}>
-                        {item.manual_review_required ? 'Required' : 'Clear'}
-                      </Badge>
-                      <div className="table-secondary">
-                        Same-borough support {item.same_borough_support_count}
-                      </div>
-                      {item.assessment_id ? (
-                        <div className="table-secondary">
-                          <Link href={`/assessments/${item.assessment_id}?mode=hidden`}>
-                            Open assessment
-                          </Link>
-                        </div>
-                      ) : null}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </Panel>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </TableShell>
     </div>
   );
 }

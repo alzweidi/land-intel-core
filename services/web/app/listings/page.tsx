@@ -1,8 +1,10 @@
 import Link from 'next/link';
 
-import { Badge, DefinitionList, PageHeader, Panel, StatCard } from '@/components/ui';
+import { Badge, DefinitionList, PageHeader, Panel, StatCard, TableShell } from '@/components/ui';
+import { getAuthContext } from '@/lib/auth/server';
 import { getListingSources, getListings } from '@/lib/landintel-api';
 import { phase1ASources } from '@/lib/phase1a-data';
+import { getListingLabel, getSourceLabel } from '@/lib/presentation';
 
 export const dynamic = 'force-dynamic';
 
@@ -21,6 +23,8 @@ function displayCount(count: number): string {
 }
 
 export default async function ListingsPage({ searchParams }: { searchParams?: SearchParams }) {
+  const auth = await getAuthContext();
+  const role = auth.role ?? 'analyst';
   const params = (await Promise.resolve(searchParams ?? {})) as Record<string, string | string[] | undefined>;
   const filters = {
     q: firstValue(params.q),
@@ -36,17 +40,19 @@ export default async function ListingsPage({ searchParams }: { searchParams?: Se
   return (
     <div className="page-stack">
       <PageHeader
-        eyebrow="Phase 1A"
-        title="Listing search and immutable snapshot ledger"
-        summary="This surface is wired for live listings, source approval checks, and deterministic clustering. It stays deliberately plain so the audit trail remains obvious."
+        eyebrow="Listings"
+        title="Listing intake ledger"
+        summary="Search live London listing intake, inspect immutable snapshot rows, and move quickly into cluster review. Listing text remains market evidence only, never planning truth."
         actions={
           <div className="page-actions__group">
             <Link className="button button--solid" href="/listing-clusters">
               View clusters
             </Link>
-            <Link className="button button--ghost" href="/admin/source-runs">
-              Run connector
-            </Link>
+            {role === 'admin' ? (
+              <Link className="button button--ghost" href="/admin/source-runs">
+                Run connector
+              </Link>
+            ) : null}
           </div>
         }
       />
@@ -56,74 +62,84 @@ export default async function ListingsPage({ searchParams }: { searchParams?: Se
           tone="accent"
           label="Listings"
           value={displayCount(listingResult.items.length)}
-          detail={listingResult.apiAvailable ? 'Loaded from the API route' : 'Loaded from fixture fallback'}
+          detail={listingResult.apiAvailable ? 'Live API rows in the current query' : 'Local fallback rows in the current query'}
         />
         <StatCard tone="success" label="Sources" value={displayCount(sourceItems.length)} detail="Manual, CSV, and approved public sources" />
         <StatCard tone="warning" label="Query" value={filters.q ? 'Filtered' : 'All rows'} detail="GET form filters the visible list" />
         <StatCard tone="neutral" label="Compliance" value="Enforced" detail="Public-page runs remain blocked unless approved" />
       </section>
 
-      <Panel
-        eyebrow="Search"
-        title="Filter listings"
-        note="The form uses a normal GET request so analysts can deep-link to a particular search state."
-      >
-        <form className="toolbar-form" method="get">
-          <label className="field">
-            <span>Search</span>
-            <input name="q" defaultValue={filters.q} placeholder="Headline, URL, borough, source" />
-          </label>
-          <label className="field">
-            <span>Source key</span>
-            <select name="source" defaultValue={filters.source}>
-              <option value="">All sources</option>
-              {sourceItems.map((source) => (
-                <option key={source.source_key} value={source.source_key}>
-                  {source.source_key}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label className="field">
-            <span>Status</span>
-            <select name="status" defaultValue={filters.status}>
-              <option value="">Any</option>
-              <option value="LIVE">LIVE</option>
-              <option value="UNDER OFFER">UNDER OFFER</option>
-              <option value="SOLD">SOLD</option>
-              <option value="WITHDRAWN">WITHDRAWN</option>
-            </select>
-          </label>
-          <label className="field">
-            <span>Listing type</span>
-            <select name="type" defaultValue={filters.type}>
-              <option value="">Any</option>
-              <option value="LAND">LAND</option>
-              <option value="AUCTION">AUCTION</option>
-              <option value="BROKER_DROP">BROKER_DROP</option>
-            </select>
-          </label>
-          <label className="field">
-            <span>Cluster key</span>
-            <input name="cluster" defaultValue={filters.cluster} placeholder="riverside-yard" />
-          </label>
-          <div className="toolbar-form__actions">
-            <button className="button button--solid" type="submit">
-              Apply filters
-            </button>
-            <Link className="button button--ghost" href="/listings">
-              Reset
-            </Link>
-          </div>
-        </form>
-      </Panel>
+      <div className="split-grid">
+        <Panel
+          eyebrow="Filters"
+          title="Search listings"
+          note="Deep-linkable GET filters keep review states shareable."
+        >
+          <form className="toolbar-form" method="get">
+            <label className="field">
+              <span>Search</span>
+              <input name="q" defaultValue={filters.q} placeholder="Headline, URL, borough, source" />
+            </label>
+            <label className="field">
+              <span>Source key</span>
+              <select name="source" defaultValue={filters.source}>
+                <option value="">All sources</option>
+                {sourceItems.map((source) => (
+                  <option key={source.source_key} value={source.source_key}>
+                    {source.source_key}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="field">
+              <span>Status</span>
+              <select name="status" defaultValue={filters.status}>
+                <option value="">Any</option>
+                <option value="LIVE">LIVE</option>
+                <option value="UNDER OFFER">UNDER OFFER</option>
+                <option value="SOLD">SOLD</option>
+                <option value="WITHDRAWN">WITHDRAWN</option>
+              </select>
+            </label>
+            <label className="field">
+              <span>Listing type</span>
+              <select name="type" defaultValue={filters.type}>
+                <option value="">Any</option>
+                <option value="LAND">LAND</option>
+                <option value="AUCTION">AUCTION</option>
+                <option value="BROKER_DROP">BROKER_DROP</option>
+              </select>
+            </label>
+            <label className="field">
+              <span>Cluster key</span>
+              <input name="cluster" defaultValue={filters.cluster} placeholder="riverside-yard" />
+            </label>
+            <div className="toolbar-form__actions">
+              <button className="button button--solid" type="submit">
+                Apply filters
+              </button>
+              <Link className="button button--ghost" href="/listings">
+                Reset
+              </Link>
+            </div>
+          </form>
+        </Panel>
 
-      <Panel
-        eyebrow="Listings"
+        <Panel eyebrow="Source posture" title="Approved source modes">
+          <DefinitionList
+            items={sourceItems.slice(0, 6).map((source) => ({
+              label: source.source_key,
+              value: `${source.compliance_mode} · ${source.coverage_note}`
+            }))}
+          />
+        </Panel>
+      </div>
+
+      <TableShell
         title="Listing rows"
-        note="Each row is an immutable source listing, not a site decision. The current cluster key is shown only as a review aid."
+        note="Each row is an immutable listing record. Cluster links are a review aid, not a site decision."
       >
-        <div className="table-wrap">
+        <div className="dense-table">
           <table className="table-shell">
             <thead>
               <tr>
@@ -139,14 +155,16 @@ export default async function ListingsPage({ searchParams }: { searchParams?: Se
                 <tr key={item.id}>
                   <td>
                     <div className="table-primary">
-                      <Link href={`/listings/${item.id}`}>{item.headline}</Link>
+                      <Link href={`/listings/${item.id}`}>{getListingLabel(item)}</Link>
                     </div>
                     <div className="table-secondary">{item.canonical_url}</div>
                   </td>
                   <td>
-                    <div className="table-primary">{item.source_name}</div>
+                    <div className="table-primary">{getSourceLabel(item.source_name, item.source_key)}</div>
                     <div className="table-secondary">
-                      {item.source_key} · {item.borough}
+                      {item.source_key
+                        ? `${item.source_key} · ${item.borough || 'Unknown borough'}`
+                        : item.borough || 'Unknown borough'}
                     </div>
                   </td>
                   <td>
@@ -170,10 +188,10 @@ export default async function ListingsPage({ searchParams }: { searchParams?: Se
             </tbody>
           </table>
         </div>
-      </Panel>
+      </TableShell>
 
       <section className="split-grid">
-        <Panel eyebrow="Source approval" title="Approved connector modes">
+        <Panel eyebrow="Source approval" title="Connector guardrails">
           <DefinitionList
             items={sourceItems.map((source) => ({
               label: source.source_key,
@@ -181,7 +199,7 @@ export default async function ListingsPage({ searchParams }: { searchParams?: Se
             }))}
           />
         </Panel>
-        <Panel eyebrow="Notes" title="Phase 1A guardrails">
+        <Panel eyebrow="Notes" title="Analyst reminders">
           <ul className="checklist">
             <li>Manual URL intake always remains available.</li>
             <li>CSV broker drops can be imported without portal scraping.</li>
@@ -193,4 +211,3 @@ export default async function ListingsPage({ searchParams }: { searchParams?: Se
     </div>
   );
 }
-

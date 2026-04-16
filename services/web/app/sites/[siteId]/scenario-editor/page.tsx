@@ -21,7 +21,7 @@ export default async function ScenarioEditorPage({
     return (
       <div className="page-stack">
         <PageHeader
-          eyebrow="Phase 5A"
+          eyebrow="Scenarios"
           title="Scenario editor unavailable"
           summary={`No site record is available for ${siteId}.`}
           actions={
@@ -37,9 +37,9 @@ export default async function ScenarioEditorPage({
   return (
     <div className="page-stack">
       <PageHeader
-        eyebrow="Phase 5A"
+        eyebrow="Scenario editor"
         title={`Scenario editor · ${siteResult.item.display_name}`}
-        summary="Generate deterministic scenario hypotheses, edit their explicit assumptions, and confirm or reject them with auditable review notes. No scoring or probability is shown here."
+        summary="Generate deterministic scenario hypotheses, compare assumptions side by side, and confirm or reject them with auditable review notes. No scoring or probability is shown here."
         actions={
           <div className="button-row" style={{ display: 'flex', gap: 12 }}>
             <Link className="button button--ghost" href={`/sites/${siteId}`}>

@@ -2,6 +2,7 @@ import Link from 'next/link';
 
 import { GoldSetReviewPanel } from '@/components/gold-set-review-panel';
 import { Badge, PageHeader, Panel, StatCard } from '@/components/ui';
+import { getAuthContext } from '@/lib/auth/server';
 import { getGoldSetCase, getGoldSetCases, getReviewQueue } from '@/lib/landintel-api';
 
 export const dynamic = 'force-dynamic';
@@ -23,6 +24,8 @@ export default async function ReviewQueuePage({
 }: {
   searchParams?: Record<string, string | string[] | undefined>;
 }) {
+  const auth = await getAuthContext();
+  const role = auth.role ?? 'reviewer';
   const selectedCaseId = typeof searchParams?.caseId === 'string' ? searchParams.caseId : '';
   const queue = await getReviewQueue();
   const result = await getGoldSetCases();
@@ -41,17 +44,19 @@ export default async function ReviewQueuePage({
   return (
     <div className="page-stack">
       <PageHeader
-        eyebrow="Phase 8A"
+        eyebrow="Review queue"
         title="Review and control queue"
-        summary="Phase 8A brings the operational review queue together: manual-review cases, blocked/incident-affected assessments, failing borough/source coverage, and the existing gold-set review workflow."
+        summary="Manual-review cases, blocked or incident-affected assessments, failing borough/source coverage, and the gold-set workflow are grouped in one reviewer surface."
         actions={
           <div className="page-actions__group">
             <Link className="button button--ghost" href="/assessments">
               Assessments
             </Link>
-            <Link className="button button--ghost" href="/admin/health">
-              Admin health
-            </Link>
+            {role === 'admin' ? (
+              <Link className="button button--ghost" href="/admin/health">
+                Admin health
+              </Link>
+            ) : null}
           </div>
         }
       />
