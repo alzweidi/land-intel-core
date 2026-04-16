@@ -74,7 +74,7 @@ export default async function SitesPage({ searchParams }: { searchParams?: Searc
         <StatCard tone="neutral" label="Warnings" value={String(warningSummary.length)} detail="Unique caveats across the visible candidate set" />
       </section>
 
-      <div className="split-grid">
+      <div className="split-grid split-grid--map-first">
         <Panel
           eyebrow="Map"
           title="Candidate map"
@@ -114,7 +114,7 @@ export default async function SitesPage({ searchParams }: { searchParams?: Searc
           </form>
 
           <div className="table-wrap">
-            <table className="table-shell">
+            <table className="table-shell site-list-table">
               <thead>
                 <tr>
                   <th>Site</th>
