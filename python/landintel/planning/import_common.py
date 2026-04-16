@@ -188,6 +188,15 @@ def store_document_asset(
 
     extension = _extension_for_mime(mime_type)
     storage_path = f"raw/planning/{dataset_key}/documents/{content_hash}{extension}"
+
+    existing_by_path = (
+        session.query(RawAsset)
+        .filter(RawAsset.storage_path == storage_path)
+        .first()
+    )
+    if existing_by_path is not None:
+        return existing_by_path
+
     storage.put_bytes(storage_path, content, content_type=mime_type)
     asset = RawAsset(
         id=asset_id,

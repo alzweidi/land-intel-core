@@ -57,13 +57,14 @@ export default async function AssessmentDetailPage({
   params,
   searchParams
 }: {
-  params: { assessmentId: string };
+  params: Promise<{ assessmentId: string }> | { assessmentId: string };
   searchParams?: Record<string, string | string[] | undefined>;
 }) {
+  const { assessmentId } = await Promise.resolve(params);
   const hiddenMode =
     typeof searchParams?.mode === 'string' && searchParams.mode.toLowerCase() === 'hidden';
   const viewerRole = parseViewerRole(searchParams, hiddenMode);
-  const result = await getAssessment(params.assessmentId, {
+  const result = await getAssessment(assessmentId, {
     hidden_mode: hiddenMode,
     viewer_role: viewerRole,
   });
@@ -75,7 +76,7 @@ export default async function AssessmentDetailPage({
         <PageHeader
           eyebrow="Phase 8A"
           title="Assessment not found"
-          summary={`No frozen assessment run is available for ${params.assessmentId}.`}
+          summary={`No frozen assessment run is available for ${assessmentId}.`}
           actions={
             <Link className="button button--ghost" href="/assessments">
               Back to assessments

@@ -54,6 +54,7 @@ services:
       - "8000:8000"
     volumes:
       - raw_storage:/data/storage
+      - ./tests/fixtures:/app/tests/fixtures:ro
 
   worker:
     build:
@@ -91,6 +92,7 @@ services:
     build:
       context: ./services/web
     environment:
+      INTERNAL_API_BASE_URL: http://api:8000
       NEXT_PUBLIC_API_BASE_URL: http://localhost:8000
       NEXT_PUBLIC_MAP_STYLE_URL: https://demotiles.maplibre.org/style.json
       PORT: 3000

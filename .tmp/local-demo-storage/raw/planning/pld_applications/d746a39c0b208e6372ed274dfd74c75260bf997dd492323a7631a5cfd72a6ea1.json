@@ -1,0 +1,87 @@
+{
+  "meta": {
+    "coverage_note": "Planning London Datahub sample for Phase 3A local/dev. PLD is supplemental only and never the sole authority for extant-permission conclusions.",
+    "freshness_status": "STALE",
+    "coverage": [
+      {
+        "borough_id": "camden",
+        "source_family": "pld",
+        "coverage_status": "PARTIAL",
+        "gap_reason": "Fixture-scale PLD sample only. Borough register remains authority of record.",
+        "freshness_status": "STALE",
+        "coverage_note": "Supplemental PLD feed for Camden only."
+      },
+      {
+        "borough_id": "southwark",
+        "source_family": "pld",
+        "coverage_status": "PARTIAL",
+        "gap_reason": "Fixture-scale PLD sample only.",
+        "freshness_status": "STALE",
+        "coverage_note": "Supplemental PLD sample only."
+      }
+    ]
+  },
+  "applications": [
+    {
+      "borough_id": "camden",
+      "external_ref": "PLD-2025-0001",
+      "application_type": "FULL",
+      "proposal_description": "Demolition of storage buildings and erection of eight residential units at 12 Example Road.",
+      "valid_date": "2025-01-12",
+      "decision_date": "2025-06-01",
+      "decision": "Approved",
+      "decision_type": "FULL_RESIDENTIAL",
+      "status": "LAPSED",
+      "route_normalized": "FULL",
+      "units_proposed": 8,
+      "geometry_4326": {
+        "type": "Polygon",
+        "coordinates": [[
+          [-0.14260, 51.53598],
+          [-0.14152, 51.53598],
+          [-0.14152, 51.53636],
+          [-0.14260, 51.53636],
+          [-0.14260, 51.53598]
+        ]]
+      },
+      "source_url": "https://planning.data.gov.uk/applications/PLD-2025-0001",
+      "documents": [
+        {
+          "doc_type": "decision_notice",
+          "doc_url": "https://planning.data.gov.uk/applications/PLD-2025-0001/decision",
+          "mime_type": "text/plain",
+          "content_text": "Decision notice: residential permission granted in 2025 and marked lapsed in the sample fixture."
+        }
+      ],
+      "raw_record_json": {
+        "dwelling_use": "C3",
+        "active_extant": false,
+        "lapsed": true,
+        "source_role": "supplemental_only"
+      }
+    },
+    {
+      "borough_id": "camden",
+      "external_ref": "PLD-2026-0099",
+      "application_type": "PRIOR_APPROVAL",
+      "proposal_description": "Prior approval notification for roof extension works at 12 Example Road.",
+      "valid_date": "2026-02-10",
+      "decision_date": "2026-03-05",
+      "decision": "Pending",
+      "decision_type": "PRIOR_APPROVAL",
+      "status": "PENDING",
+      "route_normalized": "PRIOR_APPROVAL",
+      "units_proposed": 2,
+      "point_4326": {
+        "type": "Point",
+        "coordinates": [-0.14210, 51.53618]
+      },
+      "source_url": "https://planning.data.gov.uk/applications/PLD-2026-0099",
+      "raw_record_json": {
+        "dwelling_use": "C3",
+        "active_extant": false,
+        "coverage": "supplemental"
+      }
+    }
+  ]
+}

@@ -9,9 +9,9 @@ export const dynamic = 'force-dynamic';
 export default async function ScenarioEditorPage({
   params
 }: {
-  params: { siteId: string };
+  params: Promise<{ siteId: string }> | { siteId: string };
 }) {
-  const { siteId } = params;
+  const { siteId } = await Promise.resolve(params);
   const [siteResult, scenariosResult] = await Promise.all([
     getSite(siteId),
     getSiteScenarios(siteId)

@@ -49,6 +49,61 @@ def test_html_parser_extracts_expected_fields() -> None:
     assert parsed.lon == -0.1421
 
 
+def test_html_parser_handles_savills_like_page_with_generic_login_heading() -> None:
+    html = """
+    <html>
+      <head>
+        <title>Savills Property Auctions | Land lying to the east of Parkhurst Road, Holloway, London N7 0SD</title>
+      </head>
+      <body>
+        <h1>Login to see times and book a viewing</h1>
+        <div class="lot-status-container">Withdrawn</div>
+        <div class="sv-property-price">
+          <span class="sv-property-price__guide">Guide price</span>
+          <span class="sv-property-price__value">TBA</span>
+        </div>
+        <div class="lot-details-top">
+          Book a viewing
+          Key features
+          Freehold development site in Islington
+          Planning granted for a new mews development
+          To comprise 6 high quality houses and 1 flat
+        </div>
+        <div class="lot-details-description">
+          Description
+          Currently a broadly level and cleared site with partially demolished garages.
+        </div>
+        <script>
+          window.__LOT__ = {"long_lat":"{\\"lat\\":51.555351199999997,\\"lng\\":-0.1221343}"};
+        </script>
+        <a href="/downloads/auction_notices.pdf">Auction notices</a>
+        <a href="/assets/files/terms_and_conditions/common_conditions.pdf">Common auction conditions</a>
+      </body>
+    </html>
+    """
+
+    parsed = parse_html_listing(
+        html=html,
+        canonical_url=(
+            "https://auctions.savills.co.uk/auctions/june-2022-94/"
+            "land-lying-to-the-east-of-parkhurst-road-holloway-london-n7-0sd-3953"
+        ),
+        page_title=(
+            "Savills Property Auctions | Land lying to the east of Parkhurst Road, "
+            "Holloway, London N7 0SD"
+        ),
+    )
+
+    assert parsed.headline == "Land lying to the east of Parkhurst Road, Holloway, London N7 0SD"
+    assert parsed.address_text == "Land lying to the east of Parkhurst Road, Holloway, London N7 0SD"
+    assert parsed.description_text == (
+        "Currently a broadly level and cleared site with partially demolished garages."
+    )
+    assert parsed.status.value == "WITHDRAWN"
+    assert parsed.lat == pytest.approx(51.555351199999997)
+    assert parsed.lon == pytest.approx(-0.1221343)
+
+
 def test_clustering_rules_merge_duplicates_and_keep_distinct() -> None:
     duplicate_a = ClusterListingInput(
         listing_item_id=uuid.UUID("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"),

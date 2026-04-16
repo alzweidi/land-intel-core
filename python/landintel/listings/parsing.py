@@ -35,6 +35,26 @@ LAT_LON_PATTERN = re.compile(
     r"(?P<lat>51\.\d{3,})[^0-9-]+(?P<lon>-0\.\d{3,})",
     re.I,
 )
+LONG_LAT_JSON_PATTERN = re.compile(
+    r'long_lat"\s*:\s*"\{\\?"lat\\?":(?P<lat>-?\d+\.\d+),\\?"lng\\?":(?P<lon>-?\d+\.\d+)\}',
+    re.I,
+)
+
+GENERIC_HEADLINES = {
+    "login to see times and book a viewing",
+    "local information",
+    "legal documents",
+    "epc rating",
+    "guide prices and common auction conditions",
+    "addendums",
+}
+GENERIC_DOCUMENT_MARKERS = (
+    "common_conditions",
+    "common auction conditions",
+    "auction_notices",
+    "auction notices",
+    "terms_and_conditions",
+)
 
 
 @dataclass(slots=True)
@@ -78,6 +98,62 @@ def normalize_address(value: str | None) -> str | None:
         normalized = normalized.replace(source, target)
     normalized = re.sub(r"\s+", " ", normalized).strip()
     return normalized or None
+
+
+def _clean_title(value: str | None) -> str | None:
+    text = normalize_space(value)
+    if not text:
+        return None
+    if "|" in text:
+        text = text.split("|", maxsplit=1)[1]
+    return normalize_space(text)
+
+
+def _is_generic_headline(value: str | None) -> bool:
+    text = normalize_space(value)
+    if not text:
+        return True
+    return text.lower() in GENERIC_HEADLINES
+
+
+def _selector_text(soup: BeautifulSoup, selector: str) -> str | None:
+    node = soup.select_one(selector)
+    if node is None:
+        return None
+    return normalize_space(node.get_text(" ", strip=True))
+
+
+def _extract_savills_description(soup: BeautifulSoup) -> str | None:
+    description = _selector_text(soup, ".lot-details-description")
+    if description:
+        description = re.sub(r"^Description\s*", "", description, flags=re.I).strip()
+        return normalize_space(description)
+
+    key_features = _selector_text(soup, ".lot-details-top")
+    if not key_features:
+        return None
+
+    cleaned = key_features
+    for marker in (
+        "Book a viewing",
+        "View Virtual Tour",
+        "Remove from wishlist",
+        "Add to wishlist",
+        "Key features",
+        "Contact an agent",
+    ):
+        cleaned = cleaned.replace(marker, " ")
+    cleaned = re.sub(r"\s+", " ", cleaned).strip()
+    return normalize_space(cleaned)
+
+
+def _extract_address_from_title(headline: str | None) -> str | None:
+    text = _clean_title(headline)
+    if not text:
+        return None
+    if " london " not in f" {text.lower()} ":
+        return None
+    return text
 
 
 def build_search_text(*parts: str | None) -> str:
@@ -182,6 +258,13 @@ def extract_coordinates_from_text(text: str) -> tuple[float | None, float | None
     return None, None
 
 
+def extract_coordinates_from_html(html: str) -> tuple[float | None, float | None]:
+    match = LONG_LAT_JSON_PATTERN.search(html)
+    if match is not None:
+        return float(match.group("lat")), float(match.group("lon"))
+    return extract_coordinates_from_text(html)
+
+
 def _load_json_ld(soup: BeautifulSoup) -> list[dict[str, Any]]:
     records: list[dict[str, Any]] = []
     for script in soup.find_all("script", attrs={"type": "application/ld+json"}):
@@ -212,6 +295,8 @@ def discover_document_links(html: str, *, base_url: str) -> list[DiscoveredDocum
 
         lowered = f"{absolute_url} {label}".lower()
         if ".pdf" not in lowered:
+            continue
+        if any(marker in lowered for marker in GENERIC_DOCUMENT_MARKERS):
             continue
 
         doc_type = DocumentType.BROCHURE
@@ -271,20 +356,33 @@ def parse_html_listing(
                 lat = float(record_lat)
                 lon = float(record_lon)
 
-    h1 = soup.find("h1")
+    title_headline = _clean_title(page_title)
+    h1 = next(
+        (
+            tag
+            for tag in soup.find_all("h1")
+            if not _is_generic_headline(tag.get_text(" ", strip=True))
+        ),
+        None,
+    )
     headline = headline or normalize_space(
         soup.find("meta", attrs={"property": "og:title"}).get("content")
         if soup.find("meta", attrs={"property": "og:title"})
         else None
     )
+    if _is_generic_headline(headline):
+        headline = None
     headline = headline or normalize_space(h1.get_text(" ", strip=True) if h1 else None)
-    headline = headline or normalize_space(page_title)
+    headline = headline or title_headline
 
     description = description or normalize_space(
         soup.find("meta", attrs={"name": "description"}).get("content")
         if soup.find("meta", attrs={"name": "description"})
         else None
     )
+    if description and description.startswith("Savills Property Auctions"):
+        description = None
+    description = description or _extract_savills_description(soup)
     if description is None:
         paragraphs = [
             normalize_space(paragraph.get_text(" ", strip=True))
@@ -297,11 +395,16 @@ def parse_html_listing(
         if soup.find(attrs={"itemprop": "streetAddress"})
         else None
     )
+    address = address or _extract_address_from_title(headline or title_headline)
 
     text_content = extract_text_content(html)
+    status_text = _selector_text(soup, ".lot-status-container")
+    price_text = _selector_text(soup, ".sv-property-price")
     page_price, price_basis = parse_price(text_content)
     auction_date = parse_optional_date(text_content)
-    status = detect_listing_status(headline, description, text_content)
+    if price_text:
+        page_price, price_basis = parse_price(price_text)
+    status = detect_listing_status(status_text, headline, description, text_content)
     listing_type = detect_listing_type(headline, description, text_content)
 
     if lat is None or lon is None:
@@ -315,6 +418,8 @@ def parse_html_listing(
 
     if lat is None or lon is None:
         lat, lon = extract_coordinates_from_text(text_content)
+    if lat is None or lon is None:
+        lat, lon = extract_coordinates_from_html(html)
 
     normalized_address = normalize_address(address)
     observed = observed_at or datetime.now(UTC)

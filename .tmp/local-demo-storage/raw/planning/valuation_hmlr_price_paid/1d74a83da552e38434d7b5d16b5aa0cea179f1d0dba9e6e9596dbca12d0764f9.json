@@ -1,0 +1,100 @@
+{
+  "meta": {
+    "coverage_note": "Fixture-scale London HMLR Price Paid evidence for Phase 7A local/dev.",
+    "coverage": [
+      {
+        "borough_id": "camden",
+        "source_family": "HMLR_PRICE_PAID",
+        "coverage_status": "COMPLETE",
+        "freshness_status": "FRESH",
+        "coverage_note": "Camden flat/new-build fixture sales for residual GDV support."
+      },
+      {
+        "borough_id": "southwark",
+        "source_family": "HMLR_PRICE_PAID",
+        "coverage_status": "COMPLETE",
+        "freshness_status": "FRESH",
+        "coverage_note": "Southwark fixture sales for fallback valuation support."
+      }
+    ]
+  },
+  "sales": [
+    {
+      "transaction_ref": "CAM-PPD-001",
+      "borough_id": "camden",
+      "sale_date": "2024-05-15",
+      "price_gbp": 845000,
+      "property_type": "FLAT",
+      "tenure": "LEASEHOLD",
+      "postcode_district": "NW1",
+      "address_text": "1 Example Mews, Camden, London NW1",
+      "floor_area_sqm": 82.0
+    },
+    {
+      "transaction_ref": "CAM-PPD-002",
+      "borough_id": "camden",
+      "sale_date": "2024-08-10",
+      "price_gbp": 995000,
+      "property_type": "FLAT",
+      "tenure": "LEASEHOLD",
+      "postcode_district": "NW1",
+      "address_text": "8 Yard House, Camden, London NW1",
+      "floor_area_sqm": 95.0
+    },
+    {
+      "transaction_ref": "CAM-PPD-003",
+      "borough_id": "camden",
+      "sale_date": "2025-01-22",
+      "price_gbp": 1125000,
+      "property_type": "FLAT",
+      "tenure": "LEASEHOLD",
+      "postcode_district": "NW1",
+      "address_text": "14 Canal View, Camden, London NW1",
+      "floor_area_sqm": 108.0
+    },
+    {
+      "transaction_ref": "CAM-PPD-004",
+      "borough_id": "camden",
+      "sale_date": "2025-06-04",
+      "price_gbp": 935000,
+      "property_type": "FLAT",
+      "tenure": "LEASEHOLD",
+      "postcode_district": "NW1",
+      "address_text": "3 Regent Yard, Camden, London NW1",
+      "floor_area_sqm": 88.0
+    },
+    {
+      "transaction_ref": "CAM-PPD-005",
+      "borough_id": "camden",
+      "sale_date": "2025-11-01",
+      "price_gbp": 1280000,
+      "property_type": "HOUSE",
+      "tenure": "FREEHOLD",
+      "postcode_district": "NW1",
+      "address_text": "22 Example Road, Camden, London NW1",
+      "floor_area_sqm": 122.0
+    },
+    {
+      "transaction_ref": "SWK-PPD-001",
+      "borough_id": "southwark",
+      "sale_date": "2024-07-09",
+      "price_gbp": 710000,
+      "property_type": "FLAT",
+      "tenure": "LEASEHOLD",
+      "postcode_district": "SE1",
+      "address_text": "4 Courtyard Walk, Southwark, London SE1",
+      "floor_area_sqm": 79.0
+    },
+    {
+      "transaction_ref": "SWK-PPD-002",
+      "borough_id": "southwark",
+      "sale_date": "2025-03-18",
+      "price_gbp": 820000,
+      "property_type": "FLAT",
+      "tenure": "LEASEHOLD",
+      "postcode_district": "SE1",
+      "address_text": "17 Tanner Lane, Southwark, London SE1",
+      "floor_area_sqm": 86.0
+    }
+  ]
+}

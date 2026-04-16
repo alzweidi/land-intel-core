@@ -46,9 +46,9 @@ function permissionTone(value: string | undefined): 'neutral' | 'accent' | 'succ
 export default async function SiteDetailPage({
   params
 }: {
-  params: { siteId: string };
+  params: Promise<{ siteId: string }> | { siteId: string };
 }) {
-  const { siteId } = params;
+  const { siteId } = await Promise.resolve(params);
   const result = await getSite(siteId);
   const site = result.item;
 

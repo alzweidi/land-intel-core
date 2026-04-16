@@ -1,0 +1,79 @@
+{
+  "meta": {
+    "coverage_note": "Fixture-scale permissioned land, auction, and analyst benchmark evidence for Phase 7A local/dev.",
+    "coverage": [
+      {
+        "borough_id": "camden",
+        "source_family": "MARKET_LAND_COMP",
+        "coverage_status": "COMPLETE",
+        "freshness_status": "FRESH",
+        "coverage_note": "Camden permissioned land and auction comparables."
+      },
+      {
+        "borough_id": "southwark",
+        "source_family": "MARKET_LAND_COMP",
+        "coverage_status": "COMPLETE",
+        "freshness_status": "FRESH",
+        "coverage_note": "Southwark benchmark comparables for fallback valuation support."
+      }
+    ]
+  },
+  "comparables": [
+    {
+      "comp_ref": "CAM-LAND-001",
+      "borough_id": "camden",
+      "template_key": "resi_5_9_full",
+      "proposal_form": "REDEVELOPMENT",
+      "comp_source_type": "PERMISSIONED_LISTING",
+      "evidence_date": "2025-12-10",
+      "unit_count": 7,
+      "site_area_sqm": 1025.0,
+      "post_permission_value_low": 1480000,
+      "post_permission_value_mid": 1610000,
+      "post_permission_value_high": 1725000,
+      "source_url": "https://market.example/camden/permissioned-yard"
+    },
+    {
+      "comp_ref": "CAM-LAND-002",
+      "borough_id": "camden",
+      "template_key": "resi_5_9_full",
+      "proposal_form": "REDEVELOPMENT",
+      "comp_source_type": "AUCTION",
+      "evidence_date": "2025-09-18",
+      "unit_count": 6,
+      "site_area_sqm": 940.0,
+      "post_permission_value_low": 1425000,
+      "post_permission_value_mid": 1560000,
+      "post_permission_value_high": 1680000,
+      "source_url": "https://auction.example/camden/small-yard"
+    },
+    {
+      "comp_ref": "CAM-LAND-003",
+      "borough_id": "camden",
+      "template_key": "resi_5_9_full",
+      "proposal_form": "BROWNFIELD_REUSE",
+      "comp_source_type": "ANALYST_BENCHMARK",
+      "evidence_date": "2026-02-01",
+      "unit_count": 8,
+      "site_area_sqm": 1180.0,
+      "post_permission_value_low": 1500000,
+      "post_permission_value_mid": 1640000,
+      "post_permission_value_high": 1760000,
+      "source_url": "https://benchmarks.example/camden/yard-benchmark"
+    },
+    {
+      "comp_ref": "SWK-LAND-001",
+      "borough_id": "southwark",
+      "template_key": "resi_5_9_full",
+      "proposal_form": "REDEVELOPMENT",
+      "comp_source_type": "ANALYST_BENCHMARK",
+      "evidence_date": "2025-10-05",
+      "unit_count": 6,
+      "site_area_sqm": 980.0,
+      "post_permission_value_low": 1210000,
+      "post_permission_value_mid": 1325000,
+      "post_permission_value_high": 1410000,
+      "source_url": "https://benchmarks.example/southwark/redevelopment-benchmark"
+    }
+  ]
+}

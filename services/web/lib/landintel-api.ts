@@ -19,7 +19,12 @@ import {
   phase2SiteSummaries
 } from '@/lib/phase2-data';
 
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL ?? 'http://localhost:8000';
+const API_BASE_URL =
+  typeof window === 'undefined'
+    ? process.env.INTERNAL_API_BASE_URL ??
+      process.env.NEXT_PUBLIC_API_BASE_URL ??
+      'http://localhost:8000'
+    : process.env.NEXT_PUBLIC_API_BASE_URL ?? 'http://localhost:8000';
 const REQUEST_TIMEOUT_MS = 2500;
 
 type QueryValue = string | number | boolean | null | undefined;
