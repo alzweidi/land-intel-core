@@ -34,7 +34,7 @@ Production deployment hardening assets now live in [docs/operations/deployment.m
 
 ## Documentation
 
-- [docs/README.md](docs/README.md): documentation index and current auth/runtime notes
+- [docs/README.md](docs/README.md): documentation index, runtime notes, and documentation-status guidance
 - [docs/specs/london-land-intelligence-implementation-spec-v1.md](docs/specs/london-land-intelligence-implementation-spec-v1.md): controlling implementation spec
 - [docs/guides/local-usage.md](docs/guides/local-usage.md): local bootstrap and analyst workflow
 - [docs/operations/deployment.md](docs/operations/deployment.md): private deployment guide
@@ -59,60 +59,58 @@ Production deployment hardening assets now live in [docs/operations/deployment.m
 cp .env.example .env
 ```
 
-2. Install backend dependencies:
+2. Boot the full local stack:
+
+```bash
+docker compose up --build -d
+```
+
+3. Load fixture data and rebuild the hidden release set:
+
+```bash
+bash scripts/setup_local.sh
+```
+
+4. Sign in to the web app at `http://localhost:3000/login` with one of the built-in local accounts:
+
+- `analyst@landintel.local` / `analyst-demo`
+- `reviewer@landintel.local` / `reviewer-demo`
+- `admin@landintel.local` / `admin-demo`
+
+5. Start with the intake and analysis surfaces:
+
+- analyst: `/listings`, `/listing-clusters`, `/sites`, `/scenarios`, `/assessments`, `/opportunities`
+- reviewer: analyst surfaces plus `/review-queue`
+- admin: reviewer surfaces plus `/admin/source-runs`, `/admin/health`, and `/admin/model-releases`
+
+## Host-Run Alternative
+
+If you want to run `api`, `worker`, `scheduler`, or `services/web` directly on your machine instead of through `docker compose`, install the backend/frontend dependencies first:
 
 ```bash
 python3 -m venv .venv
 source .venv/bin/activate
 pip install --upgrade pip
 pip install -e ".[dev]"
-```
 
-3. Install frontend dependencies:
-
-```bash
 cd services/web
 npm install
 cd ../..
 ```
 
-4. Run migrations against your Postgres target:
+Then point `DATABASE_URL` at a host-reachable Postgres instance before running migrations or starting services. The default `.env.example` uses the compose hostname `postgres`, which is correct for Docker but not for host-run services.
+
+Typical host-run flow:
 
 ```bash
 source .venv/bin/activate
 alembic upgrade head
-```
-
-5. Bootstrap the local Phase 2 reference fixtures for borough boundaries and title polygons:
-
-```bash
-source .venv/bin/activate
 python -m landintel.geospatial.bootstrap --dataset all --requested-by local-dev
-```
-
-6. Bootstrap the local Phase 3A through Phase 8A planning fixtures:
-
-```bash
-source .venv/bin/activate
 python -m landintel.planning.bootstrap --dataset all --requested-by local-dev
-```
-
-7. Rebuild hidden model releases for the current fixture corpus:
-
-```bash
-curl -X POST http://localhost:8000/api/admin/model-releases/rebuild \
-  -H 'Content-Type: application/json' \
-  -d '{"requested_by":"local-dev","auto_activate_hidden":true}'
-```
-
-8. Bootstrap fixture-scale valuation data and seeded assumption sets:
-
-```bash
-source .venv/bin/activate
 python -m landintel.valuation.bootstrap --dataset all --requested-by local-dev
 ```
 
-9. Run services locally in separate terminals:
+Then run the long-lived services in separate terminals:
 
 ```bash
 source .venv/bin/activate
@@ -134,17 +132,13 @@ cd services/web
 npm run dev
 ```
 
-10. Or boot the full stack with Docker:
+After the API is up:
 
 ```bash
-docker compose up --build
+curl -X POST http://localhost:8000/api/admin/model-releases/rebuild \
+  -H 'Content-Type: application/json' \
+  -d '{"requested_by":"local-dev","auto_activate_hidden":true}'
 ```
-
-11. Sign in to the web app at `http://localhost:3000/login` with one of the built-in local accounts:
-
-- `analyst@landintel.local` / `analyst-demo`
-- `reviewer@landintel.local` / `reviewer-demo`
-- `admin@landintel.local` / `admin-demo`
 
 ## Local Smoke Commands
 
@@ -286,6 +280,9 @@ Minimal `refresh_policy_json` for an automated source:
 
 ## API Surface
 
+- `GET /healthz`
+- `GET /readyz`
+- `GET /metrics`
 - `POST /api/listings/intake/url`
 - `POST /api/listings/import/csv`
 - `POST /api/listings/connectors/{source_key}/run`
@@ -295,7 +292,9 @@ Minimal `refresh_policy_json` for an automated source:
 - `GET /api/listing-clusters/{cluster_id}`
 - `GET /api/admin/listing-sources`
 - `GET /api/admin/source-snapshots`
+- `GET /api/admin/source-snapshots/{snapshot_id}`
 - `GET /api/admin/jobs`
+- `GET /api/admin/phase-status`
 - `POST /api/sites/from-cluster/{cluster_id}`
 - `GET /api/sites`
 - `GET /api/sites/{site_id}`
@@ -311,16 +310,20 @@ Minimal `refresh_policy_json` for an automated source:
 - `GET /api/admin/gold-set/cases`
 - `GET /api/admin/gold-set/cases/{case_id}`
 - `POST /api/admin/gold-set/cases/{case_id}/review`
+- `POST /api/admin/gold-set/refresh`
 - `GET /api/admin/model-releases`
 - `GET /api/admin/model-releases/{release_id}`
 - `POST /api/admin/model-releases/rebuild`
 - `POST /api/admin/model-releases/{release_id}/activate`
 - `POST /api/admin/model-releases/{release_id}/retire`
+- `POST /api/admin/release-scopes/{scope_key}/visibility`
+- `POST /api/admin/release-scopes/{scope_key}/incident`
 - `GET /api/health/model`
 - `GET /api/health/data`
 - `GET /api/admin/review-queue`
-- `POST /api/assessments/<assessment_uuid>/override`
-- `GET /api/assessments/<assessment_uuid>/audit-export`
+- `POST /api/assessments/{assessment_id}/override`
+- `GET /api/assessments/{assessment_id}/audit-export`
+- `GET /api/opportunities/{site_id}`
 
 ## Reference Data Bootstrap
 

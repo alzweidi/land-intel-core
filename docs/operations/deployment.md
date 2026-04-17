@@ -202,6 +202,8 @@ NEXT_PUBLIC_SUPABASE_ANON_KEY
 NEXT_PUBLIC_MAP_STYLE_URL
 ```
 
+`NEXT_PUBLIC_API_BASE_URL` should stay on `https://app.<domain>`, not `https://api.<domain>`. Browser requests go through the same-origin Next.js proxy route and should not call the protected VPS API origin directly.
+
 Set these Netlify secret env vars as well:
 
 ```text
@@ -211,6 +213,8 @@ BACKEND_BASIC_AUTH_PASSWORD=<plaintext password used to generate the Caddy hash>
 LANDINTEL_WEB_AUTH_SECRET=<openssl rand -base64 32>
 LANDINTEL_WEB_PUBLIC_ORIGIN=https://app.<domain>
 ```
+
+`BACKEND_API_ORIGIN` is the upstream target for `services/web/app/api/[...path]/route.ts`, which adds backend basic auth and forwards browser-originated API traffic to the VPS API.
 
 Do not leave `LANDINTEL_WEB_AUTH_SECRET` unset in production. The local fallback is only acceptable for local/dev.
 

@@ -61,6 +61,12 @@ The current Phase 8A web app uses built-in local role accounts with a signed coo
 
 Open `http://localhost:3000/login`, choose the role you want to test, and then continue with the setup flow below.
 
+Route access is role-aware:
+
+- analyst: `/`, `/listings`, `/listing-clusters`, `/sites`, `/scenarios`, `/assessments`, `/opportunities`
+- reviewer: analyst routes plus `/review-queue`
+- admin: reviewer routes plus `/admin/source-runs`, `/admin/health`, and `/admin/model-releases`
+
 ## Step 2: Run The Setup Script (one command, does everything)
 
 Open a **new terminal** and run:
@@ -88,8 +94,10 @@ Go find a land listing on Rightmove, an auction site, or any property portal. Co
 
 ### Option A: Use the Web UI (easiest)
 
-1. Open http://localhost:3000
-2. Click **"Run connector"** (or go to http://localhost:3000/admin/source-runs)
+This route is **admin-only** in the current web app.
+
+1. Sign in as `admin@landintel.local`
+2. Open http://localhost:3000/admin/source-runs
 3. Paste your listing URL into the **Manual URL** form and submit
 
 ### Option B: Use curl
@@ -212,7 +220,9 @@ This creates deterministic scenario suggestions based on the site's planning con
 
 ### 6.2 View scenarios
 
-**Web UI:** http://localhost:3000/scenarios or from the site detail page.
+**Web UI:** site-specific scenarios are reviewed from the site detail page or `http://localhost:3000/sites/<site_uuid>/scenario-editor`.
+
+The top-level `http://localhost:3000/scenarios` route is a template index only. It does not show the live scenario list for a site.
 
 ```bash
 curl http://localhost:8000/api/sites/<site_uuid>/scenarios | python -m json.tool
@@ -255,7 +265,7 @@ curl -X POST http://localhost:8000/api/assessments \
   }'
 ```
 
-### 8.1 View the assessment
+### 7.1 View the assessment
 
 **Standard view (redacted — no probability shown):**
 
@@ -269,7 +279,7 @@ curl http://localhost:8000/api/assessments/<assessment_uuid> | python -m json.to
 curl 'http://localhost:8000/api/assessments/<assessment_uuid>?hidden_mode=true' | python -m json.tool
 ```
 
-**Web UI:** http://localhost:3000/assessments — click into an assessment. Add `?mode=hidden` to the URL for the full internal view with:
+**Web UI:** http://localhost:3000/assessments — click into an assessment. Reviewer/admin sessions can add `?mode=hidden` to the detail URL for the full internal view with:
 - Hidden probability band (A/B/C/D)
 - Estimate quality and OOD status
 - Explanation drivers
@@ -290,14 +300,16 @@ The opportunity ranking combines planning probability, valuation, and urgency in
 curl http://localhost:8000/api/opportunities | python -m json.tool
 ```
 
+Reviewer/admin users can open `http://localhost:3000/opportunities?includeHidden=true` to request the hidden/internal queue view. The standard queue still shows planning bands, but hidden-only fields such as expected uplift remain redacted there.
+
 Each opportunity shows:
 - **Probability band** (A = most likely to get permission, Hold = not enough data)
-- **Post-permission value** and **expected uplift** (from the valuation engine)
+- **Post-permission value** and valuation quality
 - **Asking price** (from the listing)
 - **Manual review** flags
 - **Ranking reason** (why it's in that position)
 
-Filter by borough, band, valuation quality, price range, or auction deadline.
+The current web UI filters by borough, band, valuation quality, manual-review state, and hidden/internal mode. The API additionally supports `auction_deadline_days`, `min_price`, and `max_price` even though those controls are not exposed in the current web UI.
 
 ---
 
@@ -355,22 +367,24 @@ Then open http://localhost:3000 and explore.
 
 ## Web UI Page Map
 
-| URL | What it shows |
-|---|---|
-| `/` | Control room dashboard |
-| `/listings` | All parsed listings with search |
-| `/listing-clusters` | Deduplicated listing groups |
-| `/admin/source-runs` | Connector control — trigger manual URL, CSV, or approved sources |
-| `/sites` | Site candidates on a MapLibre map with filters |
-| `/sites/<id>` | Site detail — geometry, planning context, evidence, scenarios |
-| `/scenarios` | Scenario browser |
-| `/assessments` | Frozen assessment list (add `?mode=hidden` for scoring) |
-| `/assessments/<id>` | Assessment detail with evidence, comparables, valuation |
-| `/opportunities` | Planning-first ranked opportunity table |
-| `/review-queue` | Gold-set review and exception cases |
-| `/data-health` | Source freshness and coverage dashboard |
-| `/admin/health` | System health — jobs, services |
-| `/admin/model-releases` | Hidden model release registry |
+| URL | Access | Current state |
+|---|---|---|
+| `/` | analyst+ | dashboard / route launcher |
+| `/listings` | analyst+ | parsed listings with filters and immutable snapshot context |
+| `/listing-clusters` | analyst+ | deterministic dedupe review |
+| `/admin/source-runs` | admin | connector console for manual URL, CSV, and approved sources |
+| `/sites` | analyst+ | site registry with map, filters, and warning states |
+| `/sites/<id>` | analyst+ | site detail with geometry, planning context, evidence, raw links, and current scenarios |
+| `/sites/<id>/scenario-editor` | analyst+ | live scenario generation, compare, edit, and confirm flow |
+| `/scenarios` | analyst+ | template index only; not the site-specific scenario browser |
+| `/assessments` | analyst+ | frozen assessment list |
+| `/assessments/<id>` | analyst+ | redacted assessment detail by default; reviewer/admin can add `?mode=hidden` |
+| `/opportunities` | analyst+ | planning-first ranked queue; reviewer/admin can add `?includeHidden=true` |
+| `/review-queue` | reviewer/admin | manual-review cases, blocked cases, and gold-set workflow |
+| `/admin/health` | admin | primary operational health dashboard |
+| `/admin/model-releases` | admin | release registry, visibility controls, and incidents |
+| `/discovery` | analyst+ | non-nav placeholder shell |
+| `/data-health` | analyst+ | non-nav placeholder shell |
 
 ---
 
@@ -379,8 +393,11 @@ Then open http://localhost:3000 and explore.
 | Problem | Fix |
 |---|---|
 | **"No listings found"** | Check the worker is running. Check `/api/admin/jobs` for failed jobs. |
+| **I cannot open `/admin/source-runs`** | That route is admin-only. Sign in with the admin demo account or use the API intake endpoints directly. |
 | **Site has no planning context** | Run the planning bootstrap first (`python -m landintel.planning.bootstrap --dataset all`). |
+| **`/scenarios` does not show the scenarios I just generated** | Use the site detail page or `/sites/<site_uuid>/scenario-editor`. The top-level `/scenarios` page is only the template index. |
 | **Assessment shows "NONE" estimate** | Rebuild model releases and make sure at least one is activated. |
+| **Hidden mode still looks redacted in the web UI** | Hidden assessment detail requires a reviewer/admin session and `?mode=hidden`. Hidden opportunity detail requires reviewer/admin plus `?includeHidden=true`. |
 | **Opportunities all show "Hold"** | Either no model release is active, or the scenario template doesn't have enough historical support. Check `/admin/model-releases`. |
 | **Map is blank** | The default map style is `https://demotiles.maplibre.org/style.json` — it needs internet access. |
 | **Database connection refused** | Make sure Postgres is running: `docker compose up postgres -d` and check the `DATABASE_URL` env var. |

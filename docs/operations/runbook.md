@@ -11,6 +11,7 @@ This deployment is private and low-ops by design:
 - Netlify site protection and backend basic auth are the effective deployment boundary today.
 - The web app still signs users in through the built-in local role adapter in `services/web/lib/auth/local-adapter.ts`.
 - Do not treat the current app login as a production-grade auth control until it is replaced with a real identity provider flow.
+- `/admin/health` is the primary operator dashboard. `/data-health` remains a shell-only placeholder route and should not be used as the canonical health surface.
 
 ## Daily Checks
 
