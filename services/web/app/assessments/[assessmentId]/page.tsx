@@ -12,7 +12,7 @@ import {
   StatCard,
   TableShell
 } from '@/components/ui';
-import { getAuthContext } from '@/lib/auth/server';
+import { getAuthContext, readSessionTokenFromCookies } from '@/lib/auth/server';
 import { getAssessment, type AppRole } from '@/lib/landintel-api';
 
 export const dynamic = 'force-dynamic';
@@ -88,13 +88,15 @@ export default async function AssessmentDetailPage({
     string | string[] | undefined
   >;
   const auth = await getAuthContext();
+  const sessionToken = await readSessionTokenFromCookies();
   const role = (auth.role ?? 'analyst') as AppRole;
   const requestedHidden = firstValue(query.mode).toLowerCase() === 'hidden';
   const hiddenMode = requestedHidden && canSeeHidden(role);
 
   const result = await getAssessment(assessmentId, {
     hidden_mode: hiddenMode,
-    viewer_role: role
+    viewer_role: role,
+    sessionToken: sessionToken ?? undefined
   });
   const assessment = result.item;
 
@@ -130,13 +132,18 @@ export default async function AssessmentDetailPage({
   const blocked = assessment.visibility?.blocked ?? false;
   const visibilityMode = assessment.visibility?.visibility_mode ?? 'HIDDEN_ONLY';
   const exposureMode = assessment.visibility?.exposure_mode ?? 'REDACTED';
+  const visibleProbabilityAllowed = assessment.visibility?.visible_probability_allowed ?? false;
+  const probabilityDisplayAllowed = hiddenMode || visibleProbabilityAllowed;
+  const replayVerified = assessment.visibility?.replay_verified ?? null;
   const probabilityReason =
     blocked
       ? assessment.visibility?.blocked_reason_text ?? 'Visible or hidden publication is blocked for this scope.'
       : assessment.result?.approval_probability_display
         ? hiddenMode
           ? 'Hidden/internal estimate available for this request context.'
-          : 'Standard analyst view remains non-speaking/redacted.'
+          : visibleProbabilityAllowed
+            ? 'Reviewer-visible probability is enabled for this scope.'
+            : 'Standard analyst view remains non-speaking/redacted.'
         : assessment.result?.estimate_status === 'NONE'
           ? 'Scoring is not honestly available for this run.'
           : assessment.result?.result_json?.score_execution_reason ?? 'No probability was published.';
@@ -200,10 +207,14 @@ export default async function AssessmentDetailPage({
           detail={assessment.result?.estimate_status ?? 'Pre-score only'}
         />
         <StatCard
-          tone={hiddenMode && assessment.result?.approval_probability_display ? 'danger' : 'accent'}
+          tone={
+            probabilityDisplayAllowed && assessment.result?.approval_probability_display
+              ? 'danger'
+              : 'accent'
+          }
           label="Probability"
           value={
-            hiddenMode
+            probabilityDisplayAllowed
               ? assessment.result?.approval_probability_display ?? 'Unavailable'
               : 'Redacted'
           }
@@ -222,9 +233,15 @@ export default async function AssessmentDetailPage({
           detail={`Post-permission mid ${currency(effectiveValuation?.post_permission_value_mid)}`}
         />
         <StatCard
-          tone={assessment.visibility?.replay_verified ? 'success' : 'danger'}
+          tone={
+            replayVerified === null ? 'neutral' : replayVerified ? 'success' : 'danger'
+          }
           label="Replay"
-          value={assessment.prediction_ledger?.replay_verification_status ?? 'Unknown'}
+          value={
+            replayVerified === null
+              ? 'Restricted'
+              : assessment.prediction_ledger?.replay_verification_status ?? 'Unknown'
+          }
           detail={assessment.prediction_ledger?.result_payload_hash.slice(0, 12) ?? 'No payload hash'}
         />
       </section>
@@ -286,7 +303,7 @@ export default async function AssessmentDetailPage({
                   {
                     label: 'Display probability',
                     value:
-                      hiddenMode
+                      probabilityDisplayAllowed
                         ? assessment.result?.approval_probability_display ?? 'Unavailable'
                         : 'Redacted'
                   },
@@ -498,7 +515,8 @@ export default async function AssessmentDetailPage({
                 },
                 {
                   label: 'Replay verified',
-                  value: assessment.visibility?.replay_verified ? 'Yes' : 'No'
+                  value:
+                    replayVerified === null ? 'Restricted' : replayVerified ? 'Yes' : 'No'
                 }
               ]}
             />

@@ -8,7 +8,13 @@ from landintel.assessments.service import (
     create_or_refresh_assessment_run,
     replay_verify_all_assessments,
 )
-from landintel.domain.enums import CalibrationMethod, ModelReleaseStatus, ReleaseChannel
+from landintel.domain import models
+from landintel.domain.enums import (
+    CalibrationMethod,
+    GeomConfidence,
+    ModelReleaseStatus,
+    ReleaseChannel,
+)
 from landintel.domain.models import ModelRelease
 from landintel.domain.schemas import EvidencePackRead
 from landintel.planning.historical_labels import rebuild_historical_case_labels
@@ -214,6 +220,7 @@ def test_hidden_score_assessment_is_redacted_by_default_and_replay_stable(
     seed_planning_data,
     db_session,
     storage,
+    auth_headers,
 ):
     del seed_listing_sources
     del seed_planning_data
@@ -237,7 +244,10 @@ def test_hidden_score_assessment_is_redacted_by_default_and_replay_stable(
     assert created["prediction_ledger"]["model_release_id"] is None
     assert created["prediction_ledger"]["response_json"]["hidden_score_redacted"] is True
 
-    detail_hidden = client.get(f"/api/assessments/{created['id']}?hidden_mode=true")
+    detail_hidden = client.get(
+        f"/api/assessments/{created['id']}?hidden_mode=true",
+        headers=auth_headers("reviewer"),
+    )
     assert detail_hidden.status_code == 200
     hidden = detail_hidden.json()
     assert hidden["result"]["estimate_status"] == "ESTIMATE_AVAILABLE_MANUAL_REVIEW_REQUIRED"
@@ -250,7 +260,11 @@ def test_hidden_score_assessment_is_redacted_by_default_and_replay_stable(
     assert hidden["prediction_ledger"]["model_release_id"] == hidden["result"]["model_release_id"]
     assert "explanation" in hidden["result"]["result_json"]
 
-    second = client.post("/api/assessments", json={**payload, "hidden_mode": True})
+    second = client.post(
+        "/api/assessments",
+        json={**payload, "hidden_mode": True},
+        headers=auth_headers("reviewer"),
+    )
     assert second.status_code == 200
     repeated = second.json()
     assert repeated["id"] == hidden["id"]
@@ -270,6 +284,109 @@ def test_hidden_score_assessment_is_redacted_by_default_and_replay_stable(
     assert all(check["feature_hash_matches"] for check in replay["checks"])
     assert all(check["payload_hash_matches"] for check in replay["checks"])
     assert all(check["scored_fields_match"] for check in replay["checks"])
+
+
+def test_replay_verification_fails_when_scored_fields_diverge(
+    client,
+    drain_jobs,
+    seed_listing_sources,
+    seed_planning_data,
+    db_session,
+    storage,
+    auth_headers,
+    monkeypatch,
+):
+    del seed_listing_sources
+    del seed_planning_data
+    _build_hidden_releases(db_session=db_session, storage=storage)
+
+    site_payload, scenario_payload = _build_confirmed_camden_scenario(client, drain_jobs)
+    created = client.post(
+        "/api/assessments",
+        json={
+            "site_id": site_payload["id"],
+            "scenario_id": scenario_payload["id"],
+            "as_of_date": "2026-04-15",
+            "requested_by": "pytest",
+            "hidden_mode": True,
+        },
+        headers=auth_headers("reviewer"),
+    )
+    assert created.status_code == 200
+    created_payload = created.json()
+
+    from landintel.assessments import service as assessment_service
+
+    original_score = assessment_service.score_frozen_assessment
+
+    def divergent_score(**kwargs):
+        replay_score = original_score(**kwargs)
+        replay_score["approval_probability_raw"] = min(
+            float(replay_score["approval_probability_raw"]) + 0.1,
+            0.999999,
+        )
+        replay_score["approval_probability_display"] = "95%"
+        replay_score["estimate_quality"] = "LOW"
+        replay_score["ood_status"] = "OUT_OF_DISTRIBUTION"
+        replay_score["explanation"] = {"diverged": True}
+        return replay_score
+
+    monkeypatch.setattr(assessment_service, "score_frozen_assessment", divergent_score)
+
+    replay = replay_verify_all_assessments(db_session, storage=storage)
+    assert replay["failed"] == 1
+    assert replay["checks"][0]["scored_fields_match"] is False
+    assert replay["checks"][0]["replay_passed"] is False
+
+    db_session.commit()
+    db_session.expire_all()
+    run = db_session.get(models.AssessmentRun, uuid.UUID(created_payload["id"]))
+    assert run is not None
+    assert run.prediction_ledger is not None
+    assert run.prediction_ledger.replay_verification_status == "FAILED"
+    assert "scored_fields_match" in str(run.prediction_ledger.replay_verification_note)
+
+
+def test_replay_verification_uses_frozen_site_and_scenario_state(
+    client,
+    drain_jobs,
+    seed_listing_sources,
+    seed_planning_data,
+    db_session,
+    storage,
+    auth_headers,
+):
+    del seed_listing_sources
+    del seed_planning_data
+    _build_hidden_releases(db_session=db_session, storage=storage)
+
+    site_payload, scenario_payload = _build_confirmed_camden_scenario(client, drain_jobs)
+    created = client.post(
+        "/api/assessments",
+        json={
+            "site_id": site_payload["id"],
+            "scenario_id": scenario_payload["id"],
+            "as_of_date": "2026-04-15",
+            "requested_by": "pytest",
+            "hidden_mode": True,
+        },
+        headers=auth_headers("reviewer"),
+    )
+    assert created.status_code == 200
+
+    run = db_session.get(models.AssessmentRun, uuid.UUID(created.json()["id"]))
+    assert run is not None
+    run.site.borough_id = "hackney"
+    run.site.geom_confidence = GeomConfidence.LOW
+    run.site.manual_review_required = True
+    run.scenario.manual_review_required = True
+    run.scenario.stale_reason = "Geometry changed after confirmation."
+    db_session.commit()
+
+    replay = replay_verify_all_assessments(db_session, storage=storage)
+    assert replay["failed"] == 0
+    assert replay["checks"][0]["scored_fields_match"] is True
+    assert replay["checks"][0]["replay_passed"] is True
 
 
 def test_model_release_activation_and_rollback(seed_planning_data, db_session, storage):

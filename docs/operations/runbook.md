@@ -10,8 +10,25 @@ This deployment is private and low-ops by design:
 
 - Netlify site protection and backend basic auth are the effective deployment boundary today.
 - The web app still signs users in through the built-in local role adapter in `services/web/lib/auth/local-adapter.ts`.
+- Reviewer/admin authorization is derived from the signed app session. Backend basic auth protects the VPS API origin, but it does not by itself grant reviewer/admin privileges.
 - Do not treat the current app login as a production-grade auth control until it is replaced with a real identity provider flow.
 - `/admin/health` is the primary operator dashboard. `/data-health` remains a shell-only placeholder route and should not be used as the canonical health surface.
+
+## Operator API Session
+
+For privileged API calls, authenticate through the app proxy and reuse the signed cookie:
+
+```bash
+export OPS_COOKIE_JAR=/tmp/landintel-admin.cookies
+curl -c "${OPS_COOKIE_JAR}" \
+  -X POST https://app.<domain>/api/auth/login \
+  -H 'Content-Type: application/x-www-form-urlencoded' \
+  --data-urlencode 'email=admin@landintel.local' \
+  --data-urlencode 'password=admin-demo' \
+  --data-urlencode 'next=/admin/health'
+```
+
+Use `https://app.<domain>/api/...` for privileged checks after that. Do not rely on body fields such as `actor_role`; they are audit metadata only.
 
 ## Daily Checks
 
@@ -36,8 +53,8 @@ export BACKEND_BASIC_AUTH_PASSWORD='<backend-basic-auth-password>'
 Inspect the health surfaces:
 
 ```bash
-curl -u "${BACKEND_BASIC_AUTH_USER}:${BACKEND_BASIC_AUTH_PASSWORD}" https://api.<domain>/api/health/data
-curl -u "${BACKEND_BASIC_AUTH_USER}:${BACKEND_BASIC_AUTH_PASSWORD}" https://api.<domain>/api/health/model
+curl -b "${OPS_COOKIE_JAR}" https://app.<domain>/api/health/data
+curl -b "${OPS_COOKIE_JAR}" https://app.<domain>/api/health/model
 ```
 
 ## Weekly Checks
@@ -62,18 +79,17 @@ Leave all active scopes at `HIDDEN_ONLY`.
 Check model releases:
 
 ```bash
-curl -u "${BACKEND_BASIC_AUTH_USER}:${BACKEND_BASIC_AUTH_PASSWORD}" https://api.<domain>/api/admin/model-releases
+curl -b "${OPS_COOKIE_JAR}" https://app.<domain>/api/admin/model-releases
 ```
 
 If you need to force a scope back to hidden-only:
 
 ```bash
-curl -u "${BACKEND_BASIC_AUTH_USER}:${BACKEND_BASIC_AUTH_PASSWORD}" \
-  -X POST https://api.<domain>/api/admin/release-scopes/<scope_key>/visibility \
+curl -b "${OPS_COOKIE_JAR}" \
+  -X POST https://app.<domain>/api/admin/release-scopes/<scope_key>/visibility \
   -H 'Content-Type: application/json' \
   -d '{
     "requested_by": "ops",
-    "actor_role": "admin",
     "visibility_mode": "HIDDEN_ONLY",
     "reason": "Return scope to the default non-speaking state."
   }'
@@ -92,12 +108,11 @@ Do not enable `VISIBLE_REVIEWER_ONLY` unless all of these are true:
 Then switch the scope:
 
 ```bash
-curl -u "${BACKEND_BASIC_AUTH_USER}:${BACKEND_BASIC_AUTH_PASSWORD}" \
-  -X POST https://api.<domain>/api/admin/release-scopes/<scope_key>/visibility \
+curl -b "${OPS_COOKIE_JAR}" \
+  -X POST https://app.<domain>/api/admin/release-scopes/<scope_key>/visibility \
   -H 'Content-Type: application/json' \
   -d '{
     "requested_by": "ops",
-    "actor_role": "admin",
     "visibility_mode": "VISIBLE_REVIEWER_ONLY",
     "reason": "Signed-off reviewer-only pilot enablement."
   }'
@@ -116,24 +131,22 @@ Immediately verify:
 1. Retire or roll back the release:
 
 ```bash
-curl -u "${BACKEND_BASIC_AUTH_USER}:${BACKEND_BASIC_AUTH_PASSWORD}" \
-  -X POST https://api.<domain>/api/admin/model-releases/<release_id>/retire \
+curl -b "${OPS_COOKIE_JAR}" \
+  -X POST https://app.<domain>/api/admin/model-releases/<release_id>/retire \
   -H 'Content-Type: application/json' \
   -d '{
-    "requested_by": "ops",
-    "actor_role": "admin"
+    "requested_by": "ops"
   }'
 ```
 
 2. If needed, block visibility immediately:
 
 ```bash
-curl -u "${BACKEND_BASIC_AUTH_USER}:${BACKEND_BASIC_AUTH_PASSWORD}" \
-  -X POST https://api.<domain>/api/admin/release-scopes/<scope_key>/incident \
+curl -b "${OPS_COOKIE_JAR}" \
+  -X POST https://app.<domain>/api/admin/release-scopes/<scope_key>/incident \
   -H 'Content-Type: application/json' \
   -d '{
     "requested_by": "ops",
-    "actor_role": "admin",
     "action": "OPEN",
     "reason": "Kill visible publication while investigating."
   }'

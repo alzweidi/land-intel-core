@@ -43,6 +43,13 @@ _BLOCK_REASON_TEXT = {
     "ARTIFACT_HASH_MISMATCH": "Stored release artifact hashes no longer match the frozen ledger.",
     "SCOPE_RELEASE_MISMATCH": "The active release scope no longer matches the frozen result.",
     "ROLE_REDACTED": "This viewer role is not permitted to see visible probability for this scope.",
+    "OUTPUT_BLOCKED": "Visible publication is currently blocked for this scope.",
+}
+_INTERNAL_BLOCK_CODES = {
+    "ACTIVE_INCIDENT",
+    "REPLAY_FAILED",
+    "ARTIFACT_HASH_MISMATCH",
+    "SCOPE_RELEASE_MISMATCH",
 }
 
 
@@ -200,7 +207,7 @@ def evaluate_assessment_visibility(
     elif visible_probability_allowed:
         exposure_mode = "VISIBLE_REVIEWER_ONLY"
 
-    return VisibilityGateRead(
+    gate = VisibilityGateRead(
         scope_key=None if result is None else result.release_scope_key,
         visibility_mode=visibility_mode,
         exposure_mode=exposure_mode,
@@ -217,6 +224,7 @@ def evaluate_assessment_visibility(
         artifact_hashes_match=artifact_hashes_match,
         scope_release_matches_result=scope_release_matches_result,
     )
+    return _redact_visibility_gate_for_role(gate=gate, viewer_role=role)
 
 
 def set_scope_visibility(
@@ -399,6 +407,8 @@ def _payload_hash_matches(assessment_run: AssessmentRun) -> bool:
         or assessment_run.prediction_ledger is None
     ):
         return False
+    if assessment_run.prediction_ledger.replay_verification_status != "VERIFIED":
+        return False
 
     from landintel.assessments.service import (
         _build_stable_result_payload,
@@ -408,11 +418,11 @@ def _payload_hash_matches(assessment_run: AssessmentRun) -> bool:
         _stable_comparable_payload,
     )
     from landintel.features.build import canonical_json_hash
-    from landintel.valuation.service import latest_valuation_run
+    from landintel.valuation.service import frozen_valuation_run
 
     evidence = _pack_from_rows(assessment_run.evidence_items)
     comparable_payload = _stable_comparable_payload(assessment_run)
-    valuation_run = latest_valuation_run(assessment_run)
+    valuation_run = frozen_valuation_run(assessment_run)
     valuation_payload = (
         None
         if valuation_run is None or valuation_run.result is None
@@ -433,4 +443,32 @@ def _payload_hash_matches(assessment_run: AssessmentRun) -> bool:
     return (
         canonical_json_hash(stable_payload)
         == assessment_run.prediction_ledger.result_payload_hash
+    )
+
+
+def _redact_visibility_gate_for_role(
+    *,
+    gate: VisibilityGateRead,
+    viewer_role: AppRoleName,
+) -> VisibilityGateRead:
+    if viewer_role in _PRIVILEGED_ROLES:
+        return gate
+
+    blocked_reason_codes = list(gate.blocked_reason_codes)
+    blocked_reason_text = gate.blocked_reason_text
+    if any(code in _INTERNAL_BLOCK_CODES for code in blocked_reason_codes):
+        blocked_reason_codes = ["OUTPUT_BLOCKED"]
+        blocked_reason_text = _BLOCK_REASON_TEXT["OUTPUT_BLOCKED"]
+
+    return gate.model_copy(
+        update={
+            "blocked_reason_codes": blocked_reason_codes,
+            "blocked_reason_text": blocked_reason_text,
+            "active_incident_id": None,
+            "active_incident_reason": None,
+            "replay_verified": None,
+            "payload_hash_matches": None,
+            "artifact_hashes_match": None,
+            "scope_release_matches_result": None,
+        }
     )

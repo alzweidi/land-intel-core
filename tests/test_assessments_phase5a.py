@@ -6,6 +6,7 @@ from uuid import UUID
 
 from landintel.assessments.comparables import _select_members
 from landintel.assessments.service import (
+    build_assessment_artifacts_for_run,
     create_or_refresh_assessment_run,
     replay_verify_all_assessments,
 )
@@ -219,12 +220,56 @@ def test_assessment_api_returns_stable_pre_score_payload_and_replay_hashes(
     )
 
 
+def test_ready_assessment_run_does_not_rewrite_frozen_artifacts(
+    client,
+    drain_jobs,
+    seed_listing_sources,
+    seed_planning_data,
+    db_session,
+):
+    del seed_listing_sources
+    del seed_planning_data
+    site_payload, scenario_payload = _build_confirmed_camden_scenario(client, drain_jobs)
+
+    run = create_or_refresh_assessment_run(
+        session=db_session,
+        site_id=UUID(site_payload["id"]),
+        scenario_id=UUID(scenario_payload["id"]),
+        as_of_date=date(2026, 4, 15),
+        requested_by="pytest",
+    )
+    db_session.commit()
+    db_session.refresh(run)
+
+    original_feature_snapshot_id = run.feature_snapshot.id
+    original_result_id = run.result.id
+    original_comparable_case_set_id = run.comparable_case_set.id
+    original_prediction_ledger_id = run.prediction_ledger.id
+    original_evidence_ids = [row.id for row in run.evidence_items]
+
+    rebuilt = build_assessment_artifacts_for_run(
+        session=db_session,
+        assessment_run_id=run.id,
+        requested_by="pytest-rerun",
+    )
+    db_session.commit()
+    db_session.refresh(rebuilt)
+
+    assert rebuilt.id == run.id
+    assert rebuilt.feature_snapshot.id == original_feature_snapshot_id
+    assert rebuilt.result.id == original_result_id
+    assert rebuilt.comparable_case_set.id == original_comparable_case_set_id
+    assert rebuilt.prediction_ledger.id == original_prediction_ledger_id
+    assert [row.id for row in rebuilt.evidence_items] == original_evidence_ids
+
+
 def test_replay_verification_and_gold_set_review_flow(
     client,
     drain_jobs,
     seed_listing_sources,
     seed_planning_data,
     db_session,
+    auth_headers,
 ):
     del seed_listing_sources
     del seed_planning_data
@@ -246,7 +291,7 @@ def test_replay_verification_and_gold_set_review_flow(
     assert all(check["feature_hash_matches"] for check in replay["checks"])
     assert all(check["payload_hash_matches"] for check in replay["checks"])
 
-    cases = client.get("/api/admin/gold-set/cases")
+    cases = client.get("/api/admin/gold-set/cases", headers=auth_headers("reviewer"))
     assert cases.status_code == 200
     payload = cases.json()
     assert payload["items"]
@@ -262,6 +307,7 @@ def test_replay_verification_and_gold_set_review_flow(
             "site_geometry_confidence": GeomConfidence.MEDIUM.value,
             "reviewed_by": "pytest",
         },
+        headers=auth_headers("reviewer"),
     )
     assert reviewed.status_code == 200
     reviewed_payload = reviewed.json()

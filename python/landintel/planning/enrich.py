@@ -36,6 +36,11 @@ from .constants import (
     MANDATORY_EXTANT_SOURCE_FAMILIES,
     PLANNING_LINK_DISTANCE_M,
 )
+from .site_context_snapshots import (
+    snapshot_constraint_feature,
+    snapshot_planning_application,
+    snapshot_policy_area,
+)
 
 PLANNING_ENRICH_NAMESPACE = uuid.UUID("1afc65a3-c765-41d6-9054-842ffb4cc728")
 
@@ -93,6 +98,8 @@ def refresh_site_planning_context(
                 ),
                 site_id=site.id,
                 planning_application_id=app.id,
+                source_snapshot_id=app.source_snapshot_id,
+                application_snapshot_json=snapshot_planning_application(app),
                 link_type=match.link_type,
                 distance_m=match.distance_m,
                 overlap_pct=match.overlap_pct,
@@ -119,6 +126,8 @@ def refresh_site_planning_context(
                 ),
                 site_id=site.id,
                 policy_area_id=area.id,
+                source_snapshot_id=area.source_snapshot_id,
+                policy_area_snapshot_json=snapshot_policy_area(area),
                 relation_type=match.link_type,
                 overlap_pct=match.overlap_pct,
                 distance_m=match.distance_m,
@@ -147,6 +156,8 @@ def refresh_site_planning_context(
                 ),
                 site_id=site.id,
                 constraint_feature_id=feature.id,
+                source_snapshot_id=feature.source_snapshot_id,
+                constraint_snapshot_json=snapshot_constraint_feature(feature),
                 overlap_pct=match.overlap_pct,
                 distance_m=match.distance_m,
                 severity=_importance_from_record(

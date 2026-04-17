@@ -2,6 +2,7 @@ import Link from 'next/link';
 
 import { Badge, DefinitionList, PageHeader, Panel, StatCard } from '@/components/ui';
 import { ReleaseScopeControls } from '@/components/release-scope-controls';
+import { readSessionTokenFromCookies } from '@/lib/auth/server';
 import { getModelRelease, getModelReleases } from '@/lib/landintel-api';
 
 export const dynamic = 'force-dynamic';
@@ -23,11 +24,12 @@ function toneForStatus(value: string): 'neutral' | 'accent' | 'success' | 'warni
 }
 
 export default async function AdminModelReleasesPage() {
-  const result = await getModelReleases();
+  const sessionToken = await readSessionTokenFromCookies();
+  const result = await getModelReleases({ sessionToken: sessionToken ?? undefined });
   const items = result.items;
   const details = await Promise.all(
     items.map(async (item) => {
-      const detail = await getModelRelease(item.id);
+      const detail = await getModelRelease(item.id, { sessionToken: sessionToken ?? undefined });
       return detail.item;
     })
   );

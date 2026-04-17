@@ -1,20 +1,34 @@
 import uuid
+from datetime import UTC, datetime
 from pathlib import Path
 
 import pytest
 import respx
 from httpx import Response
-from landintel.domain.enums import DocumentExtractionStatus, ListingClusterStatus
+from landintel.domain.enums import (
+    ComplianceMode,
+    ConnectorType,
+    DocumentExtractionStatus,
+    ListingClusterStatus,
+    ListingStatus,
+    ListingType,
+    PriceBasisType,
+    SourceFreshnessStatus,
+    SourceParseStatus,
+)
 from landintel.domain.models import (
     ListingCluster,
+    ListingClusterMember,
     ListingDocument,
     ListingItem,
     ListingSnapshot,
+    ListingSource,
     RawAsset,
     SourceSnapshot,
 )
 from landintel.listings.clustering import ClusterListingInput, build_clusters
 from landintel.listings.parsing import parse_html_listing
+from landintel.listings.service import rebuild_listing_clusters
 
 from tests.fixtures.listing_fixtures import (
     CSV_IMPORT_TEXT,
@@ -53,7 +67,10 @@ def test_html_parser_handles_savills_like_page_with_generic_login_heading() -> N
     html = """
     <html>
       <head>
-        <title>Savills Property Auctions | Land lying to the east of Parkhurst Road, Holloway, London N7 0SD</title>
+        <title>
+          Savills Property Auctions | Land lying to the east of Parkhurst Road, Holloway,
+          London N7 0SD
+        </title>
       </head>
       <body>
         <h1>Login to see times and book a viewing</h1>
@@ -77,7 +94,9 @@ def test_html_parser_handles_savills_like_page_with_generic_login_heading() -> N
           window.__LOT__ = {"long_lat":"{\\"lat\\":51.555351199999997,\\"lng\\":-0.1221343}"};
         </script>
         <a href="/downloads/auction_notices.pdf">Auction notices</a>
-        <a href="/assets/files/terms_and_conditions/common_conditions.pdf">Common auction conditions</a>
+        <a href="/assets/files/terms_and_conditions/common_conditions.pdf">
+          Common auction conditions
+        </a>
       </body>
     </html>
     """
@@ -94,8 +113,14 @@ def test_html_parser_handles_savills_like_page_with_generic_login_heading() -> N
         ),
     )
 
-    assert parsed.headline == "Land lying to the east of Parkhurst Road, Holloway, London N7 0SD"
-    assert parsed.address_text == "Land lying to the east of Parkhurst Road, Holloway, London N7 0SD"
+    assert (
+        parsed.headline
+        == "Land lying to the east of Parkhurst Road, Holloway, London N7 0SD"
+    )
+    assert (
+        parsed.address_text
+        == "Land lying to the east of Parkhurst Road, Holloway, London N7 0SD"
+    )
     assert parsed.description_text == (
         "Currently a broadly level and cleared site with partially demolished garages."
     )
@@ -146,6 +171,116 @@ def test_clustering_rules_merge_duplicates_and_keep_distinct() -> None:
     ]
     assert len(active_clusters) == 1
     assert len(active_clusters[0].members) == 2
+
+
+def test_rebuild_listing_clusters_handles_members_moving_to_new_cluster_ids(db_session) -> None:
+    now = datetime.now(UTC)
+    source = ListingSource(
+        name="manual_url",
+        connector_type=ConnectorType.MANUAL_URL,
+        compliance_mode=ComplianceMode.MANUAL_ONLY,
+        refresh_policy_json={},
+        active=True,
+    )
+    source_snapshot = SourceSnapshot(
+        source_family="listing.manual",
+        source_name=source.name,
+        source_uri="https://example.com/listings",
+        acquired_at=now,
+        schema_hash="schema-hash",
+        content_hash="content-hash",
+        parse_status=SourceParseStatus.PARSED,
+        freshness_status=SourceFreshnessStatus.FRESH,
+        manifest_json={},
+    )
+    db_session.add_all([source, source_snapshot])
+    db_session.flush()
+
+    listing_one = ListingItem(
+        source_id=source.id,
+        source_listing_id="listing-1",
+        canonical_url="https://example.com/listing-1",
+        listing_type=ListingType.LAND,
+        first_seen_at=now,
+        last_seen_at=now,
+        latest_status=ListingStatus.LIVE,
+        normalized_address="12 example road london",
+        search_text="listing one",
+    )
+    listing_two = ListingItem(
+        source_id=source.id,
+        source_listing_id="listing-2",
+        canonical_url="https://example.com/listing-2",
+        listing_type=ListingType.LAND,
+        first_seen_at=now,
+        last_seen_at=now,
+        latest_status=ListingStatus.LIVE,
+        normalized_address="12 example road london",
+        search_text="listing two",
+    )
+    db_session.add_all([listing_one, listing_two])
+    db_session.flush()
+
+    snapshot_one = ListingSnapshot(
+        listing_item_id=listing_one.id,
+        source_snapshot_id=source_snapshot.id,
+        observed_at=now,
+        headline="Example Road Site",
+        description_text="Listing one",
+        guide_price_gbp=1_000_000,
+        price_basis_type=PriceBasisType.GUIDE_PRICE,
+        status=ListingStatus.LIVE,
+        address_text="12 Example Road, London",
+        normalized_address="12 example road london",
+        lat=51.5001,
+        lon=-0.1001,
+        raw_record_json={},
+        search_text="listing one",
+    )
+    snapshot_two = ListingSnapshot(
+        listing_item_id=listing_two.id,
+        source_snapshot_id=source_snapshot.id,
+        observed_at=now,
+        headline="Example Road Development Site",
+        description_text="Listing two",
+        guide_price_gbp=1_020_000,
+        price_basis_type=PriceBasisType.GUIDE_PRICE,
+        status=ListingStatus.LIVE,
+        address_text="12 Example Road, London",
+        normalized_address="12 example road london",
+        lat=51.50011,
+        lon=-0.10009,
+        raw_record_json={},
+        search_text="listing two",
+    )
+    db_session.add_all([snapshot_one, snapshot_two])
+    db_session.flush()
+    listing_one.current_snapshot_id = snapshot_one.id
+    listing_two.current_snapshot_id = snapshot_two.id
+    db_session.commit()
+
+    rebuild_listing_clusters(session=db_session)
+    db_session.commit()
+
+    assert db_session.query(ListingCluster).count() == 1
+    assert db_session.query(ListingClusterMember).count() == 2
+
+    snapshot_two.normalized_address = "99 distant avenue london"
+    snapshot_two.address_text = "99 Distant Avenue, London"
+    snapshot_two.headline = "Distant Avenue Opportunity"
+    snapshot_two.lat = 51.61
+    snapshot_two.lon = -0.29
+    db_session.flush()
+
+    rebuild_listing_clusters(session=db_session)
+    db_session.commit()
+
+    clusters = db_session.query(ListingCluster).all()
+    assert len(clusters) == 2
+    assert {cluster.cluster_status for cluster in clusters} == {ListingClusterStatus.SINGLETON}
+    members = db_session.query(ListingClusterMember).all()
+    assert len(members) == 2
+    assert {member.listing_item_id for member in members} == {listing_one.id, listing_two.id}
 
 
 @respx.mock
@@ -270,3 +405,52 @@ def test_storage_is_immutable(storage, test_settings) -> None:
 
     saved = Path(test_settings.storage_local_root) / first_path
     assert saved.read_bytes() == b"alpha"
+
+
+@respx.mock
+def test_manual_url_source_name_is_sanitized_before_storage_path_use(
+    client,
+    drain_jobs,
+    seed_listing_sources,
+    session_factory,
+) -> None:
+    del seed_listing_sources
+
+    respx.get(MANUAL_LISTING_URL).mock(
+        return_value=Response(200, text=MANUAL_LISTING_HTML, headers={"content-type": "text/html"})
+    )
+    respx.get(MANUAL_BROCHURE_URL).mock(
+        return_value=Response(
+            200,
+            content=MANUAL_BROCHURE_PDF,
+            headers={"content-type": "application/pdf"},
+        )
+    )
+    respx.get(MANUAL_MAP_URL).mock(
+        return_value=Response(
+            200,
+            content=MANUAL_MAP_PDF,
+            headers={"content-type": "application/pdf"},
+        )
+    )
+
+    response = client.post(
+        "/api/listings/intake/url",
+        json={
+            "url": MANUAL_LISTING_URL,
+            "source_name": "../../unsafe/source name",
+            "requested_by": "pytest",
+        },
+    )
+    assert response.status_code == 202
+
+    processed = drain_jobs(max_iterations=5)
+    assert processed >= 2
+
+    with session_factory() as session:
+        assets = session.query(RawAsset).all()
+        assert assets
+        for asset in assets:
+            assert asset.storage_path.startswith("raw/")
+            assert asset.storage_path.count("/") == 2
+            assert ".." not in asset.storage_path

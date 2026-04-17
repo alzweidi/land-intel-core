@@ -1,9 +1,13 @@
 from functools import lru_cache
+from urllib.parse import urlparse
 
-from pydantic import Field
+from pydantic import AliasChoices, Field, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from landintel.domain.enums import StorageBackend
+
+DEFAULT_WEB_AUTH_SESSION_SECRET = "landintel-local-web-session-secret"
+LOCAL_APP_ENVS = {"development", "local", "test"}
 
 
 class Settings(BaseSettings):
@@ -39,11 +43,46 @@ class Settings(BaseSettings):
 
     next_public_api_base_url: str = "http://localhost:8000"
     next_public_map_style_url: str = "https://demotiles.maplibre.org/style.json"
+    web_auth_session_secret: str = Field(
+        default=DEFAULT_WEB_AUTH_SESSION_SECRET,
+        validation_alias=AliasChoices("LANDINTEL_WEB_AUTH_SECRET", "AUTH_SECRET"),
+    )
+    web_auth_session_cookie_name: str = "landintel-session"
 
     sentry_dsn: str | None = None
+
+    @model_validator(mode="after")
+    def validate_web_auth_session_secret(self) -> "Settings":
+        app_env_explicit = "app_env" in self.model_fields_set
+        app_env = self.app_env.strip().lower()
+        if (
+            app_env not in LOCAL_APP_ENVS
+            and self.web_auth_session_secret == DEFAULT_WEB_AUTH_SESSION_SECRET
+        ):
+            raise ValueError(
+                "LANDINTEL_WEB_AUTH_SECRET must be set to a non-default value outside local dev."
+            )
+        if (
+            not app_env_explicit
+            and self.web_auth_session_secret == DEFAULT_WEB_AUTH_SESSION_SECRET
+            and not _is_local_database_url(self.database_url)
+        ):
+            raise ValueError(
+                "APP_ENV must be set explicitly when using a non-local database with the "
+                "default web auth secret."
+            )
+        return self
 
 
 @lru_cache
 def get_settings() -> Settings:
     return Settings()
 
+
+def _is_local_database_url(database_url: str) -> bool:
+    lowered = database_url.strip().lower()
+    if lowered.startswith("sqlite"):
+        return True
+    parsed = urlparse(database_url)
+    hostname = (parsed.hostname or "").strip().lower()
+    return hostname in {"postgres", "localhost", "127.0.0.1"}

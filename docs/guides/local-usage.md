@@ -67,6 +67,9 @@ Route access is role-aware:
 - reviewer: analyst routes plus `/review-queue`
 - admin: reviewer routes plus `/admin/source-runs`, `/admin/health`, and `/admin/model-releases`
 
+Reviewer/admin and hidden-mode access is granted from the signed web session only. Query/body
+fields such as `viewer_role`, `actor_role`, or `hidden_mode` are not trusted as authority.
+
 ## Step 2: Run The Setup Script (one command, does everything)
 
 Open a **new terminal** and run:
@@ -85,6 +88,8 @@ This single script automatically:
 **You don't need to find or download any data.** It's all fixture files already in the repo.
 
 When the script finishes, you'll see "Setup complete!" and you're ready to analyze listings.
+If the API is not reachable or no active hidden release is created, the script exits non-zero
+instead of claiming success.
 
 ---
 
@@ -245,9 +250,16 @@ curl -X POST http://localhost:8000/api/scenarios/<scenario_uuid>/confirm \
 ## Step 7: Create An Assessment (Run The Probability Engine)
 
 > The setup script already built the probability model in Step 2. If you skipped the
-> setup script, run this first:
+> setup script, log in as admin through the web proxy and run this first:
 > ```bash
-> curl -X POST http://localhost:8000/api/admin/model-releases/rebuild \
+> curl -c /tmp/landintel-admin.cookies \
+>   -X POST http://localhost:3000/api/auth/login \
+>   -H 'Content-Type: application/x-www-form-urlencoded' \
+>   --data-urlencode 'email=admin@landintel.local' \
+>   --data-urlencode 'password=admin-demo' \
+>   --data-urlencode 'next=/admin/model-releases'
+> curl -b /tmp/landintel-admin.cookies \
+>   -X POST http://localhost:3000/api/admin/model-releases/rebuild \
 >   -H 'Content-Type: application/json' \
 >   -d '{"requested_by":"local-dev","auto_activate_hidden":true}'
 > ```
@@ -273,10 +285,18 @@ curl -X POST http://localhost:8000/api/assessments \
 curl http://localhost:8000/api/assessments/<assessment_uuid> | python -m json.tool
 ```
 
-**Hidden mode (shows the probability estimate, model metadata, comparables, valuation):**
+**Hidden mode (requires a reviewer/admin web session and shows the probability estimate, model metadata, comparables, valuation):**
 
 ```bash
-curl 'http://localhost:8000/api/assessments/<assessment_uuid>?hidden_mode=true' | python -m json.tool
+curl -c /tmp/landintel-reviewer.cookies \
+  -X POST http://localhost:3000/api/auth/login \
+  -H 'Content-Type: application/x-www-form-urlencoded' \
+  --data-urlencode 'email=reviewer@landintel.local' \
+  --data-urlencode 'password=reviewer-demo' \
+  --data-urlencode 'next=/assessments'
+
+curl -b /tmp/landintel-reviewer.cookies \
+  'http://localhost:3000/api/assessments/<assessment_uuid>?hidden_mode=true' | python -m json.tool
 ```
 
 **Web UI:** http://localhost:3000/assessments — click into an assessment. Reviewer/admin sessions can add `?mode=hidden` to the detail URL for the full internal view with:
@@ -348,7 +368,14 @@ curl -X POST http://localhost:8000/api/scenarios/<scenario_uuid>/confirm \
   -d '{"action":"confirm","reviewed_by":"local-smoke","review_notes":"OK"}'
 
 # 8. Build the model (run once)
-curl -X POST http://localhost:8000/api/admin/model-releases/rebuild \
+curl -c /tmp/landintel-admin.cookies \
+  -X POST http://localhost:3000/api/auth/login \
+  -H 'Content-Type: application/x-www-form-urlencoded' \
+  --data-urlencode 'email=admin@landintel.local' \
+  --data-urlencode 'password=admin-demo' \
+  --data-urlencode 'next=/admin/model-releases'
+curl -b /tmp/landintel-admin.cookies \
+  -X POST http://localhost:3000/api/admin/model-releases/rebuild \
   -H 'Content-Type: application/json' \
   -d '{"requested_by":"local-dev","auto_activate_hidden":true}'
 
@@ -392,7 +419,7 @@ Then open http://localhost:3000 and explore.
 
 | Problem | Fix |
 |---|---|
-| **"No listings found"** | Check the worker is running. Check `/api/admin/jobs` for failed jobs. |
+| **"No listings found"** | Check the worker is running. Check `/api/admin/jobs` for failed jobs with an authenticated admin session through `http://localhost:3000/api/...`. |
 | **I cannot open `/admin/source-runs`** | That route is admin-only. Sign in with the admin demo account or use the API intake endpoints directly. |
 | **Site has no planning context** | Run the planning bootstrap first (`python -m landintel.planning.bootstrap --dataset all`). |
 | **`/scenarios` does not show the scenarios I just generated** | Use the site detail page or `/sites/<site_uuid>/scenario-editor`. The top-level `/scenarios` page is only the template index. |

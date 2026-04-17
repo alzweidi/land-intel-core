@@ -1,6 +1,7 @@
 import Link from 'next/link';
 
 import { Badge, DefinitionList, PageHeader, Panel, StatCard } from '@/components/ui';
+import { readSessionTokenFromCookies } from '@/lib/auth/server';
 import { getDataHealth, getModelHealth } from '@/lib/landintel-api';
 
 export const dynamic = 'force-dynamic';
@@ -26,8 +27,9 @@ function toneForStatus(value: string): 'neutral' | 'accent' | 'success' | 'warni
 }
 
 export default async function AdminHealthPage() {
-  const dataHealth = await getDataHealth();
-  const modelHealth = await getModelHealth();
+  const sessionToken = await readSessionTokenFromCookies();
+  const dataHealth = await getDataHealth({ sessionToken: sessionToken ?? undefined });
+  const modelHealth = await getModelHealth({ sessionToken: sessionToken ?? undefined });
   const data = dataHealth.item;
   const model = modelHealth.item;
 

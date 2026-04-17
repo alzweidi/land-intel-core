@@ -3,12 +3,13 @@ from __future__ import annotations
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
+from landintel.auth import RequestActor
 from landintel.domain.enums import AppRoleName, OpportunityBand, ValuationQuality
 from landintel.domain.schemas import OpportunityDetailRead, OpportunityListResponse
 from landintel.services.opportunities_readback import get_opportunity, list_opportunities
 from sqlalchemy.orm import Session
 
-from ..dependencies import get_db_session
+from ..dependencies import get_db_session, get_request_actor
 
 router = APIRouter(prefix="/api/opportunities", tags=["opportunities"])
 
@@ -23,8 +24,8 @@ def get_opportunities(
     min_price: int | None = Query(default=None, ge=0),
     max_price: int | None = Query(default=None, ge=0),
     hidden_mode: bool = Query(default=False),
-    viewer_role: AppRoleName | None = Query(default=None),
     session: Session = Depends(get_db_session),
+    actor: RequestActor = Depends(get_request_actor),
 ) -> OpportunityListResponse:
     return list_opportunities(
         session=session,
@@ -35,10 +36,8 @@ def get_opportunities(
         auction_deadline_days=auction_deadline_days,
         min_price=min_price,
         max_price=max_price,
-        include_hidden=hidden_mode,
-        viewer_role=viewer_role if viewer_role is not None else (
-            AppRoleName.REVIEWER if hidden_mode else AppRoleName.ANALYST
-        ),
+        include_hidden=hidden_mode and actor.role in {AppRoleName.REVIEWER, AppRoleName.ADMIN},
+        viewer_role=actor.role,
     )
 
 
@@ -46,16 +45,14 @@ def get_opportunities(
 def get_opportunity_detail(
     site_id: UUID,
     hidden_mode: bool = Query(default=False),
-    viewer_role: AppRoleName | None = Query(default=None),
     session: Session = Depends(get_db_session),
+    actor: RequestActor = Depends(get_request_actor),
 ) -> OpportunityDetailRead:
     detail = get_opportunity(
         session=session,
         site_id=site_id,
-        include_hidden=hidden_mode,
-        viewer_role=viewer_role if viewer_role is not None else (
-            AppRoleName.REVIEWER if hidden_mode else AppRoleName.ANALYST
-        ),
+        include_hidden=hidden_mode and actor.role in {AppRoleName.REVIEWER, AppRoleName.ADMIN},
+        viewer_role=actor.role,
     )
     if detail is None:
         raise HTTPException(

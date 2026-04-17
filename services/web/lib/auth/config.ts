@@ -1,11 +1,37 @@
 import type { AppRole } from './types';
 
 export const AUTH_SESSION_TTL_SECONDS = 60 * 60 * 12;
+const DEFAULT_AUTH_SESSION_SECRET = 'landintel-local-web-session-secret';
+const LOCAL_APP_ENVS = new Set(['development', 'local', 'test']);
 
-export const AUTH_SESSION_SECRET =
-  process.env.LANDINTEL_WEB_AUTH_SECRET ??
-  process.env.AUTH_SECRET ??
-  'landintel-local-web-session-secret';
+function resolveAuthSessionSecret(): string {
+  const secret =
+    process.env.LANDINTEL_WEB_AUTH_SECRET ??
+    process.env.AUTH_SECRET ??
+    DEFAULT_AUTH_SESSION_SECRET;
+  const deployLikeEnvironment = Boolean(
+    process.env.LANDINTEL_WEB_PUBLIC_ORIGIN?.trim() ||
+      process.env.NETLIFY === 'true' ||
+      process.env.VERCEL === '1'
+  );
+  const appEnv = (
+    process.env.NEXT_PUBLIC_APP_ENV ??
+    process.env.APP_ENV ??
+    (deployLikeEnvironment ? 'production' : 'development')
+  )
+    .trim()
+    .toLowerCase();
+
+  if (!LOCAL_APP_ENVS.has(appEnv) && secret === DEFAULT_AUTH_SESSION_SECRET) {
+    throw new Error(
+      'LANDINTEL_WEB_AUTH_SECRET must be set to a non-default value outside local dev.'
+    );
+  }
+
+  return secret;
+}
+
+export const AUTH_SESSION_SECRET = resolveAuthSessionSecret();
 
 export function isSecureAuthCookie(): boolean {
   const override = process.env.LANDINTEL_WEB_AUTH_COOKIE_SECURE;

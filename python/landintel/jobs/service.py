@@ -1,12 +1,14 @@
 import base64
 from datetime import UTC, datetime, timedelta
 
-from sqlalchemy import Select, select
+from sqlalchemy import Select, and_, or_, select
 from sqlalchemy.orm import Session
 
 from landintel.domain.enums import JobStatus, JobType
 from landintel.domain.models import JobRun
 from landintel.monitoring.metrics import JOB_CLAIMS_TOTAL, JOB_STATUS_TOTAL
+
+STALE_RUNNING_JOB_LOCK_SECONDS = 15 * 60
 
 
 def utc_now() -> datetime:
@@ -436,11 +438,21 @@ def _deduplicated_job(
 
 
 def _claimable_jobs_stmt() -> Select[tuple[JobRun]]:
+    now = utc_now()
+    stale_cutoff = now - timedelta(seconds=STALE_RUNNING_JOB_LOCK_SECONDS)
     return (
         select(JobRun)
         .where(
-            JobRun.status.in_([JobStatus.QUEUED, JobStatus.FAILED]),
-            JobRun.next_run_at <= utc_now(),
+            or_(
+                and_(
+                    JobRun.status.in_([JobStatus.QUEUED, JobStatus.FAILED]),
+                    JobRun.next_run_at <= now,
+                ),
+                and_(
+                    JobRun.status == JobStatus.RUNNING,
+                    or_(JobRun.locked_at.is_(None), JobRun.locked_at <= stale_cutoff),
+                ),
+            ),
         )
         .order_by(JobRun.next_run_at.asc(), JobRun.created_at.asc())
     )
@@ -465,6 +477,25 @@ def claim_next_job(session: Session, worker_id: str) -> JobRun | None:
     JOB_CLAIMS_TOTAL.labels(worker_id=worker_id, job_type=job.job_type.value).inc()
     JOB_STATUS_TOTAL.labels(job_type=job.job_type.value, status=job.status.value).inc()
     return job
+
+
+def refresh_job_lock(
+    session: Session,
+    *,
+    job_id,
+    worker_id: str,
+) -> bool:
+    job = session.get(JobRun, job_id)
+    if (
+        job is None
+        or job.status != JobStatus.RUNNING
+        or job.worker_id != worker_id
+    ):
+        return False
+    job.locked_at = utc_now()
+    job.updated_at = utc_now()
+    session.flush()
+    return True
 
 
 def mark_job_succeeded(session: Session, job: JobRun) -> None:

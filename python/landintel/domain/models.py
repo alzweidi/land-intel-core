@@ -500,7 +500,7 @@ class SiteCandidate(Base):
     id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
     listing_cluster_id: Mapped[uuid.UUID] = mapped_column(
         Uuid,
-        ForeignKey("listing_cluster.id", ondelete="CASCADE"),
+        ForeignKey("listing_cluster.id", ondelete="RESTRICT"),
         nullable=False,
     )
     display_name: Mapped[str] = mapped_column(String(255), nullable=False)
@@ -694,6 +694,10 @@ class SiteLpaLink(Base):
         ForeignKey("lpa_boundary.id", ondelete="CASCADE"),
         nullable=False,
     )
+    source_snapshot_id: Mapped[uuid.UUID | None] = mapped_column(
+        Uuid,
+        ForeignKey("source_snapshot.id"),
+    )
     overlap_pct: Mapped[float] = mapped_column(Float, nullable=False)
     overlap_sqm: Mapped[float] = mapped_column(Float, nullable=False)
     is_primary: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
@@ -848,6 +852,11 @@ class SitePlanningLink(Base):
         ForeignKey("planning_application.id", ondelete="CASCADE"),
         nullable=False,
     )
+    source_snapshot_id: Mapped[uuid.UUID | None] = mapped_column(
+        Uuid,
+        ForeignKey("source_snapshot.id"),
+    )
+    application_snapshot_json: Mapped[dict[str, object] | None] = mapped_column(JSON)
     link_type: Mapped[str] = mapped_column(String(100), nullable=False)
     distance_m: Mapped[float | None] = mapped_column(Float)
     overlap_pct: Mapped[float | None] = mapped_column(Float)
@@ -994,6 +1003,11 @@ class SitePolicyFact(Base):
         ForeignKey("policy_area.id", ondelete="CASCADE"),
         nullable=False,
     )
+    source_snapshot_id: Mapped[uuid.UUID | None] = mapped_column(
+        Uuid,
+        ForeignKey("source_snapshot.id"),
+    )
+    policy_area_snapshot_json: Mapped[dict[str, object] | None] = mapped_column(JSON)
     relation_type: Mapped[str] = mapped_column(String(100), nullable=False)
     overlap_pct: Mapped[float | None] = mapped_column(Float)
     distance_m: Mapped[float | None] = mapped_column(Float)
@@ -1028,6 +1042,11 @@ class SiteConstraintFact(Base):
         ForeignKey("planning_constraint_feature.id", ondelete="CASCADE"),
         nullable=False,
     )
+    source_snapshot_id: Mapped[uuid.UUID | None] = mapped_column(
+        Uuid,
+        ForeignKey("source_snapshot.id"),
+    )
+    constraint_snapshot_json: Mapped[dict[str, object] | None] = mapped_column(JSON)
     overlap_pct: Mapped[float | None] = mapped_column(Float)
     distance_m: Mapped[float | None] = mapped_column(Float)
     severity: Mapped[EvidenceImportance] = mapped_column(

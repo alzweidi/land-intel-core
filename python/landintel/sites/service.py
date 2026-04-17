@@ -295,6 +295,7 @@ def refresh_site_lpa_links(*, session: Session, site: SiteCandidate) -> list[dic
                 id=uuid.uuid5(SITE_NAMESPACE, f"site-lpa:{site.id}:{boundary.id}"),
                 site_id=site.id,
                 lpa_id=boundary.id,
+                source_snapshot_id=boundary.source_snapshot_id,
                 overlap_pct=overlap_pct,
                 overlap_sqm=overlap_sqm,
                 is_primary=index == 0,

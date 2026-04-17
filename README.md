@@ -77,6 +77,9 @@ bash scripts/setup_local.sh
 - `reviewer@landintel.local` / `reviewer-demo`
 - `admin@landintel.local` / `admin-demo`
 
+Reviewer/admin access is now enforced from this signed web session. Request fields such as
+`actor_role`, `viewer_role`, or `hidden_mode` are not trusted as authority on their own.
+
 5. Start with the intake and analysis surfaces:
 
 - analyst: `/listings`, `/listing-clusters`, `/sites`, `/scenarios`, `/assessments`, `/opportunities`
@@ -132,10 +135,19 @@ cd services/web
 npm run dev
 ```
 
-After the API is up:
+After the API and web app are up, sign in through the web proxy and then rebuild hidden releases
+with an authenticated admin session:
 
 ```bash
-curl -X POST http://localhost:8000/api/admin/model-releases/rebuild \
+curl -c /tmp/landintel-admin.cookies \
+  -X POST http://localhost:3000/api/auth/login \
+  -H 'Content-Type: application/x-www-form-urlencoded' \
+  --data-urlencode 'email=admin@landintel.local' \
+  --data-urlencode 'password=admin-demo' \
+  --data-urlencode 'next=/admin/model-releases'
+
+curl -b /tmp/landintel-admin.cookies \
+  -X POST http://localhost:3000/api/admin/model-releases/rebuild \
   -H 'Content-Type: application/json' \
   -d '{"requested_by":"local-dev","auto_activate_hidden":true}'
 ```
@@ -171,8 +183,8 @@ Inspect listing outputs:
 ```bash
 curl http://localhost:8000/api/listings
 curl http://localhost:8000/api/listing-clusters
-curl http://localhost:8000/api/admin/source-snapshots
-curl http://localhost:8000/api/admin/jobs
+curl -b /tmp/landintel-admin.cookies http://localhost:3000/api/admin/source-snapshots
+curl -b /tmp/landintel-admin.cookies http://localhost:3000/api/admin/jobs
 ```
 
 Create a site candidate from a cluster and inspect it:
@@ -193,7 +205,7 @@ curl -X POST http://localhost:8000/api/sites/<site_uuid>/extant-permission-check
   -H 'Content-Type: application/json' \
   -d '{"requested_by":"local-smoke"}'
 
-curl http://localhost:8000/api/health/data
+curl -b /tmp/landintel-admin.cookies http://localhost:3000/api/health/data
 ```
 
 Save a geometry revision:
@@ -228,8 +240,15 @@ curl -X POST http://localhost:8000/api/assessments \
 
 curl http://localhost:8000/api/assessments
 curl http://localhost:8000/api/assessments/<assessment_uuid>
-curl 'http://localhost:8000/api/assessments/<assessment_uuid>?hidden_mode=true'
-curl http://localhost:8000/api/admin/model-releases
+curl -c /tmp/landintel-reviewer.cookies \
+  -X POST http://localhost:3000/api/auth/login \
+  -H 'Content-Type: application/x-www-form-urlencoded' \
+  --data-urlencode 'email=reviewer@landintel.local' \
+  --data-urlencode 'password=reviewer-demo' \
+  --data-urlencode 'next=/assessments'
+curl -b /tmp/landintel-reviewer.cookies \
+  'http://localhost:3000/api/assessments/<assessment_uuid>?hidden_mode=true'
+curl -b /tmp/landintel-admin.cookies http://localhost:3000/api/admin/model-releases
 ```
 
 Inspect planning-first opportunity ranking:
@@ -242,10 +261,11 @@ curl http://localhost:8000/api/opportunities/<site_uuid>
 Inspect and review gold-set cases:
 
 ```bash
-curl http://localhost:8000/api/admin/gold-set/cases
-curl http://localhost:8000/api/admin/gold-set/cases/<case_uuid>
+curl -b /tmp/landintel-reviewer.cookies http://localhost:3000/api/admin/gold-set/cases
+curl -b /tmp/landintel-reviewer.cookies http://localhost:3000/api/admin/gold-set/cases/<case_uuid>
 
-curl -X POST http://localhost:8000/api/admin/gold-set/cases/<case_uuid>/review \
+curl -b /tmp/landintel-reviewer.cookies \
+  -X POST http://localhost:3000/api/admin/gold-set/cases/<case_uuid>/review \
   -H 'Content-Type: application/json' \
   -d '{"review_status":"CONFIRMED","review_notes":"Fixture review","reviewed_by":"local-smoke"}'
 ```

@@ -48,10 +48,9 @@ from landintel.scoring.release import (
 )
 from landintel.scoring.score import score_frozen_assessment
 from landintel.storage.base import StorageAdapter
-from landintel.valuation.assumptions import resolve_active_assumption_set
 from landintel.valuation.service import (
     build_or_refresh_valuation_for_assessment,
-    latest_valuation_run,
+    frozen_valuation_run,
 )
 from sqlalchemy import select
 from sqlalchemy.orm import Session, selectinload
@@ -99,8 +98,6 @@ def create_or_refresh_assessment_run(
     if as_of_date > date.today():
         raise AssessmentBuildError("Assessment as_of_date cannot be in the future.")
 
-    rebuild_historical_case_labels(session=session, requested_by=requested_by or "assessment-run")
-
     idempotency_key = _assessment_idempotency_key(
         site=site,
         scenario=scenario,
@@ -112,18 +109,9 @@ def create_or_refresh_assessment_run(
         .options(*_assessment_load_options())
     ).scalar_one_or_none()
     if existing is not None and existing.state == AssessmentRunState.READY:
-        active_assumption_set = resolve_active_assumption_set(
-            session,
-            as_of_date=as_of_date,
-        )
-        has_current_valuation = any(
-            row.valuation_assumption_set_id == active_assumption_set.id
-            and row.result is not None
-            and row.state.value == "READY"
-            for row in existing.valuation_runs
-        )
-        if has_current_valuation:
-            return existing
+        return existing
+
+    rebuild_historical_case_labels(session=session, requested_by=requested_by or "assessment-run")
 
     run = existing or AssessmentRun(
         id=uuid.uuid5(ASSESSMENT_NAMESPACE, idempotency_key),
@@ -339,6 +327,8 @@ def build_assessment_artifacts_for_run(
     ).scalar_one_or_none()
     if run is None:
         raise AssessmentBuildError(f"Assessment run '{assessment_run_id}' was not found.")
+    if run.state == AssessmentRunState.READY:
+        return run
     return create_or_refresh_assessment_run(
         session=session,
         site_id=run.site_id,
@@ -398,6 +388,7 @@ def verify_assessment_replay(
                 comparable_case_set=assessment_run.comparable_case_set,
                 comparable_payload=comparable_payload,
             )
+            stored_result_json = dict(assessment_run.result.result_json or {})
             scored_fields_match = (
                 float(assessment_run.result.approval_probability_raw or 0.0)
                 == float(replay_score["approval_probability_raw"])
@@ -409,9 +400,24 @@ def verify_assessment_replay(
                     else None
                 )
                 == str(replay_score["estimate_quality"])
+                and (assessment_run.result.source_coverage_quality or "")
+                == str(replay_score["source_coverage_quality"])
+                and (assessment_run.result.geometry_quality or "")
+                == str(replay_score["geometry_quality"])
+                and (assessment_run.result.support_quality or "")
+                == str(replay_score["support_quality"])
+                and (assessment_run.result.scenario_quality or "")
+                == str(replay_score["scenario_quality"])
+                and (assessment_run.result.ood_quality or "") == str(replay_score["ood_quality"])
                 and (assessment_run.result.ood_status or "") == str(replay_score["ood_status"])
+                and assessment_run.result.manual_review_required
+                == bool(replay_score["manual_review_required"])
                 and dict((assessment_run.result.result_json or {}).get("explanation") or {})
                 == dict(replay_score["explanation"] or {})
+                and dict(stored_result_json.get("support_summary") or {})
+                == dict(replay_score["support_summary"] or {})
+                and dict(stored_result_json.get("validation_summary") or {})
+                == dict(replay_score["validation_summary"] or {})
             )
     stable_payload = _build_stable_result_payload(
         site_id=assessment_run.site_id,
@@ -422,15 +428,21 @@ def verify_assessment_replay(
         result=assessment_run.result,
         valuation_payload=(
             None
-            if latest_valuation_run(assessment_run) is None
-            or latest_valuation_run(assessment_run).result is None
-            else _serialize_valuation_payload(latest_valuation_run(assessment_run))
+            if frozen_valuation_run(assessment_run) is None
+            or frozen_valuation_run(assessment_run).result is None
+            else _serialize_valuation_payload(frozen_valuation_run(assessment_run))
         ),
         evidence=evidence,
         comparables=comparable_payload,
         note_text=_note_for_result(assessment_run.result),
     )
     payload_hash = canonical_json_hash(stable_payload)
+    replay_passed = (
+        canonical_json_hash(assessment_run.feature_snapshot.feature_json)
+        == assessment_run.feature_snapshot.feature_hash
+        and payload_hash == assessment_run.prediction_ledger.result_payload_hash
+        and scored_fields_match
+    )
     return {
         "assessment_run_id": str(assessment_run.id),
         "feature_hash_matches": (
@@ -443,6 +455,7 @@ def verify_assessment_replay(
         "recomputed_payload_hash": payload_hash,
         "stored_payload_hash": assessment_run.prediction_ledger.result_payload_hash,
         "scored_fields_match": scored_fields_match,
+        "replay_passed": replay_passed,
     }
 
 
@@ -465,11 +478,31 @@ def replay_verify_all_assessments(
         verify_assessment_replay(session=session, assessment_run=run, storage=storage)
         for run in runs
     ]
-    failures = [
-        check
-        for check in checks
-        if not check["feature_hash_matches"] or not check["payload_hash_matches"]
-    ]
+    failures = [check for check in checks if not check["replay_passed"]]
+    for run, check in zip(runs, checks, strict=False):
+        if run.prediction_ledger is None:
+            continue
+        run.prediction_ledger.replay_verification_status = (
+            "VERIFIED" if check["replay_passed"] else "FAILED"
+        )
+        run.prediction_ledger.replay_verified_at = datetime.now(UTC)
+        if check["replay_passed"]:
+            run.prediction_ledger.replay_verification_note = (
+                "Replay verification passed for frozen features, scored fields, and payload."
+            )
+        else:
+            failing_checks = [
+                label
+                for label in (
+                    "feature_hash_matches",
+                    "payload_hash_matches",
+                    "scored_fields_match",
+                )
+                if not check[label]
+            ]
+            run.prediction_ledger.replay_verification_note = (
+                "Replay verification failed: " + ", ".join(failing_checks)
+            )
     return {
         "total": len(checks),
         "failed": len(failures),

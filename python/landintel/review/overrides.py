@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-from datetime import UTC, datetime
 from uuid import UUID
 
 from sqlalchemy import select
@@ -29,7 +28,7 @@ from landintel.domain.schemas import (
 from landintel.review.visibility import ReviewAccessError, require_role
 from landintel.valuation.service import (
     build_or_refresh_valuation_for_assessment_with_assumption_set,
-    latest_valuation_run,
+    frozen_valuation_run,
 )
 
 
@@ -65,15 +64,15 @@ def apply_assessment_override(
 
     active_prior = [
         row
-        for row in run.overrides
+        for row in sorted(
+            run.overrides,
+            key=lambda item: (item.created_at, str(item.id)),
+            reverse=True,
+        )
         if row.override_type == request.override_type
-        and row.status == AssessmentOverrideStatus.ACTIVE
+        and row.status != AssessmentOverrideStatus.RESOLVED
     ]
     latest_prior = active_prior[0] if active_prior else None
-    for row in active_prior:
-        row.status = AssessmentOverrideStatus.SUPERSEDED
-        row.resolved_by = actor_name
-        row.resolved_at = datetime.now(UTC)
 
     override = AssessmentOverride(
         assessment_run_id=run.id,
@@ -94,7 +93,7 @@ def apply_assessment_override(
             entity_type="assessment_run",
             entity_id=str(run.id),
             before_json={
-                "active_override_ids": [str(row.id) for row in active_prior],
+                "active_override_ids": [str(row.id) for row in active_prior[:1]],
             },
             after_json={
                 "override_id": str(override.id),
@@ -122,12 +121,15 @@ def build_override_summary(
             key=lambda item: (item.created_at, str(item.id)),
             reverse=True,
         )
-        if row.status == AssessmentOverrideStatus.ACTIVE
+        if row.status != AssessmentOverrideStatus.RESOLVED
     ]
-    if not active_overrides:
+    by_type: dict[AssessmentOverrideType, AssessmentOverride] = {}
+    for row in active_overrides:
+        by_type.setdefault(row.override_type, row)
+    effective_overrides = list(by_type.values())
+    if not effective_overrides:
         return None
 
-    by_type = {row.override_type: row for row in active_overrides}
     effective_review_status = (
         None if assessment_run.result is None else assessment_run.result.review_status
     )
@@ -163,7 +165,7 @@ def build_override_summary(
     )
 
     return AssessmentOverrideSummaryRead(
-        active_overrides=[_serialize_override(row) for row in active_overrides],
+        active_overrides=[_serialize_override(row) for row in effective_overrides],
         effective_review_status=effective_review_status,
         effective_manual_review_required=effective_manual_review_required,
         ranking_suppressed=ranking_suppressed,
@@ -271,7 +273,7 @@ def _resolve_effective_valuation_run(
             if run is not None:
                 return run
             return session.get(ValuationRun, UUID(run_id))
-    return latest_valuation_run(assessment_run)
+    return frozen_valuation_run(assessment_run)
 
 
 def _serialize_effective_valuation(

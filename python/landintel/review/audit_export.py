@@ -9,10 +9,11 @@ from sqlalchemy.orm import Session, selectinload
 from landintel.domain.enums import AppRoleName, AuditExportStatus
 from landintel.domain.models import AssessmentRun, AuditEvent, AuditExport, ValuationRun
 from landintel.domain.schemas import AuditExportRead
+from landintel.review.overrides import _serialize_override
 from landintel.review.visibility import ReviewAccessError, require_role
 from landintel.services.assessments_readback import get_assessment
 from landintel.storage.base import StorageAdapter
-from landintel.valuation.service import latest_valuation_run
+from landintel.valuation.service import frozen_valuation_run
 
 AUDIT_EXPORT_NAMESPACE = uuid.UUID("b1fe5406-8f10-4cc6-b8c2-04e2d5032ea8")
 
@@ -54,7 +55,7 @@ def build_assessment_audit_export(
     if detail is None:
         raise ReviewAccessError(f"Assessment '{assessment_id}' was not found.")
 
-    valuation_run = latest_valuation_run(run)
+    valuation_run = frozen_valuation_run(run)
     manifest = {
         "assessment": detail.model_dump(mode="json"),
         "site_summary": detail.site_summary.model_dump(mode="json")
@@ -64,9 +65,10 @@ def build_assessment_audit_export(
         if detail.scenario_summary is not None
         else None,
         "override_history": [
-            item.model_dump(mode="json")
-            for item in (
-                detail.override_summary.active_overrides if detail.override_summary else []
+            _serialize_override(item).model_dump(mode="json")
+            for item in sorted(
+                run.overrides,
+                key=lambda row: (row.created_at, str(row.id)),
             )
         ],
         "visibility": (
@@ -144,6 +146,9 @@ def _entity_refs_for_run(run: AssessmentRun) -> list[tuple[str, str]]:
             refs.append(("model_release", str(run.result.model_release_id)))
     if run.prediction_ledger is not None:
         refs.append(("prediction_ledger", str(run.prediction_ledger.id)))
+    valuation_run = frozen_valuation_run(run)
+    if valuation_run is not None:
+        refs.append(("valuation_run", str(valuation_run.id)))
     for override in run.overrides:
         refs.append(("assessment_override", str(override.id)))
     return refs

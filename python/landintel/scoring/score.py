@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+from types import SimpleNamespace
 from typing import Any
 
+from landintel.domain.enums import GeomConfidence, ScenarioStatus
 from landintel.domain.models import ComparableCaseSet, SiteCandidate, SiteScenario
 from landintel.domain.schemas import EvidencePackRead
 from landintel.scoring.calibration import apply_calibration
@@ -33,6 +35,33 @@ def score_frozen_assessment(
     comparable_payload: dict[str, Any],
 ) -> dict[str, Any]:
     feature_values = dict(feature_json.get("values") or {})
+    frozen_borough_id = str(feature_values.get("borough_id") or site.borough_id or "unknown")
+    try:
+        frozen_geom_confidence = GeomConfidence(
+            str(feature_values.get("geom_confidence") or site.geom_confidence.value)
+        )
+    except ValueError:
+        frozen_geom_confidence = site.geom_confidence
+    frozen_site_manual_review_required = bool(
+        feature_values.get("site_manual_review_required", site.manual_review_required)
+    )
+    frozen_scenario_manual_review_required = bool(
+        feature_values.get(
+            "scenario_manual_review_required",
+            scenario.manual_review_required,
+        )
+    )
+    try:
+        frozen_scenario_status = ScenarioStatus(
+            str(feature_values.get("scenario_status") or scenario.status.value)
+        )
+    except ValueError:
+        frozen_scenario_status = scenario.status
+    frozen_scenario_stale_reason = (
+        "STALE"
+        if bool(feature_values.get("scenario_is_stale", bool(scenario.stale_reason)))
+        else None
+    )
     vector = encode_feature_values(
         feature_values,
         transform_spec=model_artifact["transform_spec"],
@@ -53,7 +82,7 @@ def score_frozen_assessment(
         )
     same_template_support_count = int(support_summary.get("same_template_support_count") or 0)
     same_borough_support_count = int(
-        dict(support_summary.get("borough_counts") or {}).get(site.borough_id or "unknown", 0)
+        dict(support_summary.get("borough_counts") or {}).get(frozen_borough_id, 0)
     )
     comparable_count = (
         0
@@ -62,8 +91,15 @@ def score_frozen_assessment(
     )
 
     source_coverage_quality = derive_source_coverage_quality(coverage_json)
-    geometry_quality = derive_geometry_quality(site.geom_confidence)
-    scenario_quality = derive_scenario_quality(scenario=scenario, site=site)
+    geometry_quality = derive_geometry_quality(frozen_geom_confidence)
+    scenario_quality = derive_scenario_quality(
+        scenario=SimpleNamespace(
+            status=frozen_scenario_status,
+            manual_review_required=frozen_scenario_manual_review_required,
+            stale_reason=frozen_scenario_stale_reason,
+        ),
+        site=SimpleNamespace(manual_review_required=frozen_site_manual_review_required),
+    )
     support_quality = derive_support_quality(
         support_count=same_template_support_count,
         same_borough_support_count=same_borough_support_count,
@@ -85,8 +121,8 @@ def score_frozen_assessment(
         ]
     )
     manual_review_required = bool(
-        site.manual_review_required
-        or scenario.manual_review_required
+        frozen_site_manual_review_required
+        or frozen_scenario_manual_review_required
         or estimate_quality.value == "LOW"
         or ood_status != "IN_SUPPORT"
     )

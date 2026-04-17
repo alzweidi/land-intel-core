@@ -720,10 +720,10 @@ class VisibilityGateRead(BaseModel):
     blocked_reason_text: str | None = None
     active_incident_id: UUID | None = None
     active_incident_reason: str | None = None
-    replay_verified: bool
-    payload_hash_matches: bool
-    artifact_hashes_match: bool
-    scope_release_matches_result: bool
+    replay_verified: bool | None
+    payload_hash_matches: bool | None
+    artifact_hashes_match: bool | None
+    scope_release_matches_result: bool | None
 
 
 class AssessmentOverrideSummaryRead(BaseModel):
@@ -998,14 +998,14 @@ class ModelReleaseRetireRequest(BaseModel):
 
 class ReleaseScopeVisibilityRequest(BaseModel):
     requested_by: str | None = Field(default=None, max_length=255)
-    actor_role: AppRoleName
+    actor_role: AppRoleName | None = None
     visibility_mode: VisibilityMode
     reason: str = Field(min_length=3, max_length=4000)
 
 
 class IncidentActionRequest(BaseModel):
     requested_by: str | None = Field(default=None, max_length=255)
-    actor_role: AppRoleName
+    actor_role: AppRoleName | None = None
     action: str = Field(min_length=3, max_length=64)
     reason: str = Field(min_length=3, max_length=4000)
 
@@ -1028,7 +1028,7 @@ class IncidentRecordRead(BaseModel):
 
 class AssessmentOverrideRequest(BaseModel):
     requested_by: str | None = Field(default=None, max_length=255)
-    actor_role: AppRoleName
+    actor_role: AppRoleName | None = None
     override_type: AssessmentOverrideType
     reason: str = Field(min_length=3, max_length=4000)
     acquisition_basis_gbp: float | None = None

@@ -9,6 +9,8 @@ from landintel.domain.models import (
     AuditEvent,
     HmlrTitlePolygon,
     ListingCluster,
+    ListingItem,
+    ListingSnapshot,
     LpaBoundary,
     SiteCandidate,
 )
@@ -22,6 +24,7 @@ from landintel.geospatial.title_linkage import (
     select_title_candidates,
 )
 from landintel.jobs.service import enqueue_site_build_job
+from landintel.listings.service import rebuild_listing_clusters
 from landintel.sites.service import refresh_site_lpa_links
 
 from tests.fixtures.listing_fixtures import (
@@ -38,6 +41,7 @@ from tests.fixtures.listing_fixtures import (
     PUBLIC_LISTING_HTML,
     PUBLIC_LISTING_URL,
 )
+from tests.test_planning_phase3a import _build_camden_site
 
 
 def test_geometry_normalization_repair_hash_and_confidence() -> None:
@@ -347,3 +351,86 @@ def test_site_build_job_creates_site(
     processed = drain_jobs(max_iterations=5)
     assert processed >= 1
     assert client.get("/api/sites").json()["total"] == 1
+
+
+@respx.mock
+def test_rebuild_listing_clusters_relinks_existing_site_lineage(
+    client,
+    drain_jobs,
+    seed_listing_sources,
+    seed_reference_data,
+    session_factory,
+) -> None:
+    del seed_listing_sources
+    del seed_reference_data
+
+    site_payload = _build_camden_site(client, drain_jobs)
+    site_id = uuid.UUID(site_payload["id"])
+    original_cluster_id = uuid.UUID(site_payload["listing_cluster"]["id"])
+
+    with session_factory() as session:
+        site = session.get(SiteCandidate, site_id)
+        assert site is not None
+        current_listing = site.current_listing
+        assert current_listing is not None
+        current_snapshot = next(
+            snapshot
+            for snapshot in current_listing.snapshots
+            if snapshot.id == current_listing.current_snapshot_id
+        )
+        synthetic_listing = ListingItem(
+            id=uuid.uuid4(),
+            source_id=current_listing.source_id,
+            source_listing_id=f"relinked-{uuid.uuid4()}",
+            canonical_url="https://example.invalid/relinked-site",
+            listing_type=current_listing.listing_type,
+            first_seen_at=current_listing.first_seen_at,
+            last_seen_at=current_listing.last_seen_at,
+            latest_status=current_listing.latest_status,
+            normalized_address="100 synthetic relink road london",
+            search_text="synthetic relink site",
+        )
+        synthetic_snapshot = ListingSnapshot(
+            id=uuid.uuid4(),
+            listing_item_id=synthetic_listing.id,
+            source_snapshot_id=current_snapshot.source_snapshot_id,
+            observed_at=current_snapshot.observed_at,
+            headline="Synthetic relink site",
+            description_text="Synthetic listing used to verify safe cluster relinking.",
+            guide_price_gbp=1234567,
+            price_basis_type=current_snapshot.price_basis_type,
+            status=current_snapshot.status,
+            address_text="100 Synthetic Relink Road, London",
+            normalized_address=synthetic_listing.normalized_address,
+            lat=51.6001,
+            lon=-0.3001,
+            raw_record_json={"synthetic": True},
+            search_text=synthetic_listing.search_text,
+        )
+        synthetic_listing.current_snapshot_id = synthetic_snapshot.id
+        session.add(synthetic_listing)
+        session.add(synthetic_snapshot)
+        session.flush()
+
+        site.current_listing_id = synthetic_listing.id
+        session.flush()
+
+        rebuild_listing_clusters(session=session)
+        session.commit()
+
+    with session_factory() as session:
+        site = session.get(SiteCandidate, site_id)
+        assert site is not None
+        assert site.listing_cluster_id != original_cluster_id
+        assert site.listing_cluster.cluster_status == ListingClusterStatus.SINGLETON
+        assert session.get(ListingCluster, original_cluster_id) is not None
+        assert (
+            session.query(AuditEvent)
+            .filter(
+                AuditEvent.entity_type == "site_candidate",
+                AuditEvent.action == "site_cluster_relinked",
+                AuditEvent.entity_id == str(site_id),
+            )
+            .count()
+            >= 1
+        )

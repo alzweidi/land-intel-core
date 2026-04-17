@@ -41,6 +41,8 @@ class SupabaseStorageAdapter(StorageAdapter):
             },
             timeout=30.0,
         )
+        if response.status_code == 404:
+            raise FileNotFoundError(storage_path)
         if response.status_code != 200:
             raise RuntimeError(
                 f"Supabase Storage download failed: {response.status_code} {response.text[:300]}"
