@@ -1,6 +1,7 @@
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
+from landintel.auth import RequestActor, resolve_request_actor_name
 from landintel.domain.enums import AppRoleName, GoldSetReviewStatus
 from landintel.domain.models import AssessmentRun
 from landintel.domain.schemas import (
@@ -56,18 +57,29 @@ from landintel.storage.base import StorageAdapter
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from ..dependencies import get_db_session, get_storage_adapter
+from ..dependencies import (
+    get_db_session,
+    get_storage_adapter,
+    require_admin_actor,
+    require_reviewer_actor,
+)
 
 router = APIRouter(prefix="/api", tags=["admin"])
 
 
 @router.get("/health/data")
-def get_data_health(session: Session = Depends(get_db_session)) -> dict[str, object]:
+def get_data_health(
+    session: Session = Depends(get_db_session),
+    _actor: RequestActor = Depends(require_admin_actor),
+) -> dict[str, object]:
     return build_data_health(session)
 
 
 @router.get("/health/model")
-def get_model_health(session: Session = Depends(get_db_session)) -> dict[str, object]:
+def get_model_health(
+    session: Session = Depends(get_db_session),
+    _actor: RequestActor = Depends(require_admin_actor),
+) -> dict[str, object]:
     return build_model_health(session)
 
 
@@ -75,6 +87,7 @@ def get_model_health(session: Session = Depends(get_db_session)) -> dict[str, ob
 def get_jobs(
     limit: int = Query(default=100, ge=1, le=500),
     session: Session = Depends(get_db_session),
+    _actor: RequestActor = Depends(require_admin_actor),
 ) -> list[JobRunRead]:
     return [JobRunRead.model_validate(job) for job in list_jobs(session=session, limit=limit)]
 
@@ -83,6 +96,7 @@ def get_jobs(
 def get_review_queue(
     limit: int = Query(default=25, ge=1, le=100),
     session: Session = Depends(get_db_session),
+    _actor: RequestActor = Depends(require_reviewer_actor),
 ) -> dict[str, object]:
     run_ids = session.execute(
         select(AssessmentRun.id).order_by(AssessmentRun.updated_at.desc()).limit(limit)
@@ -176,6 +190,7 @@ def get_review_queue(
 def get_source_snapshots(
     limit: int = Query(default=100, ge=1, le=500),
     session: Session = Depends(get_db_session),
+    _actor: RequestActor = Depends(require_admin_actor),
 ) -> list[SourceSnapshotRead]:
     return list_source_snapshots(session=session, limit=limit)
 
@@ -184,6 +199,7 @@ def get_source_snapshots(
 def get_source_snapshot_detail(
     snapshot_id: UUID,
     session: Session = Depends(get_db_session),
+    _actor: RequestActor = Depends(require_admin_actor),
 ) -> SourceSnapshotRead:
     snapshot = get_source_snapshot(session=session, snapshot_id=snapshot_id)
     if snapshot is None:
@@ -197,12 +213,15 @@ def get_source_snapshot_detail(
 @router.get("/admin/listing-sources", response_model=list[ListingSourceRead])
 def get_listing_sources(
     session: Session = Depends(get_db_session),
+    _actor: RequestActor = Depends(require_admin_actor),
 ) -> list[ListingSourceRead]:
     return list_listing_sources(session=session)
 
 
 @router.get("/admin/phase-status", response_model=PlaceholderResponse)
-def get_phase_status() -> PlaceholderResponse:
+def get_phase_status(
+    _actor: RequestActor = Depends(require_admin_actor),
+) -> PlaceholderResponse:
     return PlaceholderResponse(
         detail=(
             "Phase 8A safety controls are active. Hidden scoring remains the default, visible "
@@ -219,6 +238,7 @@ def get_gold_set_cases(
     review_status: GoldSetReviewStatus | None = Query(default=None),
     template_key: str | None = Query(default=None),
     session: Session = Depends(get_db_session),
+    _actor: RequestActor = Depends(require_reviewer_actor),
 ) -> HistoricalLabelListResponse:
     _ensure_historical_labels(session=session)
     return list_gold_set_cases_read(
@@ -232,6 +252,7 @@ def get_gold_set_cases(
 def get_gold_set_case_detail(
     case_id: UUID,
     session: Session = Depends(get_db_session),
+    _actor: RequestActor = Depends(require_reviewer_actor),
 ) -> HistoricalLabelCaseRead:
     _ensure_historical_labels(session=session)
     case = get_gold_set_case_read(session=session, case_id=case_id)
@@ -248,6 +269,7 @@ def review_gold_set_case(
     case_id: UUID,
     request: HistoricalLabelReviewRequest,
     session: Session = Depends(get_db_session),
+    actor: RequestActor = Depends(require_reviewer_actor),
 ) -> HistoricalLabelCaseRead:
     _ensure_historical_labels(session=session)
     case = get_historical_label_case(session=session, case_id=case_id)
@@ -264,7 +286,7 @@ def review_gold_set_case(
         notable_policy_issues=request.notable_policy_issues,
         extant_permission_outcome=request.extant_permission_outcome,
         site_geometry_confidence=request.site_geometry_confidence,
-        reviewed_by=request.reviewed_by,
+        reviewed_by=resolve_request_actor_name(actor, request.reviewed_by or "api-review"),
     )
     session.commit()
     session.expire_all()
@@ -280,8 +302,12 @@ def review_gold_set_case(
 @router.post("/admin/gold-set/refresh", response_model=JobRunRead)
 def refresh_gold_set(
     session: Session = Depends(get_db_session),
+    actor: RequestActor = Depends(require_reviewer_actor),
 ) -> JobRunRead:
-    job = enqueue_gold_set_refresh_job(session=session, requested_by="api-admin")
+    job = enqueue_gold_set_refresh_job(
+        session=session,
+        requested_by=resolve_request_actor_name(actor, "api-admin"),
+    )
     session.commit()
     return JobRunRead.model_validate(job)
 
@@ -290,6 +316,7 @@ def refresh_gold_set(
 def get_model_releases(
     template_key: str | None = Query(default=None),
     session: Session = Depends(get_db_session),
+    _actor: RequestActor = Depends(require_admin_actor),
 ) -> ModelReleaseListResponse:
     return list_model_releases_read(session=session, template_key=template_key)
 
@@ -298,6 +325,7 @@ def get_model_releases(
 def get_model_release_detail(
     release_id: UUID,
     session: Session = Depends(get_db_session),
+    _actor: RequestActor = Depends(require_admin_actor),
 ) -> ModelReleaseDetailRead:
     detail = get_model_release_read(session=session, release_id=release_id)
     if detail is None:
@@ -313,11 +341,12 @@ def rebuild_model_releases(
     request: ModelReleaseRebuildRequest,
     session: Session = Depends(get_db_session),
     storage: StorageAdapter = Depends(get_storage_adapter),
+    actor: RequestActor = Depends(require_admin_actor),
 ) -> ModelReleaseListResponse:
     build_hidden_model_releases(
         session=session,
         storage=storage,
-        requested_by=request.requested_by or "api-admin",
+        requested_by=resolve_request_actor_name(actor, request.requested_by or "api-admin"),
         template_keys=request.template_keys,
         auto_activate_hidden=request.auto_activate_hidden,
     )
@@ -333,14 +362,13 @@ def activate_hidden_release(
     release_id: UUID,
     request: ModelReleaseActivateRequest,
     session: Session = Depends(get_db_session),
+    actor: RequestActor = Depends(require_admin_actor),
 ) -> ModelReleaseDetailRead:
     try:
-        if request.actor_role is not None and request.actor_role != AppRoleName.ADMIN:
-            raise ReviewAccessError("Only admins can activate model releases.")
         activate_model_release(
             session=session,
             release_id=release_id,
-            requested_by=request.requested_by or "api-admin",
+            requested_by=resolve_request_actor_name(actor, request.requested_by or "api-admin"),
         )
         session.commit()
     except (ReviewAccessError, ValueError) as exc:
@@ -366,14 +394,13 @@ def retire_hidden_release(
     release_id: UUID,
     request: ModelReleaseRetireRequest,
     session: Session = Depends(get_db_session),
+    actor: RequestActor = Depends(require_admin_actor),
 ) -> ModelReleaseDetailRead:
     try:
-        if request.actor_role is not None and request.actor_role != AppRoleName.ADMIN:
-            raise ReviewAccessError("Only admins can retire model releases.")
         retire_model_release(
             session=session,
             release_id=release_id,
-            requested_by=request.requested_by or "api-admin",
+            requested_by=resolve_request_actor_name(actor, request.requested_by or "api-admin"),
         )
         session.commit()
     except (ReviewAccessError, ValueError) as exc:
@@ -399,14 +426,15 @@ def update_release_scope_visibility(
     scope_key: str,
     request: ReleaseScopeVisibilityRequest,
     session: Session = Depends(get_db_session),
+    actor: RequestActor = Depends(require_admin_actor),
 ) -> ModelReleaseListResponse:
     try:
         set_scope_visibility(
             session=session,
             scope_key=scope_key,
             visibility_mode=request.visibility_mode,
-            requested_by=request.requested_by or "api-admin",
-            actor_role=request.actor_role,
+            requested_by=resolve_request_actor_name(actor, request.requested_by or "api-admin"),
+            actor_role=actor.role,
             reason=request.reason,
         )
         session.commit()
@@ -427,6 +455,7 @@ def manage_release_scope_incident(
     scope_key: str,
     request: IncidentActionRequest,
     session: Session = Depends(get_db_session),
+    actor: RequestActor = Depends(require_admin_actor),
 ) -> IncidentRecordRead:
     try:
         normalized = request.action.strip().upper()
@@ -434,16 +463,16 @@ def manage_release_scope_incident(
             incident = open_scope_incident(
                 session=session,
                 scope_key=scope_key,
-                requested_by=request.requested_by or "api-admin",
-                actor_role=request.actor_role,
+                requested_by=resolve_request_actor_name(actor, request.requested_by or "api-admin"),
+                actor_role=actor.role,
                 reason=request.reason,
             )
         elif normalized in {"RESOLVE", "ROLLBACK"}:
             incident = resolve_scope_incident(
                 session=session,
                 scope_key=scope_key,
-                requested_by=request.requested_by or "api-admin",
-                actor_role=request.actor_role,
+                requested_by=resolve_request_actor_name(actor, request.requested_by or "api-admin"),
+                actor_role=actor.role,
                 reason=request.reason,
                 rollback_visibility=normalized == "ROLLBACK",
             )

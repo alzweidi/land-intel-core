@@ -4,6 +4,7 @@ from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from landintel.assessments.service import AssessmentBuildError, create_or_refresh_assessment_run
+from landintel.auth import RequestActor, resolve_request_actor_name
 from landintel.domain.enums import AppRoleName
 from landintel.domain.schemas import (
     AssessmentDetailRead,
@@ -19,7 +20,12 @@ from landintel.services.assessments_readback import get_assessment, list_assessm
 from landintel.storage.base import StorageAdapter
 from sqlalchemy.orm import Session
 
-from ..dependencies import get_db_session, get_storage_adapter
+from ..dependencies import (
+    get_db_session,
+    get_request_actor,
+    get_storage_adapter,
+    require_reviewer_actor,
+)
 
 router = APIRouter(tags=["assessments"])
 
@@ -29,6 +35,7 @@ def create_assessment(
     request: AssessmentRequest,
     session: Session = Depends(get_db_session),
     storage: StorageAdapter = Depends(get_storage_adapter),
+    actor: RequestActor = Depends(get_request_actor),
 ) -> AssessmentDetailRead:
     try:
         run = create_or_refresh_assessment_run(
@@ -36,7 +43,10 @@ def create_assessment(
             site_id=request.site_id,
             scenario_id=request.scenario_id,
             as_of_date=request.as_of_date,
-            requested_by=request.requested_by,
+            requested_by=(
+                request.requested_by
+                or resolve_request_actor_name(actor, "api-assessment")
+            ),
             storage=storage,
         )
         session.commit()
@@ -51,12 +61,11 @@ def create_assessment(
     detail = get_assessment(
         session=session,
         assessment_id=run.id,
-        include_hidden=request.hidden_mode,
-        viewer_role=(
-            request.viewer_role
-            if request.viewer_role is not None
-            else (AppRoleName.REVIEWER if request.hidden_mode else AppRoleName.ANALYST)
+        include_hidden=(
+            request.hidden_mode
+            and actor.role in {AppRoleName.REVIEWER, AppRoleName.ADMIN}
         ),
+        viewer_role=actor.role,
     )
     if detail is None:
         raise HTTPException(
@@ -87,18 +96,14 @@ def get_assessment_runs(
 def get_assessment_detail(
     assessment_id: UUID,
     hidden_mode: bool = Query(default=False),
-    viewer_role: AppRoleName | None = Query(default=None),
     session: Session = Depends(get_db_session),
+    actor: RequestActor = Depends(get_request_actor),
 ) -> AssessmentDetailRead:
     detail = get_assessment(
         session=session,
         assessment_id=assessment_id,
-        include_hidden=hidden_mode,
-        viewer_role=(
-            viewer_role
-            if viewer_role is not None
-            else (AppRoleName.REVIEWER if hidden_mode else AppRoleName.ANALYST)
-        ),
+        include_hidden=hidden_mode and actor.role in {AppRoleName.REVIEWER, AppRoleName.ADMIN},
+        viewer_role=actor.role,
     )
     if detail is None:
         raise HTTPException(
@@ -113,12 +118,21 @@ def override_assessment(
     assessment_id: UUID,
     request: AssessmentOverrideRequest,
     session: Session = Depends(get_db_session),
+    actor: RequestActor = Depends(get_request_actor),
 ) -> AssessmentDetailRead:
     try:
         apply_assessment_override(
             session=session,
             assessment_id=assessment_id,
-            request=request,
+            request=request.model_copy(
+                update={
+                    "actor_role": actor.role,
+                    "requested_by": resolve_request_actor_name(
+                        actor,
+                        request.requested_by or "api-override",
+                    ),
+                }
+            ),
         )
         session.commit()
         session.expire_all()
@@ -132,8 +146,8 @@ def override_assessment(
     detail = get_assessment(
         session=session,
         assessment_id=assessment_id,
-        include_hidden=request.actor_role in {AppRoleName.REVIEWER, AppRoleName.ADMIN},
-        viewer_role=request.actor_role,
+        include_hidden=actor.role in {AppRoleName.REVIEWER, AppRoleName.ADMIN},
+        viewer_role=actor.role,
     )
     if detail is None:
         raise HTTPException(
@@ -147,17 +161,17 @@ def override_assessment(
 def get_assessment_audit_export(
     assessment_id: UUID,
     requested_by: str | None = Query(default="api-audit-export"),
-    actor_role: AppRoleName = Query(default=AppRoleName.REVIEWER),
     session: Session = Depends(get_db_session),
     storage: StorageAdapter = Depends(get_storage_adapter),
+    actor: RequestActor = Depends(require_reviewer_actor),
 ) -> AuditExportRead:
     try:
         export = build_assessment_audit_export(
             session=session,
             storage=storage,
             assessment_id=assessment_id,
-            requested_by=requested_by,
-            actor_role=actor_role,
+            requested_by=resolve_request_actor_name(actor, requested_by or "api-audit-export"),
+            actor_role=actor.role,
         )
         session.commit()
     except ReviewAccessError as exc:

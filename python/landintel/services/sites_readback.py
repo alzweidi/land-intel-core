@@ -252,7 +252,11 @@ def serialize_site_detail(*, session: Session, site: SiteCandidate) -> SiteDetai
                 overlap_pct=round(link.overlap_pct, 4) if link.overlap_pct is not None else None,
                 match_confidence=link.match_confidence,
                 manual_verified=link.manual_verified,
-                planning_application=_serialize_planning_application(link.planning_application),
+                planning_application=_serialize_planning_application(
+                    link.planning_application,
+                    source_snapshot_id=link.source_snapshot_id,
+                    snapshot_json=link.application_snapshot_json,
+                ),
             )
             for link in sorted(
                 site.planning_links,
@@ -285,7 +289,11 @@ def serialize_site_detail(*, session: Session, site: SiteCandidate) -> SiteDetai
                 overlap_pct=round(fact.overlap_pct, 4) if fact.overlap_pct is not None else None,
                 distance_m=round(fact.distance_m, 2) if fact.distance_m is not None else None,
                 importance=fact.importance,
-                policy_area=_serialize_policy_area(fact.policy_area),
+                policy_area=_serialize_policy_area(
+                    fact.policy_area,
+                    source_snapshot_id=fact.source_snapshot_id,
+                    snapshot_json=fact.policy_area_snapshot_json,
+                ),
             )
             for fact in site.policy_facts
         ],
@@ -295,7 +303,11 @@ def serialize_site_detail(*, session: Session, site: SiteCandidate) -> SiteDetai
                 overlap_pct=round(fact.overlap_pct, 4) if fact.overlap_pct is not None else None,
                 distance_m=round(fact.distance_m, 2) if fact.distance_m is not None else None,
                 severity=fact.severity,
-                constraint_feature=_serialize_constraint_feature(fact.constraint_feature),
+                constraint_feature=_serialize_constraint_feature(
+                    fact.constraint_feature,
+                    source_snapshot_id=fact.source_snapshot_id,
+                    snapshot_json=fact.constraint_snapshot_json,
+                ),
             )
             for fact in site.constraint_facts
         ],
@@ -354,28 +366,22 @@ def _serialize_site_listing(listing_item: ListingItem | None) -> SiteListingSumm
     )
 
 
-def _serialize_planning_application(application: PlanningApplication) -> PlanningApplicationRead:
-    return PlanningApplicationRead(
-        id=application.id,
-        borough_id=application.borough_id,
-        source_system=application.source_system,
-        source_snapshot_id=application.source_snapshot_id,
-        external_ref=application.external_ref,
-        application_type=application.application_type,
-        proposal_description=application.proposal_description,
-        valid_date=application.valid_date,
-        decision_date=application.decision_date,
-        decision=application.decision,
-        decision_type=application.decision_type,
-        status=application.status,
-        route_normalized=application.route_normalized,
-        units_proposed=application.units_proposed,
-        source_priority=application.source_priority,
-        source_url=application.source_url,
-        site_geom_4326=application.site_geom_4326,
-        site_point_4326=application.site_point_4326,
-        raw_record_json=application.raw_record_json,
-        documents=[
+def _serialize_planning_application(
+    application: PlanningApplication,
+    *,
+    source_snapshot_id: UUID | None = None,
+    snapshot_json: dict[str, object] | None = None,
+) -> PlanningApplicationRead:
+    snapshot = snapshot_json if isinstance(snapshot_json, dict) else {}
+    document_snapshots = snapshot.get("documents")
+    if isinstance(document_snapshots, list):
+        documents = [
+            PlanningApplicationDocumentRead.model_validate(document)
+            for document in document_snapshots
+            if isinstance(document, dict)
+        ]
+    else:
+        documents = [
             PlanningApplicationDocumentRead(
                 id=document.id,
                 asset_id=document.asset_id,
@@ -384,41 +390,87 @@ def _serialize_planning_application(application: PlanningApplication) -> Plannin
                 asset=serialize_raw_asset(document.asset) if document.asset is not None else None,
             )
             for document in application.documents
-        ],
+        ]
+    return PlanningApplicationRead(
+        id=snapshot.get("id", application.id),
+        borough_id=snapshot.get("borough_id", application.borough_id),
+        source_system=snapshot.get("source_system", application.source_system),
+        source_snapshot_id=(
+            source_snapshot_id
+            or snapshot.get("source_snapshot_id")
+            or application.source_snapshot_id
+        ),
+        external_ref=snapshot.get("external_ref", application.external_ref),
+        application_type=snapshot.get("application_type", application.application_type),
+        proposal_description=snapshot.get(
+            "proposal_description",
+            application.proposal_description,
+        ),
+        valid_date=snapshot.get("valid_date", application.valid_date),
+        decision_date=snapshot.get("decision_date", application.decision_date),
+        decision=snapshot.get("decision", application.decision),
+        decision_type=snapshot.get("decision_type", application.decision_type),
+        status=snapshot.get("status", application.status),
+        route_normalized=snapshot.get("route_normalized", application.route_normalized),
+        units_proposed=snapshot.get("units_proposed", application.units_proposed),
+        source_priority=snapshot.get("source_priority", application.source_priority),
+        source_url=snapshot.get("source_url", application.source_url),
+        site_geom_4326=snapshot.get("site_geom_4326", application.site_geom_4326),
+        site_point_4326=snapshot.get("site_point_4326", application.site_point_4326),
+        raw_record_json=snapshot.get("raw_record_json", application.raw_record_json),
+        documents=documents,
     )
 
 
-def _serialize_policy_area(area: PolicyArea) -> PolicyAreaRead:
+def _serialize_policy_area(
+    area: PolicyArea,
+    *,
+    source_snapshot_id: UUID | None = None,
+    snapshot_json: dict[str, object] | None = None,
+) -> PolicyAreaRead:
+    snapshot = snapshot_json if isinstance(snapshot_json, dict) else {}
     return PolicyAreaRead(
-        id=area.id,
-        borough_id=area.borough_id,
-        policy_family=area.policy_family,
-        policy_code=area.policy_code,
-        name=area.name,
-        geom_4326=area.geom_4326,
-        legal_effective_from=area.legal_effective_from,
-        legal_effective_to=area.legal_effective_to,
-        source_snapshot_id=area.source_snapshot_id,
-        source_class=area.source_class,
-        source_url=area.source_url,
+        id=snapshot.get("id", area.id),
+        borough_id=snapshot.get("borough_id", area.borough_id),
+        policy_family=snapshot.get("policy_family", area.policy_family),
+        policy_code=snapshot.get("policy_code", area.policy_code),
+        name=snapshot.get("name", area.name),
+        geom_4326=snapshot.get("geom_4326", area.geom_4326),
+        legal_effective_from=snapshot.get("legal_effective_from", area.legal_effective_from),
+        legal_effective_to=snapshot.get("legal_effective_to", area.legal_effective_to),
+        source_snapshot_id=(
+            source_snapshot_id
+            or snapshot.get("source_snapshot_id")
+            or area.source_snapshot_id
+        ),
+        source_class=snapshot.get("source_class", area.source_class),
+        source_url=snapshot.get("source_url", area.source_url),
     )
 
 
 def _serialize_constraint_feature(
     feature: PlanningConstraintFeature,
+    *,
+    source_snapshot_id: UUID | None = None,
+    snapshot_json: dict[str, object] | None = None,
 ) -> PlanningConstraintFeatureRead:
+    snapshot = snapshot_json if isinstance(snapshot_json, dict) else {}
     return PlanningConstraintFeatureRead(
-        id=feature.id,
-        feature_family=feature.feature_family,
-        feature_subtype=feature.feature_subtype,
-        authority_level=feature.authority_level,
-        geom_4326=feature.geom_4326,
-        legal_status=feature.legal_status,
-        effective_from=feature.effective_from,
-        effective_to=feature.effective_to,
-        source_snapshot_id=feature.source_snapshot_id,
-        source_class=feature.source_class,
-        source_url=feature.source_url,
+        id=snapshot.get("id", feature.id),
+        feature_family=snapshot.get("feature_family", feature.feature_family),
+        feature_subtype=snapshot.get("feature_subtype", feature.feature_subtype),
+        authority_level=snapshot.get("authority_level", feature.authority_level),
+        geom_4326=snapshot.get("geom_4326", feature.geom_4326),
+        legal_status=snapshot.get("legal_status", feature.legal_status),
+        effective_from=snapshot.get("effective_from", feature.effective_from),
+        effective_to=snapshot.get("effective_to", feature.effective_to),
+        source_snapshot_id=(
+            source_snapshot_id
+            or snapshot.get("source_snapshot_id")
+            or feature.source_snapshot_id
+        ),
+        source_class=snapshot.get("source_class", feature.source_class),
+        source_url=snapshot.get("source_url", feature.source_url),
     )
 
 

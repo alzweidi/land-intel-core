@@ -1,8 +1,14 @@
+import base64
+import hashlib
+import hmac
+import json
 from collections.abc import Callable, Generator
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 import pytest
 from fastapi.testclient import TestClient
+from landintel.auth.session import SESSION_HEADER_NAME
 from landintel.config import Settings
 from landintel.db.base import Base
 from landintel.db.session import create_session_factory, create_sqlalchemy_engine
@@ -136,6 +142,33 @@ def drain_jobs(
         return processed
 
     return _drain
+
+
+@pytest.fixture()
+def auth_headers(test_settings: Settings) -> Callable[[str], dict[str, str]]:
+    def _build(role: str) -> dict[str, str]:
+        expires_at = datetime.now(UTC) + timedelta(hours=1)
+        payload = {
+            "user": {
+                "id": f"{role}@example.test",
+                "email": f"{role}@example.test",
+                "name": role.title(),
+                "role": role,
+            },
+            "issuedAt": datetime.now(UTC).isoformat(),
+            "expiresAt": expires_at.isoformat(),
+        }
+        payload_json = json.dumps(payload, separators=(",", ":"), sort_keys=True).encode("utf-8")
+        payload_token = base64.urlsafe_b64encode(payload_json).decode("ascii").rstrip("=")
+        signature = hmac.new(
+            test_settings.web_auth_session_secret.encode("utf-8"),
+            payload_token.encode("utf-8"),
+            hashlib.sha256,
+        ).digest()
+        signature_token = base64.urlsafe_b64encode(signature).decode("ascii").rstrip("=")
+        return {SESSION_HEADER_NAME: f"{payload_token}.{signature_token}"}
+
+    return _build
 
 
 @pytest.fixture()

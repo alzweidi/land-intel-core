@@ -1,12 +1,15 @@
 from __future__ import annotations
 
+import uuid
+
+from landintel.domain.models import AssessmentRun
 from landintel.scoring.release import scope_key_for
 
 from tests.test_assessments_phase5a import _build_confirmed_camden_scenario
 from tests.test_scoring_phase6a import _build_hidden_releases
 
 
-def _build_scored_assessment(*, client, drain_jobs, db_session, storage):
+def _build_scored_assessment(*, client, drain_jobs, db_session, storage, auth_headers):
     _build_hidden_releases(db_session=db_session, storage=storage)
     site_payload, scenario_payload = _build_confirmed_camden_scenario(client, drain_jobs)
     assessment = client.post(
@@ -18,6 +21,7 @@ def _build_scored_assessment(*, client, drain_jobs, db_session, storage):
             "requested_by": "pytest",
             "hidden_mode": True,
         },
+        headers=auth_headers("reviewer"),
     )
     assert assessment.status_code == 200
     payload = assessment.json()
@@ -32,6 +36,7 @@ def test_assessment_override_round_trip_preserves_original_result(
     seed_valuation_data,
     db_session,
     storage,
+    auth_headers,
 ):
     del seed_listing_sources
     del seed_planning_data
@@ -42,6 +47,7 @@ def test_assessment_override_round_trip_preserves_original_result(
         drain_jobs=drain_jobs,
         db_session=db_session,
         storage=storage,
+        auth_headers=auth_headers,
     )
     original_uplift_mid = assessment["valuation"]["uplift_mid"]
     original_payload_hash = assessment["prediction_ledger"]["result_payload_hash"]
@@ -57,6 +63,7 @@ def test_assessment_override_round_trip_preserves_original_result(
             "acquisition_basis_gbp": 900000,
             "acquisition_basis_type": "GUIDE_PRICE",
         },
+        headers=auth_headers("analyst"),
     )
     assert override.status_code == 200
     payload = override.json()
@@ -76,7 +83,8 @@ def test_assessment_override_round_trip_preserves_original_result(
     )
 
     hidden = client.get(
-        f"/api/assessments/{assessment['id']}?hidden_mode=true&viewer_role=reviewer"
+        f"/api/assessments/{assessment['id']}?hidden_mode=true",
+        headers=auth_headers("reviewer"),
     )
     assert hidden.status_code == 200
     hidden_payload = hidden.json()
@@ -89,6 +97,93 @@ def test_assessment_override_round_trip_preserves_original_result(
     )
 
 
+def test_override_history_is_append_only_while_effective_state_uses_latest_entry(
+    client,
+    drain_jobs,
+    seed_listing_sources,
+    seed_planning_data,
+    seed_valuation_data,
+    db_session,
+    storage,
+    auth_headers,
+):
+    del seed_listing_sources
+    del seed_planning_data
+    del seed_valuation_data
+
+    _site, _scenario, assessment = _build_scored_assessment(
+        client=client,
+        drain_jobs=drain_jobs,
+        db_session=db_session,
+        storage=storage,
+        auth_headers=auth_headers,
+    )
+
+    first = client.post(
+        f"/api/assessments/{assessment['id']}/override",
+        json={
+            "requested_by": "pytest",
+            "override_type": "ACQUISITION_BASIS",
+            "reason": "First basis correction.",
+            "acquisition_basis_gbp": 900000,
+            "acquisition_basis_type": "GUIDE_PRICE",
+        },
+        headers=auth_headers("analyst"),
+    )
+    assert first.status_code == 200
+
+    second = client.post(
+        f"/api/assessments/{assessment['id']}/override",
+        json={
+            "requested_by": "pytest",
+            "override_type": "ACQUISITION_BASIS",
+            "reason": "Second basis correction.",
+            "acquisition_basis_gbp": 850000,
+            "acquisition_basis_type": "GUIDE_PRICE",
+        },
+        headers=auth_headers("analyst"),
+    )
+    assert second.status_code == 200
+
+    db_session.expire_all()
+    run = db_session.get(AssessmentRun, uuid.UUID(assessment["id"]))
+    assert run is not None
+    basis_overrides = [
+        row
+        for row in run.overrides
+        if row.override_type.value == "ACQUISITION_BASIS"
+    ]
+    assert len(basis_overrides) == 2
+    latest, prior = basis_overrides[0], basis_overrides[1]
+    assert latest.supersedes_id == prior.id
+    assert latest.reason == "Second basis correction."
+    assert prior.reason == "First basis correction."
+    assert prior.status.value == "ACTIVE"
+
+    payload = second.json()
+    assert len(payload["override_summary"]["active_overrides"]) == 1
+    assert (
+        payload["override_summary"]["active_overrides"][0]["reason"]
+        == "Second basis correction."
+    )
+
+    export = client.get(
+        f"/api/assessments/{assessment['id']}/audit-export?requested_by=pytest",
+        headers=auth_headers("reviewer"),
+    )
+    assert export.status_code == 200
+    basis_rows = [
+        row
+        for row in export.json()["manifest_json"]["override_history"]
+        if row["override_type"] == "ACQUISITION_BASIS"
+    ]
+    assert len(basis_rows) == 2
+    assert {row["reason"] for row in basis_rows} == {
+        "First basis correction.",
+        "Second basis correction.",
+    }
+
+
 def test_override_role_gating_and_visibility_kill_switch_with_rollback(
     client,
     drain_jobs,
@@ -97,6 +192,7 @@ def test_override_role_gating_and_visibility_kill_switch_with_rollback(
     seed_valuation_data,
     db_session,
     storage,
+    auth_headers,
 ):
     del seed_listing_sources
     del seed_planning_data
@@ -107,6 +203,7 @@ def test_override_role_gating_and_visibility_kill_switch_with_rollback(
         drain_jobs=drain_jobs,
         db_session=db_session,
         storage=storage,
+        auth_headers=auth_headers,
     )
     scope_key = assessment["result"]["release_scope_key"]
     assert scope_key == scope_key_for(template_key=scenario_payload["template_key"])
@@ -121,6 +218,7 @@ def test_override_role_gating_and_visibility_kill_switch_with_rollback(
             "review_resolution_note": "Invalid attempt.",
             "resolve_manual_review": True,
         },
+        headers=auth_headers("analyst"),
     )
     assert forbidden_override.status_code == 422
 
@@ -132,8 +230,9 @@ def test_override_role_gating_and_visibility_kill_switch_with_rollback(
             "visibility_mode": "VISIBLE_REVIEWER_ONLY",
             "reason": "Reviewer should not be able to change scope visibility.",
         },
+        headers=auth_headers("reviewer"),
     )
-    assert forbidden_visibility.status_code == 422
+    assert forbidden_visibility.status_code == 403
 
     enabled = client.post(
         f"/api/admin/release-scopes/{scope_key}/visibility",
@@ -143,6 +242,7 @@ def test_override_role_gating_and_visibility_kill_switch_with_rollback(
             "visibility_mode": "VISIBLE_REVIEWER_ONLY",
             "reason": "Pytest reviewer-visible scope enablement.",
         },
+        headers=auth_headers("admin"),
     )
     assert enabled.status_code == 422
     assert "borough-scoped active release" in enabled.json()["detail"]
@@ -155,7 +255,8 @@ def test_override_role_gating_and_visibility_kill_switch_with_rollback(
     assert analyst_payload["visibility"]["blocked"] is False
 
     reviewer_read = client.get(
-        f"/api/assessments/{assessment['id']}?viewer_role=reviewer"
+        f"/api/assessments/{assessment['id']}",
+        headers=auth_headers("reviewer"),
     )
     assert reviewer_read.status_code == 200
     reviewer_payload = reviewer_read.json()
@@ -172,6 +273,7 @@ def test_override_role_gating_and_visibility_kill_switch_with_rollback(
             "action": "OPEN",
             "reason": "Pytest kill switch open.",
         },
+        headers=auth_headers("admin"),
     )
     assert incident_open.status_code == 200
     incident_payload = incident_open.json()
@@ -179,21 +281,45 @@ def test_override_role_gating_and_visibility_kill_switch_with_rollback(
     assert incident_payload["applied_visibility_mode"] == "DISABLED"
 
     blocked_read = client.get(
-        f"/api/assessments/{assessment['id']}?viewer_role=reviewer"
+        f"/api/assessments/{assessment['id']}",
+        headers=auth_headers("reviewer"),
     )
     assert blocked_read.status_code == 200
     blocked_payload = blocked_read.json()
     assert blocked_payload["result"]["approval_probability_display"] is None
     assert blocked_payload["visibility"]["blocked"] is True
     assert "ACTIVE_INCIDENT" in blocked_payload["visibility"]["blocked_reason_codes"]
+    assert blocked_payload["visibility"]["active_incident_reason"] == "Pytest kill switch open."
+    assert blocked_payload["visibility"]["replay_verified"] is True
+
+    analyst_blocked_read = client.get(f"/api/assessments/{assessment['id']}")
+    assert analyst_blocked_read.status_code == 200
+    analyst_blocked_payload = analyst_blocked_read.json()
+    assert analyst_blocked_payload["visibility"]["blocked"] is True
+    assert analyst_blocked_payload["visibility"]["active_incident_reason"] is None
+    assert analyst_blocked_payload["visibility"]["active_incident_id"] is None
+    assert analyst_blocked_payload["visibility"]["replay_verified"] is None
+    assert analyst_blocked_payload["visibility"]["payload_hash_matches"] is None
+    assert analyst_blocked_payload["visibility"]["artifact_hashes_match"] is None
+    assert analyst_blocked_payload["visibility"]["scope_release_matches_result"] is None
+    assert analyst_blocked_payload["visibility"]["blocked_reason_text"] == (
+        "Visible publication is currently blocked for this scope."
+    )
 
     blocked_opportunity = client.get(
-        f"/api/opportunities/{site_payload['id']}?viewer_role=reviewer"
+        f"/api/opportunities/{site_payload['id']}",
+        headers=auth_headers("reviewer"),
     )
     assert blocked_opportunity.status_code == 200
     opportunity_payload = blocked_opportunity.json()
     assert opportunity_payload["probability_band"] == "Hold"
     assert opportunity_payload["hold_reason"] is not None
+
+    analyst_blocked_opportunity = client.get(f"/api/opportunities/{site_payload['id']}")
+    assert analyst_blocked_opportunity.status_code == 200
+    analyst_opportunity_payload = analyst_blocked_opportunity.json()
+    assert analyst_opportunity_payload["visibility"]["active_incident_reason"] is None
+    assert analyst_opportunity_payload["visibility"]["replay_verified"] is None
 
     incident_rollback = client.post(
         f"/api/admin/release-scopes/{scope_key}/incident",
@@ -203,13 +329,15 @@ def test_override_role_gating_and_visibility_kill_switch_with_rollback(
             "action": "ROLLBACK",
             "reason": "Pytest kill switch rollback.",
         },
+        headers=auth_headers("admin"),
     )
     assert incident_rollback.status_code == 200
     rollback_payload = incident_rollback.json()
     assert rollback_payload["status"] == "RESOLVED"
 
     reviewer_after = client.get(
-        f"/api/assessments/{assessment['id']}?viewer_role=reviewer"
+        f"/api/assessments/{assessment['id']}",
+        headers=auth_headers("reviewer"),
     )
     assert reviewer_after.status_code == 200
     reviewer_after_payload = reviewer_after.json()
@@ -226,6 +354,7 @@ def test_health_review_queue_and_audit_export_payloads(
     seed_valuation_data,
     db_session,
     storage,
+    auth_headers,
 ):
     del seed_listing_sources
     del seed_planning_data
@@ -236,6 +365,7 @@ def test_health_review_queue_and_audit_export_payloads(
         drain_jobs=drain_jobs,
         db_session=db_session,
         storage=storage,
+        auth_headers=auth_headers,
     )
     scope_key = assessment["result"]["release_scope_key"]
     assert scope_key is not None
@@ -250,6 +380,7 @@ def test_health_review_queue_and_audit_export_payloads(
             "ranking_suppressed": True,
             "display_block_reason": "Blocked for pytest ranking suppression.",
         },
+        headers=auth_headers("admin"),
     )
     assert ranking_override.status_code == 200
 
@@ -261,10 +392,11 @@ def test_health_review_queue_and_audit_export_payloads(
             "action": "OPEN",
             "reason": "Pytest data-quality incident.",
         },
+        headers=auth_headers("admin"),
     )
     assert incident_open.status_code == 200
 
-    data_health = client.get("/api/health/data")
+    data_health = client.get("/api/health/data", headers=auth_headers("admin"))
     assert data_health.status_code == 200
     data_payload = data_health.json()
     assert "connector_failure_rate" in data_payload
@@ -272,7 +404,7 @@ def test_health_review_queue_and_audit_export_payloads(
     assert "geometry_confidence_distribution" in data_payload
     assert "valuation_metrics" in data_payload
 
-    model_health = client.get("/api/health/model")
+    model_health = client.get("/api/health/model", headers=auth_headers("admin"))
     assert model_health.status_code == 200
     model_payload = model_health.json()
     assert "calibration_by_probability_band" in model_payload
@@ -280,7 +412,7 @@ def test_health_review_queue_and_audit_export_payloads(
     assert "economic_health" in model_payload
     assert any(scope["scope_key"] == scope_key for scope in model_payload["active_scopes"])
 
-    review_queue = client.get("/api/admin/review-queue")
+    review_queue = client.get("/api/admin/review-queue", headers=auth_headers("reviewer"))
     assert review_queue.status_code == 200
     queue_payload = review_queue.json()
     assert any(
@@ -291,7 +423,8 @@ def test_health_review_queue_and_audit_export_payloads(
     assert "failing_boroughs" in queue_payload
 
     audit_export = client.get(
-        f"/api/assessments/{assessment['id']}/audit-export?actor_role=reviewer&requested_by=pytest"
+        f"/api/assessments/{assessment['id']}/audit-export?requested_by=pytest",
+        headers=auth_headers("reviewer"),
     )
     assert audit_export.status_code == 200
     export_payload = audit_export.json()
@@ -306,3 +439,4 @@ def test_health_review_queue_and_audit_export_payloads(
         for row in manifest["override_history"]
     )
     assert manifest["audit_event_refs"]
+    assert any(row["entity_type"] == "valuation_run" for row in manifest["audit_event_refs"])

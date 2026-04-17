@@ -10,6 +10,11 @@ export async function readSessionFromCookies(): Promise<AuthSession | null> {
   return decodeSessionToken(token);
 }
 
+export async function readSessionTokenFromCookies(): Promise<string | null> {
+  const cookieStore = await cookies();
+  return cookieStore.get(AUTH_SESSION_COOKIE_NAME)?.value ?? null;
+}
+
 export async function getAuthContext(): Promise<AuthContext> {
   const session = await readSessionFromCookies();
   return createAuthContext(session);

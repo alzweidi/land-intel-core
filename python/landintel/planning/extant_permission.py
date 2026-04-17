@@ -34,6 +34,7 @@ from .enrich import (
     list_latest_coverage_snapshots,
     match_generic_geometry,
 )
+from .site_context_snapshots import planning_application_snapshot
 
 
 def evaluate_site_extant_permission(
@@ -55,29 +56,44 @@ def evaluate_site_extant_permission(
 
     for link in site.planning_links:
         application = link.planning_application
+        application_snapshot = planning_application_snapshot(link)
         overlap_sqm = _planning_overlap_sqm(site_geometry=site_geometry, application=application)
         material = _is_material_overlap(
             overlap_pct=link.overlap_pct,
             overlap_sqm=overlap_sqm,
-            raw_record_json=application.raw_record_json,
+            raw_record_json=application_snapshot.get(
+                "raw_record_json",
+                application.raw_record_json,
+            ),
             link_type=link.link_type,
         )
         match = ExtantPermissionMatchRead(
             source_kind="planning_application",
-            source_system=application.source_system,
-            source_label=application.external_ref,
-            source_url=application.source_url,
-            source_snapshot_id=application.source_snapshot_id,
+            source_system=application_snapshot.get("source_system", application.source_system),
+            source_label=application_snapshot.get("external_ref", application.external_ref),
+            source_url=application_snapshot.get("source_url", application.source_url),
+            source_snapshot_id=(
+                getattr(link, "source_snapshot_id", None)
+                or application_snapshot.get("source_snapshot_id")
+                or application.source_snapshot_id
+            ),
             planning_application_id=application.id,
             overlap_pct=link.overlap_pct,
             overlap_sqm=overlap_sqm,
             distance_m=link.distance_m,
             material=material,
-            detail=_planning_detail(application=application, material=material),
+            detail=_planning_detail(
+                application=application,
+                application_snapshot=application_snapshot,
+                material=material,
+            ),
         )
 
-        if _is_active_residential_permission(application):
-            if application.source_system == "PLD":
+        if _is_active_residential_permission(
+            application,
+            application_snapshot=application_snapshot,
+        ):
+            if application_snapshot.get("source_system", application.source_system) == "PLD":
                 supplemental_active_matches.append(match)
             elif material:
                 active_material_matches.append(match)
@@ -85,7 +101,10 @@ def evaluate_site_extant_permission(
                 active_nonmaterial_matches.append(match)
             continue
 
-        if _is_non_exclusionary_permission(application):
+        if _is_non_exclusionary_permission(
+            application,
+            application_snapshot=application_snapshot,
+        ):
             non_exclusionary_matches.append(match)
 
     brownfield_states = list_brownfield_states_for_site(session=session, site=site)
@@ -280,27 +299,46 @@ def _is_material_overlap(
     )
 
 
-def _is_active_residential_permission(application: PlanningApplication) -> bool:
-    if application.route_normalized not in {"FULL", "OUTLINE", "PIP", "PRIOR_APPROVAL"}:
+def _is_active_residential_permission(
+    application: PlanningApplication,
+    *,
+    application_snapshot: dict[str, Any] | None = None,
+) -> bool:
+    snapshot = application_snapshot if isinstance(application_snapshot, dict) else {}
+    route_normalized = str(
+        snapshot.get("route_normalized") or application.route_normalized or ""
+    )
+    decision_type = str(snapshot.get("decision_type") or application.decision_type or "")
+    status = str(snapshot.get("status") or application.status or "")
+    raw_record_json = dict(snapshot.get("raw_record_json") or application.raw_record_json or {})
+
+    if route_normalized not in {"FULL", "OUTLINE", "PIP", "PRIOR_APPROVAL"}:
         return False
-    if application.decision_type not in ACTIVE_PERMISSION_DECISION_TYPES:
+    if decision_type not in ACTIVE_PERMISSION_DECISION_TYPES:
         return False
-    if application.status not in ACTIVE_PERMISSION_STATUSES:
+    if status not in ACTIVE_PERMISSION_STATUSES:
         return False
-    if not _is_residential(application.raw_record_json):
+    if not _is_residential(raw_record_json):
         return False
-    expiry_date = _parse_date_from_record(application.raw_record_json, "expiry_date")
+    expiry_date = _parse_date_from_record(raw_record_json, "expiry_date")
     if expiry_date is not None and expiry_date < date.today():
         return False
-    return bool(application.raw_record_json.get("active_extant", True))
+    return bool(raw_record_json.get("active_extant", True))
 
 
-def _is_non_exclusionary_permission(application: PlanningApplication) -> bool:
-    if application.status in NON_EXCLUSIONARY_STATUSES:
+def _is_non_exclusionary_permission(
+    application: PlanningApplication,
+    *,
+    application_snapshot: dict[str, Any] | None = None,
+) -> bool:
+    snapshot = application_snapshot if isinstance(application_snapshot, dict) else {}
+    status = str(snapshot.get("status") or application.status or "")
+    raw_record_json = dict(snapshot.get("raw_record_json") or application.raw_record_json or {})
+    if status in NON_EXCLUSIONARY_STATUSES:
         return True
-    if bool(application.raw_record_json.get("lapsed")):
+    if bool(raw_record_json.get("lapsed")):
         return True
-    expiry_date = _parse_date_from_record(application.raw_record_json, "expiry_date")
+    expiry_date = _parse_date_from_record(raw_record_json, "expiry_date")
     return expiry_date is not None and expiry_date < date.today()
 
 
@@ -357,20 +395,33 @@ def _brownfield_match(
     )
 
 
-def _planning_detail(*, application: PlanningApplication, material: bool) -> str:
-    if _is_active_residential_permission(application):
+def _planning_detail(
+    *,
+    application: PlanningApplication,
+    application_snapshot: dict[str, Any] | None = None,
+    material: bool,
+) -> str:
+    snapshot = application_snapshot if isinstance(application_snapshot, dict) else {}
+    route_or_type = (
+        snapshot.get("route_normalized")
+        or application.route_normalized
+        or snapshot.get("application_type")
+        or application.application_type.lower()
+    )
+    external_ref = snapshot.get("external_ref") or application.external_ref
+    if _is_active_residential_permission(application, application_snapshot=snapshot):
         prefix = "Material" if material else "Potential"
         return (
             f"{prefix} active "
-            f"{application.route_normalized or application.application_type.lower()} "
-            f"permission recorded under {application.external_ref}."
+            f"{route_or_type} "
+            f"permission recorded under {external_ref}."
         )
-    if _is_non_exclusionary_permission(application):
+    if _is_non_exclusionary_permission(application, application_snapshot=snapshot):
         return (
-            f"Historic or non-active planning record {application.external_ref} "
+            f"Historic or non-active planning record {external_ref} "
             "remains relevant evidence."
         )
-    return f"Planning record {application.external_ref} was linked to the site."
+    return f"Planning record {external_ref} was linked to the site."
 
 
 def _parse_date_from_record(raw_record_json: dict[str, Any] | None, key: str) -> date | None:

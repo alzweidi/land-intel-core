@@ -1,4 +1,5 @@
 import hashlib
+import re
 import uuid
 from dataclasses import dataclass
 from pathlib import Path
@@ -20,6 +21,7 @@ from landintel.domain.enums import (
     SourceFreshnessStatus,
 )
 from landintel.domain.models import (
+    AuditEvent,
     JobRun,
     ListingCluster,
     ListingClusterMember,
@@ -28,6 +30,7 @@ from landintel.domain.models import (
     ListingSnapshot,
     ListingSource,
     RawAsset,
+    SiteCandidate,
     SourceSnapshot,
 )
 from landintel.jobs.service import enqueue_cluster_rebuild_job
@@ -192,7 +195,12 @@ def persist_connector_output(
             raw_asset_id=raw_asset_id,
             asset=asset,
         )
-        storage.put_bytes(storage_path, asset.content, content_type=asset.content_type)
+        _store_bytes_idempotently(
+            storage,
+            storage_path=storage_path,
+            payload=asset.content,
+            content_type=asset.content_type,
+        )
 
         raw_asset = RawAsset(
             id=raw_asset_id,
@@ -331,9 +339,10 @@ def persist_connector_output(
 
 
 def rebuild_listing_clusters(session: Session) -> list[ListingCluster]:
-    session.execute(delete(ListingClusterMember))
-    session.execute(delete(ListingCluster))
-    session.flush()
+    existing_cluster_ids = {
+        cluster_id
+        for cluster_id in session.execute(select(ListingCluster.id)).scalars().all()
+    }
 
     current_snapshots = session.execute(
         select(ListingItem)
@@ -373,14 +382,31 @@ def rebuild_listing_clusters(session: Session) -> list[ListingCluster]:
             )
         )
 
+    cluster_results = build_clusters(inputs)
+    listing_cluster_by_item_id = {
+        member.listing_item_id: cluster.cluster_id
+        for cluster in cluster_results
+        for member in cluster.members
+    }
+
     cluster_models: list[ListingCluster] = []
-    for cluster in build_clusters(inputs):
-        cluster_model = ListingCluster(
-            id=cluster.cluster_id,
-            cluster_key=cluster.cluster_key,
-            cluster_status=cluster.cluster_status,
-        )
-        session.add(cluster_model)
+    for cluster in cluster_results:
+        cluster_model = session.get(ListingCluster, cluster.cluster_id)
+        if cluster_model is None:
+            cluster_model = ListingCluster(
+                id=cluster.cluster_id,
+                cluster_key=cluster.cluster_key,
+                cluster_status=cluster.cluster_status,
+            )
+            session.add(cluster_model)
+        else:
+            cluster_model.cluster_key = cluster.cluster_key
+            cluster_model.cluster_status = cluster.cluster_status
+            session.execute(
+                delete(ListingClusterMember).where(
+                    ListingClusterMember.listing_cluster_id == cluster.cluster_id
+                )
+            )
         cluster_models.append(cluster_model)
         for member in cluster.members:
             session.add(
@@ -394,6 +420,49 @@ def rebuild_listing_clusters(session: Session) -> list[ListingCluster]:
             )
 
     session.flush()
+
+    sites = session.execute(
+        select(SiteCandidate).options(selectinload(SiteCandidate.current_listing))
+    ).scalars().all()
+    for site in sites:
+        if site.current_listing_id is None:
+            continue
+        new_cluster_id = listing_cluster_by_item_id.get(site.current_listing_id)
+        if new_cluster_id is None or new_cluster_id == site.listing_cluster_id:
+            continue
+        before_json = _site_cluster_audit_payload(site)
+        site.listing_cluster_id = new_cluster_id
+        after_json = _site_cluster_audit_payload(site)
+        session.add(
+            AuditEvent(
+                action="site_cluster_relinked",
+                entity_type="site_candidate",
+                entity_id=str(site.id),
+                before_json=before_json,
+                after_json=after_json,
+            )
+        )
+    session.flush()
+
+    referenced_cluster_ids = {
+        cluster_id
+        for cluster_id in session.execute(select(SiteCandidate.listing_cluster_id)).scalars().all()
+        if cluster_id is not None
+    }
+    obsolete_cluster_ids = sorted(
+        existing_cluster_ids.difference({cluster.cluster_id for cluster in cluster_results})
+        - referenced_cluster_ids,
+        key=str,
+    )
+    if obsolete_cluster_ids:
+        session.execute(
+            delete(ListingClusterMember).where(
+                ListingClusterMember.listing_cluster_id.in_(obsolete_cluster_ids)
+            )
+        )
+        session.execute(delete(ListingCluster).where(ListingCluster.id.in_(obsolete_cluster_ids)))
+        session.flush()
+
     return cluster_models
 
 
@@ -408,7 +477,7 @@ def build_storage_path(*, source_name: str, raw_asset_id: uuid.UUID, asset) -> s
         "PDF": ".pdf",
         "CSV": ".csv",
     }.get(asset.asset_type.upper(), Path(asset.original_url).suffix or "")
-    return f"raw/{source_name}/{raw_asset_id}{extension}"
+    return f"raw/{_safe_storage_source_name(source_name)}/{raw_asset_id}{extension}"
 
 
 def deterministic_uuid(namespace_seed: uuid.UUID, suffix: str) -> uuid.UUID:
@@ -417,3 +486,44 @@ def deterministic_uuid(namespace_seed: uuid.UUID, suffix: str) -> uuid.UUID:
 
 def sha256_hexdigest(payload: bytes) -> str:
     return hashlib.sha256(payload).hexdigest()
+
+
+def _safe_storage_source_name(source_name: str) -> str:
+    normalized = re.sub(r"[^A-Za-z0-9._-]+", "-", source_name.strip())
+    normalized = normalized.strip("._-")
+    if not normalized:
+        normalized = "source"
+    if len(normalized) <= 64:
+        return normalized
+    digest = hashlib.sha256(source_name.encode("utf-8")).hexdigest()[:12]
+    return f"{normalized[:48]}-{digest}"
+
+
+def _store_bytes_idempotently(
+    storage,
+    *,
+    storage_path: str,
+    payload: bytes,
+    content_type: str,
+) -> None:
+    try:
+        existing_payload = storage.get_bytes(storage_path)
+    except (FileNotFoundError, RuntimeError):
+        storage.put_bytes(storage_path, payload, content_type=content_type)
+        return
+
+    if existing_payload != payload:
+        raise ValueError(f"Refusing to overwrite immutable raw asset at {storage_path}")
+
+
+def _site_cluster_audit_payload(site: SiteCandidate) -> dict[str, object]:
+    return {
+        "site_id": str(site.id),
+        "listing_cluster_id": (
+            None if site.listing_cluster_id is None else str(site.listing_cluster_id)
+        ),
+        "current_listing_id": (
+            None if site.current_listing_id is None else str(site.current_listing_id)
+        ),
+        "display_name": site.display_name,
+    }

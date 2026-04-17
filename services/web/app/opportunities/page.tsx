@@ -1,7 +1,7 @@
 import Link from 'next/link';
 
 import { Badge, PageHeader, Panel, StatCard, TableShell } from '@/components/ui';
-import { getAuthContext } from '@/lib/auth/server';
+import { getAuthContext, readSessionTokenFromCookies } from '@/lib/auth/server';
 import { getOpportunities } from '@/lib/landintel-api';
 
 export const dynamic = 'force-dynamic';
@@ -53,6 +53,7 @@ export default async function OpportunitiesPage({
     string | string[] | undefined
   >;
   const auth = await getAuthContext();
+  const sessionToken = await readSessionTokenFromCookies();
   const role = auth.role ?? 'analyst';
   const includeHidden =
     (role === 'reviewer' || role === 'admin') &&
@@ -75,7 +76,8 @@ export default async function OpportunitiesPage({
     valuation_quality: valuationQuality as 'HIGH' | 'MEDIUM' | 'LOW' | '',
     manual_review_required: manualReviewRequired,
     hidden_mode: includeHidden,
-    viewer_role: role
+    viewer_role: role,
+    sessionToken: sessionToken ?? undefined
   });
 
   const items = result.items;

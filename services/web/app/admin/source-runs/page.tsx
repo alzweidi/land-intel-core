@@ -1,6 +1,7 @@
 import Link from 'next/link';
 
 import { Badge, PageHeader, Panel, StatCard } from '@/components/ui';
+import { readSessionTokenFromCookies } from '@/lib/auth/server';
 import { ListingRunPanel } from '@/components/listing-run-panel';
 import { getSourceRuns } from '@/lib/landintel-api';
 import { phase1ASources } from '@/lib/phase1a-data';
@@ -8,7 +9,8 @@ import { phase1ASources } from '@/lib/phase1a-data';
 export const dynamic = 'force-dynamic';
 
 export default async function SourceRunsPage() {
-  const result = await getSourceRuns();
+  const sessionToken = await readSessionTokenFromCookies();
+  const result = await getSourceRuns({ sessionToken: sessionToken ?? undefined });
 
   return (
     <div className="page-stack">

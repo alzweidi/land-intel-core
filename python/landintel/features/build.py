@@ -19,6 +19,7 @@ from landintel.domain.enums import (
     PriceBasisType,
     ProposalForm,
     ScenarioSource,
+    ScenarioStatus,
 )
 from landintel.domain.models import (
     BrownfieldSiteState,
@@ -32,6 +33,11 @@ from landintel.domain.models import (
 )
 from landintel.geospatial.geometry import load_wkt_geometry
 from landintel.planning.enrich import match_generic_geometry
+from landintel.planning.site_context_snapshots import (
+    constraint_snapshot,
+    planning_application_snapshot,
+    policy_area_snapshot,
+)
 
 FEATURE_VERSION = "phase5a_v1"
 DEFAULT_TEMPLATE_NET_DEVELOPABLE_AREA_PCT = {
@@ -134,6 +140,128 @@ def build_designation_profile_for_geometry(
         if row.feature_family == "heritage" and row.feature_subtype == "listed_building":
             profile["has_listed_building_nearby"] = True
 
+    _apply_brownfield_designations(
+        session=session,
+        geometry=geometry,
+        area_sqm=area_sqm,
+        as_of_date=as_of_date,
+        profile=profile,
+        source_snapshot_ids=source_snapshot_ids,
+    )
+
+    profile["policy_families"] = sorted(policy_families)
+    profile["constraint_families"] = sorted(constraint_families)
+    profile["has_site_allocation"] = "SITE_ALLOCATION" in policy_families
+    profile["has_density_guidance"] = "DENSITY_GUIDANCE" in policy_families
+    return profile, source_snapshot_ids
+
+
+def build_designation_profile_for_site_context(
+    *,
+    session: Session,
+    site: SiteCandidate,
+    geometry,
+    area_sqm: float,
+    as_of_date: date,
+) -> tuple[dict[str, Any], set[str]]:
+    profile, source_snapshot_ids = build_designation_profile_for_geometry(
+        session=session,
+        geometry=geometry,
+        area_sqm=area_sqm,
+        as_of_date=as_of_date,
+    )
+    if not hasattr(site, "policy_facts") or not hasattr(site, "constraint_facts"):
+        return profile, source_snapshot_ids
+
+    policy_families: set[str] = set()
+    constraint_families: set[str] = set()
+    source_snapshot_ids = set()
+    profile.update(
+        {
+            "policy_families": [],
+            "constraint_families": [],
+            "has_site_allocation": False,
+            "has_density_guidance": False,
+            "has_conservation_area": False,
+            "has_article4": False,
+            "has_flood_zone": False,
+            "has_listed_building_nearby": False,
+        }
+    )
+    _apply_brownfield_designations(
+        session=session,
+        geometry=geometry,
+        area_sqm=area_sqm,
+        as_of_date=as_of_date,
+        profile=profile,
+        source_snapshot_ids=source_snapshot_ids,
+    )
+
+    for fact in site.policy_facts:
+        snapshot = policy_area_snapshot(fact)
+        if not _active_on_date(
+            effective_from=_parse_snapshot_date(snapshot.get("legal_effective_from")),
+            effective_to=_parse_snapshot_date(snapshot.get("legal_effective_to")),
+            as_of_date=as_of_date,
+        ):
+            continue
+        policy_family = str(snapshot.get("policy_family") or fact.policy_area.policy_family)
+        policy_families.add(policy_family)
+        source_snapshot_ids.add(
+            str(
+                getattr(fact, "source_snapshot_id", None)
+                or snapshot.get("source_snapshot_id")
+                or fact.policy_area.source_snapshot_id
+            )
+        )
+
+    for fact in site.constraint_facts:
+        snapshot = constraint_snapshot(fact)
+        if not _active_on_date(
+            effective_from=_parse_snapshot_date(snapshot.get("effective_from")),
+            effective_to=_parse_snapshot_date(snapshot.get("effective_to")),
+            as_of_date=as_of_date,
+        ):
+            continue
+        feature_family = str(
+            snapshot.get("feature_family") or fact.constraint_feature.feature_family
+        )
+        feature_subtype = str(
+            snapshot.get("feature_subtype") or fact.constraint_feature.feature_subtype
+        )
+        constraint_families.add(f"{feature_family}:{feature_subtype}")
+        source_snapshot_ids.add(
+            str(
+                getattr(fact, "source_snapshot_id", None)
+                or snapshot.get("source_snapshot_id")
+                or fact.constraint_feature.source_snapshot_id
+            )
+        )
+        if feature_family == "heritage" and feature_subtype == "conservation_area":
+            profile["has_conservation_area"] = True
+        if feature_family == "article4":
+            profile["has_article4"] = True
+        if feature_family == "flood":
+            profile["has_flood_zone"] = True
+        if feature_family == "heritage" and feature_subtype == "listed_building":
+            profile["has_listed_building_nearby"] = True
+
+    profile["policy_families"] = sorted(policy_families)
+    profile["constraint_families"] = sorted(constraint_families)
+    profile["has_site_allocation"] = "SITE_ALLOCATION" in policy_families
+    profile["has_density_guidance"] = "DENSITY_GUIDANCE" in policy_families
+    return profile, source_snapshot_ids
+
+
+def _apply_brownfield_designations(
+    *,
+    session: Session,
+    geometry,
+    area_sqm: float,
+    as_of_date: date,
+    profile: dict[str, Any],
+    source_snapshot_ids: set[str],
+) -> None:
     brownfield_rows = session.execute(select(BrownfieldSiteState)).scalars().all()
     for row in brownfield_rows:
         if not _active_on_date(
@@ -159,12 +287,6 @@ def build_designation_profile_for_geometry(
             profile["pip_active"] = True
         if (row.tdc_status or "").upper() == "ACTIVE":
             profile["tdc_active"] = True
-
-    profile["policy_families"] = sorted(policy_families)
-    profile["constraint_families"] = sorted(constraint_families)
-    profile["has_site_allocation"] = "SITE_ALLOCATION" in policy_families
-    profile["has_density_guidance"] = "DENSITY_GUIDANCE" in policy_families
-    return profile, source_snapshot_ids
 
 
 def derive_archetype_key(
@@ -261,8 +383,9 @@ def build_feature_snapshot(
             "notes": notes,
         }
 
-    designation_profile, designation_source_ids = build_designation_profile_for_geometry(
+    designation_profile, designation_source_ids = build_designation_profile_for_site_context(
         session=session,
+        site=site,
         geometry=site_geometry,
         area_sqm=site_area_sqm,
         as_of_date=as_of_date,
@@ -346,6 +469,35 @@ def build_feature_snapshot(
     )
     add_feature(
         family="location_and_access",
+        name="scenario_template_key",
+        value=scenario.template_key,
+        analyst_override=scenario.scenario_source == ScenarioSource.ANALYST,
+    )
+    add_feature(
+        family="location_and_access",
+        name="site_manual_review_required",
+        value=bool(getattr(site, "manual_review_required", False)),
+    )
+    add_feature(
+        family="location_and_access",
+        name="scenario_manual_review_required",
+        value=bool(getattr(scenario, "manual_review_required", False)),
+        analyst_override=scenario.scenario_source == ScenarioSource.ANALYST,
+    )
+    add_feature(
+        family="location_and_access",
+        name="scenario_status",
+        value=getattr(scenario, "status", ScenarioStatus.AUTO_CONFIRMED).value,
+        analyst_override=scenario.scenario_source == ScenarioSource.ANALYST,
+    )
+    add_feature(
+        family="location_and_access",
+        name="scenario_is_stale",
+        value=bool(getattr(scenario, "stale_reason", None)),
+        analyst_override=scenario.scenario_source == ScenarioSource.ANALYST,
+    )
+    add_feature(
+        family="location_and_access",
         name="access_assumption_present",
         value=bool((scenario.access_assumption or "").strip()),
         analyst_override=scenario.scenario_source == ScenarioSource.ANALYST,
@@ -384,13 +536,29 @@ def build_feature_snapshot(
 
     for link in site.planning_links:
         application = link.planning_application
-        if not _known_by_as_of(application=application, as_of_date=as_of_date):
+        application_snapshot = planning_application_snapshot(link)
+        if not _known_by_as_of_snapshot(
+            application=application,
+            snapshot=application_snapshot,
+            as_of_date=as_of_date,
+        ):
             continue
-        on_site_source_ids.add(str(application.source_snapshot_id))
-        on_site_raw_ids.update(_planning_application_raw_asset_ids(application))
-        if application.route_normalized == "PRIOR_APPROVAL":
+        source_snapshot_id = (
+            getattr(link, "source_snapshot_id", None)
+            or application_snapshot.get("source_snapshot_id")
+            or application.source_snapshot_id
+        )
+        on_site_source_ids.add(str(source_snapshot_id))
+        on_site_raw_ids.update(_planning_application_snapshot_raw_asset_ids(application_snapshot))
+        route_normalized = str(
+            application_snapshot.get("route_normalized") or application.route_normalized or ""
+        )
+        if route_normalized == "PRIOR_APPROVAL":
             on_site_prior_approval += 1
         label = label_by_application_id.get(application.id)
+        units_proposed = application_snapshot.get("units_proposed")
+        if not isinstance(units_proposed, int):
+            units_proposed = application.units_proposed
         if (
             label
             and label.first_substantive_decision_date
@@ -398,21 +566,30 @@ def build_feature_snapshot(
         ):
             if label.label_class == HistoricalLabelClass.POSITIVE:
                 on_site_positive += 1
-                if application.units_proposed is not None:
-                    on_site_units_positive.append(application.units_proposed)
+                if units_proposed is not None:
+                    on_site_units_positive.append(units_proposed)
             elif label.label_class == HistoricalLabelClass.NEGATIVE:
                 on_site_negative += 1
-                if application.units_proposed is not None:
-                    on_site_units_negative.append(application.units_proposed)
+                if units_proposed is not None:
+                    on_site_units_negative.append(units_proposed)
+        decision = str(application_snapshot.get("decision") or application.decision or "")
         if (
-            (application.decision or "").strip().upper() == "WITHDRAWN"
-            and _decision_on_or_before(application=application, as_of_date=as_of_date)
+            decision.strip().upper() == "WITHDRAWN"
+            and _decision_on_or_before_snapshot(
+                application=application,
+                snapshot=application_snapshot,
+                as_of_date=as_of_date,
+            )
         ):
             on_site_withdrawn += 1
+        raw_record_json = application_snapshot.get("raw_record_json")
+        if not isinstance(raw_record_json, dict):
+            raw_record_json = dict(application.raw_record_json or {})
         if bool(
-            (application.raw_record_json or {}).get("active_extant")
-        ) and _decision_on_or_before(
+            raw_record_json.get("active_extant")
+        ) and _decision_on_or_before_snapshot(
             application=application,
+            snapshot=application_snapshot,
             as_of_date=as_of_date,
         ):
             active_extant_count += 1
@@ -632,6 +809,15 @@ def build_feature_snapshot(
     )
     add_feature(
         family="borough_and_market_context",
+        name="current_price_basis_type",
+        value=(
+            None
+            if site.current_price_basis_type in {None, PriceBasisType.UNKNOWN}
+            else site.current_price_basis_type.value
+        ),
+    )
+    add_feature(
+        family="borough_and_market_context",
         name="designation_archetype_key",
         value=derive_archetype_key(
             template_key=scenario.template_key,
@@ -748,6 +934,12 @@ def _active_on_date(
     return not (effective_to is not None and effective_to < as_of_date)
 
 
+def _parse_snapshot_date(value: object) -> date | None:
+    if not isinstance(value, str) or not value:
+        return None
+    return date.fromisoformat(value)
+
+
 def _known_by_as_of(*, application: PlanningApplication, as_of_date: date) -> bool:
     return not (application.valid_date is not None and application.valid_date > as_of_date)
 
@@ -756,10 +948,41 @@ def _decision_on_or_before(*, application: PlanningApplication, as_of_date: date
     return application.decision_date is not None and application.decision_date <= as_of_date
 
 
+def _known_by_as_of_snapshot(
+    *,
+    application: PlanningApplication,
+    snapshot: dict[str, Any],
+    as_of_date: date,
+) -> bool:
+    valid_date = _parse_snapshot_date(snapshot.get("valid_date")) or application.valid_date
+    return not (valid_date is not None and valid_date > as_of_date)
+
+
+def _decision_on_or_before_snapshot(
+    *,
+    application: PlanningApplication,
+    snapshot: dict[str, Any],
+    as_of_date: date,
+) -> bool:
+    decision_date = _parse_snapshot_date(snapshot.get("decision_date")) or application.decision_date
+    return decision_date is not None and decision_date <= as_of_date
+
+
 def _planning_application_raw_asset_ids(application: PlanningApplication) -> set[str]:
     ids: set[str] = set()
     for document in application.documents:
         ids.add(str(document.asset_id))
+    return ids
+
+
+def _planning_application_snapshot_raw_asset_ids(snapshot: dict[str, Any]) -> set[str]:
+    ids: set[str] = set()
+    for document in snapshot.get("documents") or []:
+        if not isinstance(document, dict):
+            continue
+        asset_id = document.get("asset_id")
+        if asset_id:
+            ids.add(str(asset_id))
     return ids
 
 

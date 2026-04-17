@@ -34,7 +34,7 @@ from landintel.services.assessments_readback import serialize_assessment_detail
 from landintel.services.scenarios_readback import serialize_site_scenario_summary
 from landintel.services.sites_readback import serialize_site_summary
 from landintel.valuation.ranking import derive_opportunity_band, ranking_sort_key
-from landintel.valuation.service import latest_valuation_run
+from landintel.valuation.service import frozen_valuation_run
 
 
 def list_opportunities(
@@ -124,7 +124,7 @@ def get_opportunity(
         viewer_role=viewer_role,
         include_hidden=include_hidden,
     )
-    valuation_run = latest_valuation_run(run)
+    valuation_run = frozen_valuation_run(run)
     override_summary = build_override_summary(session=session, assessment_run=run)
     effective_valuation = (
         override_summary.effective_valuation
@@ -135,7 +135,10 @@ def get_opportunity(
         effective_valuation is not None
         and not (
             summary.visibility is not None
-            and not summary.visibility.blocked
+            and (
+                summary.visibility.hidden_probability_allowed
+                or summary.visibility.visible_probability_allowed
+            )
         )
     ):
         effective_valuation = effective_valuation.model_copy(update={"expected_uplift_mid": None})
@@ -191,13 +194,15 @@ def _serialize_opportunity_summary(
         include_hidden=include_hidden,
     )
     override_summary = build_override_summary(session=session, assessment_run=run)
-    valuation_run = latest_valuation_run(run)
+    valuation_run = frozen_valuation_run(run)
     effective_valuation = (
         override_summary.effective_valuation
         if override_summary is not None and override_summary.effective_valuation is not None
         else serialize_valuation_result(valuation_run)
     )
-    if effective_valuation is not None and visibility.blocked:
+    if effective_valuation is not None and not (
+        visibility.hidden_probability_allowed or visibility.visible_probability_allowed
+    ):
         effective_valuation = effective_valuation.model_copy(update={"expected_uplift_mid": None})
     score_execution_status = (
         None

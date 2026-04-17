@@ -35,7 +35,7 @@ fail() { echo -e "${RED}  ✗${NC} $*"; exit 1; }
 # ------------------------------------------------------------------
 log "Waiting for API at ${API_URL} ..."
 for i in $(seq 1 30); do
-    if curl -sf "${API_URL}/api/health/data" > /dev/null 2>&1; then
+    if curl -sf "${API_URL}/readyz" > /dev/null 2>&1; then
         ok "API is ready"
         break
     fi
@@ -73,15 +73,31 @@ ok "Valuation data loaded"
 # Step 4: Build and activate the hidden probability model
 # ------------------------------------------------------------------
 log "Step 4/4 — Building hidden probability model release ..."
-RESPONSE=$(curl -sf -X POST "${API_URL}/api/admin/model-releases/rebuild" \
-    -H 'Content-Type: application/json' \
-    -d '{"requested_by":"local-setup","auto_activate_hidden":true}' 2>&1) || true
+RELEASE_OUTPUT=$(docker compose exec -T api python - <<'PY'
+from landintel.config import get_settings
+from landintel.db.session import get_session_factory
+from landintel.scoring.release import build_hidden_model_releases
+from landintel.storage.factory import build_storage
 
-if echo "$RESPONSE" | grep -q '"id"'; then
-    ok "Hidden model release built and activated"
-else
-    warn "Model release may need manual check — response: ${RESPONSE}"
-fi
+settings = get_settings()
+session_factory = get_session_factory(settings.database_url, settings.database_echo)
+storage = build_storage(settings)
+
+with session_factory() as session:
+    releases = build_hidden_model_releases(
+        session=session,
+        storage=storage,
+        requested_by="local-setup",
+        auto_activate_hidden=True,
+    )
+    session.commit()
+    active_hidden = [release for release in releases if release.status.value == "ACTIVE"]
+    if not active_hidden:
+        raise SystemExit("No active hidden release was created.")
+    print(", ".join(sorted(f"{release.template_key}:{release.status.value}" for release in releases)))
+PY
+)
+ok "Hidden model release built and activated (${RELEASE_OUTPUT})"
 
 # ------------------------------------------------------------------
 # Done

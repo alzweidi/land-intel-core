@@ -61,8 +61,19 @@ def derive_area_summary(
     )
 
 
-def build_basis_json(site: SiteCandidate) -> dict[str, Any]:
-    if site.current_price_gbp is None or site.current_price_basis_type == PriceBasisType.UNKNOWN:
+def build_basis_json(
+    site: SiteCandidate,
+    *,
+    current_price_gbp: int | None = None,
+    current_price_basis_type: PriceBasisType | None = None,
+) -> dict[str, Any]:
+    resolved_price = site.current_price_gbp if current_price_gbp is None else current_price_gbp
+    resolved_basis_type = (
+        site.current_price_basis_type
+        if current_price_basis_type is None
+        else current_price_basis_type
+    )
+    if resolved_price is None or resolved_basis_type == PriceBasisType.UNKNOWN:
         return {
             "basis_available": False,
             "basis_type": None,
@@ -71,8 +82,8 @@ def build_basis_json(site: SiteCandidate) -> dict[str, Any]:
         }
     return {
         "basis_available": True,
-        "basis_type": site.current_price_basis_type.value,
-        "basis_price_gbp": int(site.current_price_gbp),
+        "basis_type": resolved_basis_type.value,
+        "basis_price_gbp": int(resolved_price),
         "note": "Current listing basis is used as the acquisition reference.",
     }
 
@@ -85,9 +96,17 @@ def compute_residual_valuation(
     price_per_sqm_low: float | None,
     price_per_sqm_mid: float | None,
     price_per_sqm_high: float | None,
+    current_price_gbp: int | None = None,
+    current_price_basis_type: PriceBasisType | None = None,
+    borough_id: str | None = None,
 ) -> ResidualValuationSummary:
     area_summary = derive_area_summary(scenario=scenario, assumption_set=assumption_set)
-    basis_json = build_basis_json(site)
+    basis_json = build_basis_json(
+        site,
+        current_price_gbp=current_price_gbp,
+        current_price_basis_type=current_price_basis_type,
+    )
+    resolved_borough_id = site.borough_id if borough_id is None else borough_id
     if (
         price_per_sqm_low is None
         or price_per_sqm_mid is None
@@ -130,19 +149,22 @@ def compute_residual_valuation(
     mayoral_cil = area_summary.gia_sqm * float(burden_json.get("mayoral_cil_per_sqm") or 0.0)
     borough_cil_map = dict(burden_json.get("borough_cil_per_sqm") or {})
     borough_cil = area_summary.gia_sqm * float(
-        borough_cil_map.get(site.borough_id or "", borough_cil_map.get("default", 0.0))
+        borough_cil_map.get(resolved_borough_id or "", borough_cil_map.get("default", 0.0))
     )
 
     affordable_threshold_map = dict(burden_json.get("affordable_housing_trigger_units") or {})
     affordable_threshold = int(
         affordable_threshold_map.get(
-            site.borough_id or "",
+            resolved_borough_id or "",
             affordable_threshold_map.get("default", 10),
         )
     )
     affordable_pct_map = dict(burden_json.get("affordable_housing_burden_pct_of_gdv") or {})
     affordable_pct = float(
-        affordable_pct_map.get(site.borough_id or "", affordable_pct_map.get("default", 0.0))
+        affordable_pct_map.get(
+            resolved_borough_id or "",
+            affordable_pct_map.get("default", 0.0),
+        )
     )
 
     def _land_value(price_per_sqm: float) -> tuple[float, dict[str, float]]:

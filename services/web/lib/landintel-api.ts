@@ -24,7 +24,7 @@ const API_BASE_URL =
     ? process.env.INTERNAL_API_BASE_URL ??
       process.env.NEXT_PUBLIC_API_BASE_URL ??
       'http://localhost:8000'
-    : process.env.NEXT_PUBLIC_API_BASE_URL ?? 'http://localhost:8000';
+    : '';
 const REQUEST_TIMEOUT_MS = 2500;
 
 type QueryValue = string | number | boolean | null | undefined;
@@ -714,10 +714,10 @@ export type VisibilityGate = {
   blocked_reason_text: string | null;
   active_incident_id: string | null;
   active_incident_reason: string | null;
-  replay_verified: boolean;
-  payload_hash_matches: boolean;
-  artifact_hashes_match: boolean;
-  scope_release_matches_result: boolean;
+  replay_verified: boolean | null;
+  payload_hash_matches: boolean | null;
+  artifact_hashes_match: boolean | null;
+  scope_release_matches_result: boolean | null;
 };
 
 export type AssessmentOverrideSummary = {
@@ -1077,17 +1077,23 @@ function buildQueryString(params: Record<string, QueryValue>): string {
   return output ? `?${output}` : '';
 }
 
-async function requestJson(path: string, init?: RequestInit): Promise<unknown | null> {
+type ApiRequestInit = RequestInit & {
+  sessionToken?: string;
+};
+
+async function requestJson(path: string, init?: ApiRequestInit): Promise<unknown | null> {
   const controller = new AbortController();
   const timeout = globalThis.setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
 
   try {
+    const headers = new Headers(init?.headers ?? {});
+    headers.set('Accept', 'application/json');
+    if (init?.sessionToken) {
+      headers.set('x-landintel-session', init.sessionToken);
+    }
     const response = await fetch(`${API_BASE_URL}${path}`, {
       cache: 'no-store',
-      headers: {
-        Accept: 'application/json',
-        ...(init?.headers ?? {})
-      },
+      headers,
       ...init,
       signal: controller.signal
     });
@@ -1250,9 +1256,10 @@ function mapRun(value: unknown): Phase1ARunRecord {
 
 async function queryApiCollection<T>(
   path: string,
-  mapper: (value: unknown) => T
+  mapper: (value: unknown) => T,
+  options: { sessionToken?: string } = {}
 ): Promise<{ items: T[]; apiAvailable: boolean }> {
-  const payload = await requestJson(path);
+  const payload = await requestJson(path, { sessionToken: options.sessionToken });
   const items = pickCollection<T>(payload as ApiCollectionResponse<T>);
   return {
     items: items.map(mapper),
@@ -1429,8 +1436,10 @@ export async function getCluster(clusterId: string): Promise<{ item: Phase1AClus
   };
 }
 
-export async function getSourceRuns(): Promise<{ items: Phase1ARunRecord[]; apiAvailable: boolean }> {
-  const result = await queryApiCollection('/api/listings/runs', mapRun);
+export async function getSourceRuns(
+  options: { sessionToken?: string } = {}
+): Promise<{ items: Phase1ARunRecord[]; apiAvailable: boolean }> {
+  const result = await queryApiCollection('/api/listings/runs', mapRun, options);
   return {
     items: result.items.length > 0 ? result.items : phase1ARuns,
     apiAvailable: result.apiAvailable
@@ -2305,14 +2314,32 @@ function mapVisibilityGate(value: unknown): VisibilityGate | null {
       value.active_incident_reason === null || value.active_incident_reason === undefined
         ? null
         : toStringValue(value.active_incident_reason),
-    replay_verified: Boolean(value.replay_verified ?? false),
-    payload_hash_matches: Boolean(value.payload_hash_matches ?? value.payloadHashMatches ?? false),
-    artifact_hashes_match: Boolean(
-      value.artifact_hashes_match ?? value.artifactHashesMatch ?? false
-    ),
-    scope_release_matches_result: Boolean(
-      value.scope_release_matches_result ?? value.scopeReleaseMatchesResult ?? false
-    )
+    replay_verified:
+      value.replay_verified === null || value.replay_verified === undefined
+        ? null
+        : Boolean(value.replay_verified),
+    payload_hash_matches:
+      value.payload_hash_matches === null ||
+      value.payload_hash_matches === undefined
+        ? value.payloadHashMatches === null || value.payloadHashMatches === undefined
+          ? null
+          : Boolean(value.payloadHashMatches)
+        : Boolean(value.payload_hash_matches),
+    artifact_hashes_match:
+      value.artifact_hashes_match === null ||
+      value.artifact_hashes_match === undefined
+        ? value.artifactHashesMatch === null || value.artifactHashesMatch === undefined
+          ? null
+          : Boolean(value.artifactHashesMatch)
+        : Boolean(value.artifact_hashes_match),
+    scope_release_matches_result:
+      value.scope_release_matches_result === null ||
+      value.scope_release_matches_result === undefined
+        ? value.scopeReleaseMatchesResult === null ||
+            value.scopeReleaseMatchesResult === undefined
+          ? null
+          : Boolean(value.scopeReleaseMatchesResult)
+        : Boolean(value.scope_release_matches_result)
   };
 }
 
@@ -3671,13 +3698,14 @@ export async function getAssessments(
 
 export async function getAssessment(
   assessmentId: string,
-  options: { hidden_mode?: boolean; viewer_role?: AppRole } = {}
+  options: { hidden_mode?: boolean; viewer_role?: AppRole; sessionToken?: string } = {}
 ): Promise<{ item: AssessmentDetail | null; apiAvailable: boolean }> {
   const payload = await requestJson(
     `/api/assessments/${encodeURIComponent(assessmentId)}${buildQueryString({
       hidden_mode: options.hidden_mode ? true : undefined,
       viewer_role: options.viewer_role
-    })}`
+    })}`,
+    { sessionToken: options.sessionToken }
   );
   return {
     apiAvailable: payload !== null,
@@ -3711,9 +3739,16 @@ export async function createAssessment(
 }
 
 export async function getOpportunities(
-  query: OpportunitiesQuery & { hidden_mode?: boolean; viewer_role?: AppRole } = {}
+  query: OpportunitiesQuery & {
+    hidden_mode?: boolean;
+    viewer_role?: AppRole;
+    sessionToken?: string;
+  } = {}
 ): Promise<{ items: OpportunitySummary[]; total: number; apiAvailable: boolean }> {
-  const payload = await requestJson(`/api/opportunities/${buildQueryString(query)}`);
+  const { sessionToken, ...queryValues } = query;
+  const payload = await requestJson(`/api/opportunities/${buildQueryString(queryValues)}`, {
+    sessionToken
+  });
   if (payload && isRecord(payload)) {
     const items = pickCollection(payload.items as ApiCollectionResponse<unknown>).map(
       mapOpportunitySummary
@@ -3734,13 +3769,14 @@ export async function getOpportunities(
 
 export async function getOpportunity(
   siteId: string,
-  options: { hidden_mode?: boolean; viewer_role?: AppRole } = {}
+  options: { hidden_mode?: boolean; viewer_role?: AppRole; sessionToken?: string } = {}
 ): Promise<{ item: OpportunityDetail | null; apiAvailable: boolean }> {
   const payload = await requestJson(
     `/api/opportunities/${encodeURIComponent(siteId)}${buildQueryString({
       hidden_mode: options.hidden_mode ? true : undefined,
       viewer_role: options.viewer_role
-    })}`
+    })}`,
+    { sessionToken: options.sessionToken }
   );
   return {
     apiAvailable: payload !== null,
@@ -3751,10 +3787,13 @@ export async function getOpportunity(
 export async function getGoldSetCases(query: {
   review_status?: string;
   template_key?: string;
+  sessionToken?: string;
 } = {}): Promise<{ items: HistoricalLabelSummary[]; apiAvailable: boolean }> {
+  const { sessionToken, ...queryValues } = query;
   const result = await queryApiCollection(
-    `/api/admin/gold-set/cases${buildQueryString(query)}`,
-    mapHistoricalLabelSummary
+    `/api/admin/gold-set/cases${buildQueryString(queryValues)}`,
+    mapHistoricalLabelSummary,
+    { sessionToken }
   );
   return {
     items: result.items,
@@ -3763,9 +3802,12 @@ export async function getGoldSetCases(query: {
 }
 
 export async function getGoldSetCase(
-  caseId: string
+  caseId: string,
+  options: { sessionToken?: string } = {}
 ): Promise<{ item: HistoricalLabelCase | null; apiAvailable: boolean }> {
-  const payload = await requestJson(`/api/admin/gold-set/cases/${encodeURIComponent(caseId)}`);
+  const payload = await requestJson(`/api/admin/gold-set/cases/${encodeURIComponent(caseId)}`, {
+    sessionToken: options.sessionToken
+  });
   return {
     apiAvailable: payload !== null,
     item: payload ? mapHistoricalLabelCase(payload) : null
@@ -3774,10 +3816,13 @@ export async function getGoldSetCase(
 
 export async function getModelReleases(query: {
   template_key?: string;
+  sessionToken?: string;
 } = {}): Promise<{ items: ModelReleaseSummary[]; apiAvailable: boolean }> {
+  const { sessionToken, ...queryValues } = query;
   const result = await queryApiCollection(
-    `/api/admin/model-releases${buildQueryString(query)}`,
-    mapModelReleaseSummary
+    `/api/admin/model-releases${buildQueryString(queryValues)}`,
+    mapModelReleaseSummary,
+    { sessionToken }
   );
   return {
     items: result.items,
@@ -3786,9 +3831,12 @@ export async function getModelReleases(query: {
 }
 
 export async function getModelRelease(
-  releaseId: string
+  releaseId: string,
+  options: { sessionToken?: string } = {}
 ): Promise<{ item: ModelReleaseDetail | null; apiAvailable: boolean }> {
-  const payload = await requestJson(`/api/admin/model-releases/${encodeURIComponent(releaseId)}`);
+  const payload = await requestJson(`/api/admin/model-releases/${encodeURIComponent(releaseId)}`, {
+    sessionToken: options.sessionToken
+  });
   return {
     apiAvailable: payload !== null,
     item: payload ? mapModelReleaseDetail(payload) : null
@@ -3866,8 +3914,12 @@ export async function getAssessmentAuditExport(
   };
 }
 
-export async function getReviewQueue(): Promise<{ item: ReviewQueueResponse | null; apiAvailable: boolean }> {
-  const payload = await requestJson('/api/admin/review-queue');
+export async function getReviewQueue(
+  options: { sessionToken?: string } = {}
+): Promise<{ item: ReviewQueueResponse | null; apiAvailable: boolean }> {
+  const payload = await requestJson('/api/admin/review-queue', {
+    sessionToken: options.sessionToken
+  });
   if (!payload || !isRecord(payload)) {
     return { item: null, apiAvailable: false };
   }
@@ -3922,8 +3974,12 @@ export async function getReviewQueue(): Promise<{ item: ReviewQueueResponse | nu
   };
 }
 
-export async function getDataHealth(): Promise<{ item: DataHealthResponse | null; apiAvailable: boolean }> {
-  const payload = await requestJson('/api/health/data');
+export async function getDataHealth(
+  options: { sessionToken?: string } = {}
+): Promise<{ item: DataHealthResponse | null; apiAvailable: boolean }> {
+  const payload = await requestJson('/api/health/data', {
+    sessionToken: options.sessionToken
+  });
   if (!payload || !isRecord(payload)) {
     return { item: null, apiAvailable: false };
   }
@@ -3977,8 +4033,12 @@ export async function getDataHealth(): Promise<{ item: DataHealthResponse | null
   };
 }
 
-export async function getModelHealth(): Promise<{ item: ModelHealthResponse | null; apiAvailable: boolean }> {
-  const payload = await requestJson('/api/health/model');
+export async function getModelHealth(
+  options: { sessionToken?: string } = {}
+): Promise<{ item: ModelHealthResponse | null; apiAvailable: boolean }> {
+  const payload = await requestJson('/api/health/model', {
+    sessionToken: options.sessionToken
+  });
   if (!payload || !isRecord(payload)) {
     return { item: null, apiAvailable: false };
   }

@@ -2,7 +2,7 @@ import Link from 'next/link';
 
 import { GoldSetReviewPanel } from '@/components/gold-set-review-panel';
 import { Badge, PageHeader, Panel, StatCard } from '@/components/ui';
-import { getAuthContext } from '@/lib/auth/server';
+import { getAuthContext, readSessionTokenFromCookies } from '@/lib/auth/server';
 import { getGoldSetCase, getGoldSetCases, getReviewQueue } from '@/lib/landintel-api';
 
 export const dynamic = 'force-dynamic';
@@ -31,15 +31,16 @@ export default async function ReviewQueuePage({
     string | string[] | undefined
   >;
   const auth = await getAuthContext();
+  const sessionToken = await readSessionTokenFromCookies();
   const role = auth.role ?? 'reviewer';
   const selectedCaseId = typeof params.caseId === 'string' ? params.caseId : '';
-  const queue = await getReviewQueue();
-  const result = await getGoldSetCases();
+  const queue = await getReviewQueue({ sessionToken: sessionToken ?? undefined });
+  const result = await getGoldSetCases({ sessionToken: sessionToken ?? undefined });
   const items = result.items;
   const selectedSummary =
     items.find((item) => item.id === selectedCaseId) ?? items[0] ?? null;
   const selectedDetail = selectedSummary
-    ? await getGoldSetCase(selectedSummary.id)
+    ? await getGoldSetCase(selectedSummary.id, { sessionToken: sessionToken ?? undefined })
     : { item: null, apiAvailable: result.apiAvailable };
 
   const pendingCount = items.filter((item) => item.review_status === 'PENDING').length;

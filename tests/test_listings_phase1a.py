@@ -53,7 +53,10 @@ def test_html_parser_handles_savills_like_page_with_generic_login_heading() -> N
     html = """
     <html>
       <head>
-        <title>Savills Property Auctions | Land lying to the east of Parkhurst Road, Holloway, London N7 0SD</title>
+        <title>
+          Savills Property Auctions | Land lying to the east of Parkhurst Road, Holloway,
+          London N7 0SD
+        </title>
       </head>
       <body>
         <h1>Login to see times and book a viewing</h1>
@@ -77,7 +80,9 @@ def test_html_parser_handles_savills_like_page_with_generic_login_heading() -> N
           window.__LOT__ = {"long_lat":"{\\"lat\\":51.555351199999997,\\"lng\\":-0.1221343}"};
         </script>
         <a href="/downloads/auction_notices.pdf">Auction notices</a>
-        <a href="/assets/files/terms_and_conditions/common_conditions.pdf">Common auction conditions</a>
+        <a href="/assets/files/terms_and_conditions/common_conditions.pdf">
+          Common auction conditions
+        </a>
       </body>
     </html>
     """
@@ -94,8 +99,14 @@ def test_html_parser_handles_savills_like_page_with_generic_login_heading() -> N
         ),
     )
 
-    assert parsed.headline == "Land lying to the east of Parkhurst Road, Holloway, London N7 0SD"
-    assert parsed.address_text == "Land lying to the east of Parkhurst Road, Holloway, London N7 0SD"
+    assert (
+        parsed.headline
+        == "Land lying to the east of Parkhurst Road, Holloway, London N7 0SD"
+    )
+    assert (
+        parsed.address_text
+        == "Land lying to the east of Parkhurst Road, Holloway, London N7 0SD"
+    )
     assert parsed.description_text == (
         "Currently a broadly level and cleared site with partially demolished garages."
     )
@@ -270,3 +281,52 @@ def test_storage_is_immutable(storage, test_settings) -> None:
 
     saved = Path(test_settings.storage_local_root) / first_path
     assert saved.read_bytes() == b"alpha"
+
+
+@respx.mock
+def test_manual_url_source_name_is_sanitized_before_storage_path_use(
+    client,
+    drain_jobs,
+    seed_listing_sources,
+    session_factory,
+) -> None:
+    del seed_listing_sources
+
+    respx.get(MANUAL_LISTING_URL).mock(
+        return_value=Response(200, text=MANUAL_LISTING_HTML, headers={"content-type": "text/html"})
+    )
+    respx.get(MANUAL_BROCHURE_URL).mock(
+        return_value=Response(
+            200,
+            content=MANUAL_BROCHURE_PDF,
+            headers={"content-type": "application/pdf"},
+        )
+    )
+    respx.get(MANUAL_MAP_URL).mock(
+        return_value=Response(
+            200,
+            content=MANUAL_MAP_PDF,
+            headers={"content-type": "application/pdf"},
+        )
+    )
+
+    response = client.post(
+        "/api/listings/intake/url",
+        json={
+            "url": MANUAL_LISTING_URL,
+            "source_name": "../../unsafe/source name",
+            "requested_by": "pytest",
+        },
+    )
+    assert response.status_code == 202
+
+    processed = drain_jobs(max_iterations=5)
+    assert processed >= 2
+
+    with session_factory() as session:
+        assets = session.query(RawAsset).all()
+        assert assets
+        for asset in assets:
+            assert asset.storage_path.startswith("raw/")
+            assert asset.storage_path.count("/") == 2
+            assert ".." not in asset.storage_path

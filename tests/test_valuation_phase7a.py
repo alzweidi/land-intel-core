@@ -26,6 +26,9 @@ from landintel.valuation.quality import (
 )
 from landintel.valuation.ranking import derive_opportunity_band, ranking_sort_key
 from landintel.valuation.residual import compute_residual_valuation, derive_area_summary
+from landintel.valuation.service import (
+    build_or_refresh_valuation_for_assessment_with_assumption_set,
+)
 
 from tests.test_assessments_phase5a import _build_confirmed_camden_scenario
 from tests.test_planning_phase3a import _build_southwark_site
@@ -248,6 +251,7 @@ def test_assessment_builds_valuation_block_and_replay_is_stable(
     seed_valuation_data,
     db_session,
     storage,
+    auth_headers,
 ):
     del seed_listing_sources
     del seed_planning_data
@@ -262,7 +266,7 @@ def test_assessment_builds_valuation_block_and_replay_is_stable(
         "requested_by": "pytest",
         "hidden_mode": True,
     }
-    first = client.post("/api/assessments", json=payload)
+    first = client.post("/api/assessments", json=payload, headers=auth_headers("reviewer"))
     assert first.status_code == 200
     first_payload = first.json()
     assert first_payload["valuation"] is not None
@@ -275,7 +279,7 @@ def test_assessment_builds_valuation_block_and_replay_is_stable(
     assert first_payload["valuation"]["expected_uplift_mid"] is not None
     assert first_payload["valuation"]["payload_hash"]
 
-    second = client.post("/api/assessments", json=payload)
+    second = client.post("/api/assessments", json=payload, headers=auth_headers("reviewer"))
     assert second.status_code == 200
     second_payload = second.json()
     assert second_payload["id"] == first_payload["id"]
@@ -285,11 +289,117 @@ def test_assessment_builds_valuation_block_and_replay_is_stable(
         == first_payload["prediction_ledger"]["result_payload_hash"]
     )
 
-    detail = client.get(f"/api/assessments/{first_payload['id']}?hidden_mode=true")
+    detail = client.get(
+        f"/api/assessments/{first_payload['id']}?hidden_mode=true",
+        headers=auth_headers("reviewer"),
+    )
     assert detail.status_code == 200
     detail_payload = detail.json()
     assert detail_payload["valuation"]["sense_check_json"]["fallback_path"]
     assert detail_payload["valuation"]["valuation_quality"] in {"MEDIUM", "LOW", "HIGH"}
+
+
+def test_frozen_assessment_readback_stays_bound_to_original_valuation(
+    client,
+    drain_jobs,
+    seed_listing_sources,
+    seed_planning_data,
+    seed_valuation_data,
+    db_session,
+    storage,
+    auth_headers,
+):
+    del seed_listing_sources
+    del seed_planning_data
+    del seed_valuation_data
+    _build_hidden_releases(db_session=db_session, storage=storage)
+    site_payload, scenario_payload = _build_confirmed_camden_scenario(client, drain_jobs)
+
+    created = client.post(
+        "/api/assessments",
+        json={
+            "site_id": site_payload["id"],
+            "scenario_id": scenario_payload["id"],
+            "as_of_date": "2026-04-15",
+            "requested_by": "pytest",
+            "hidden_mode": True,
+        },
+        headers=auth_headers("reviewer"),
+    )
+    assert created.status_code == 200
+    created_payload = created.json()
+
+    run = db_session.get(models.AssessmentRun, uuid.UUID(created_payload["id"]))
+    assert run is not None
+    original_valuation_run_id = created_payload["valuation"]["valuation_run_id"]
+    original_payload_hash = created_payload["valuation"]["payload_hash"]
+    original_basis_price = created_payload["valuation"]["basis_json"]["basis_price_gbp"]
+
+    alternate_assumptions = models.ValuationAssumptionSet(
+        id=uuid.uuid4(),
+        version="phase7a_pytest_alt",
+        cost_json={"build_cost_per_sqm": 3100.0},
+        policy_burden_json={"s106_pct": 0.04},
+        discount_json={"market_comp_max_age_months": 24},
+        effective_from=date(2025, 1, 1),
+    )
+    db_session.add(alternate_assumptions)
+    alternate_assumptions_repeat = models.ValuationAssumptionSet(
+        id=uuid.uuid4(),
+        version="phase7a_pytest_alt_repeat",
+        cost_json={"build_cost_per_sqm": 3100.0},
+        policy_burden_json={"s106_pct": 0.04},
+        discount_json={"market_comp_max_age_months": 24},
+        effective_from=date(2025, 1, 1),
+    )
+    db_session.add(alternate_assumptions_repeat)
+    db_session.commit()
+
+    baseline_rerun = build_or_refresh_valuation_for_assessment_with_assumption_set(
+        session=db_session,
+        assessment_run=run,
+        valuation_assumption_set=alternate_assumptions,
+        requested_by="pytest-alt-valuation",
+    )
+    db_session.commit()
+    assert str(baseline_rerun.id) != original_valuation_run_id
+    assert baseline_rerun.result is not None
+    assert baseline_rerun.result.basis_json["basis_price_gbp"] == original_basis_price
+
+    expected_post_permission_value_mid = baseline_rerun.result.post_permission_value_mid
+    expected_fallback_path = baseline_rerun.result.sense_check_json["fallback_path"]
+    expected_quality = baseline_rerun.result.valuation_quality
+    expected_manual_review_required = baseline_rerun.result.manual_review_required
+
+    run.site.current_price_gbp = 1_234_567
+    run.site.current_price_basis_type = PriceBasisType.GUIDE_PRICE
+    run.site.borough_id = "hackney"
+    run.scenario.manual_review_required = True
+    run.scenario.stale_reason = "Scenario changed after assessment freeze."
+    db_session.commit()
+
+    rerun = build_or_refresh_valuation_for_assessment_with_assumption_set(
+        session=db_session,
+        assessment_run=run,
+        valuation_assumption_set=alternate_assumptions_repeat,
+        requested_by="pytest-alt-valuation-repeat",
+    )
+    db_session.commit()
+    assert rerun.result is not None
+    assert rerun.result.basis_json["basis_price_gbp"] == original_basis_price
+    assert rerun.result.post_permission_value_mid == expected_post_permission_value_mid
+    assert rerun.result.sense_check_json["fallback_path"] == expected_fallback_path
+    assert rerun.result.valuation_quality == expected_quality
+    assert rerun.result.manual_review_required == expected_manual_review_required
+
+    detail = client.get(
+        f"/api/assessments/{created_payload['id']}?hidden_mode=true",
+        headers=auth_headers("reviewer"),
+    )
+    assert detail.status_code == 200
+    detail_payload = detail.json()
+    assert detail_payload["valuation"]["valuation_run_id"] == original_valuation_run_id
+    assert detail_payload["valuation"]["payload_hash"] == original_payload_hash
 
 
 def test_opportunities_endpoint_ranks_scored_sites_and_holds_no_release_cases(
@@ -300,6 +410,7 @@ def test_opportunities_endpoint_ranks_scored_sites_and_holds_no_release_cases(
     seed_valuation_data,
     db_session,
     storage,
+    auth_headers,
 ):
     del seed_listing_sources
     del seed_planning_data
@@ -316,6 +427,7 @@ def test_opportunities_endpoint_ranks_scored_sites_and_holds_no_release_cases(
             "requested_by": "pytest",
             "hidden_mode": True,
         },
+        headers=auth_headers("reviewer"),
     )
     assert camden_assessment.status_code == 200
 
@@ -335,6 +447,7 @@ def test_opportunities_endpoint_ranks_scored_sites_and_holds_no_release_cases(
             "requested_by": "pytest",
             "hidden_mode": True,
         },
+        headers=auth_headers("reviewer"),
     )
     assert southwark_assessment.status_code == 200
 
@@ -349,7 +462,7 @@ def test_opportunities_endpoint_ranks_scored_sites_and_holds_no_release_cases(
         "Band C",
         "Band D",
     }
-    assert by_site[camden_site["id"]]["expected_uplift_mid"] is not None
+    assert by_site[camden_site["id"]]["expected_uplift_mid"] is None
     assert by_site[southwark_site["id"]]["probability_band"] == "Hold"
     assert by_site[southwark_site["id"]]["expected_uplift_mid"] is None
     assert by_site[southwark_site["id"]]["hold_reason"]
@@ -360,6 +473,7 @@ def test_opportunities_endpoint_ranks_scored_sites_and_holds_no_release_cases(
     assert detail.status_code == 200
     detail_payload = detail.json()
     assert detail_payload["valuation"] is not None
+    assert detail_payload["valuation"]["expected_uplift_mid"] is None
     assert detail_payload["assessment"] is not None
     assert (
         detail_payload["ranking_factors"]["probability_band"]

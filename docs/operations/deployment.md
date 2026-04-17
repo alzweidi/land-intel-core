@@ -10,7 +10,9 @@ The production privacy model is:
 
 - Netlify site protection on `app.<domain>`
 - Caddy basic auth on `api.<domain>` for `/api/*`
-- the current Next.js app still uses the built-in local role accounts in `services/web/lib/auth/local-adapter.ts` with a signed cookie session, so site protection and backend basic auth remain the real deployment boundary until app auth is replaced
+- the current Next.js app still uses the built-in local role accounts in `services/web/lib/auth/local-adapter.ts` with a signed cookie session
+- reviewer/admin and hidden-mode authorization is enforced from that signed app session; backend basic auth on `api.<domain>` protects the upstream origin but is not sufficient authority for privileged routes on its own
+- site protection and backend basic auth therefore remain the transport boundary until app auth is replaced, but privileged operator traffic should still go through `https://app.<domain>/api/...`
 
 ## Commands To Run First
 
@@ -266,7 +268,8 @@ Then manually confirm:
 1. Open `https://app.<domain>`.
 2. Pass Netlify site protection.
 3. Log into the private frontend.
-4. Verify the dashboard loads and calls succeed through the same-origin frontend proxy.
+4. Verify the dashboard loads and privileged calls succeed through the same-origin frontend proxy.
+5. If you need privileged CLI checks, sign in through `https://app.<domain>/api/auth/login` first and reuse that cookie against `https://app.<domain>/api/...`.
 
 ## 9. Rollback
 
@@ -318,4 +321,5 @@ The script writes:
 - Do not run the Phase 2 through Phase 8 fixture bootstrap commands in production.
 - Keep `RUN_DB_MIGRATIONS=false` in `.env.production`; migrations stay explicit and manual.
 - The frontend proxy route is the production path for browser API calls. Do not point the frontend directly at the public VPS API origin.
+- Reviewer/admin operational curl calls should use the app proxy plus a signed session cookie, not raw calls to `https://api.<domain>/api/...`.
 - Visible probability stays off by default. Do not enable reviewer-visible scopes until the borough/template signoff conditions are honestly met.

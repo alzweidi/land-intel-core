@@ -5,6 +5,7 @@ from datetime import UTC, datetime
 
 from sqlalchemy.orm import Session
 
+from landintel.domain.enums import PriceBasisType
 from landintel.domain.models import (
     AssessmentRun,
     AuditEvent,
@@ -82,7 +83,7 @@ def _build_or_refresh_valuation_for_assessment(
         assumption_set=assumption_set,
         input_hash=input_hash,
     )
-    if run.state.value == "READY" and run.result is not None and run.input_hash == input_hash:
+    if run.state.value == "READY" and run.result is not None:
         return run
 
     run.state = run.state.__class__.PENDING
@@ -92,18 +93,20 @@ def _build_or_refresh_valuation_for_assessment(
     session.flush()
 
     try:
+        frozen_price_gbp, frozen_price_basis_type = _frozen_basis_inputs(assessment_run)
+        frozen_context = _frozen_assessment_context(assessment_run)
         discount_json = dict(assumption_set.discount_json or {})
         sales_summary = build_sales_comp_summary(
             session=session,
-            borough_id=assessment_run.site.borough_id,
+            borough_id=frozen_context["borough_id"],
             as_of_date=assessment_run.as_of_date,
             max_age_months=int(discount_json.get("market_comp_max_age_months") or 36),
         )
         land_summary = build_land_comp_summary(
             session=session,
-            borough_id=assessment_run.site.borough_id,
-            template_key=assessment_run.scenario.template_key,
-            proposal_form=assessment_run.scenario.proposal_form,
+            borough_id=frozen_context["borough_id"],
+            template_key=frozen_context["scenario_template_key"],
+            proposal_form=frozen_context["scenario_proposal_form"],
             as_of_date=assessment_run.as_of_date,
         )
         residual = compute_residual_valuation(
@@ -113,6 +116,9 @@ def _build_or_refresh_valuation_for_assessment(
             price_per_sqm_low=sales_summary.price_per_sqm_low,
             price_per_sqm_mid=sales_summary.price_per_sqm_mid,
             price_per_sqm_high=sales_summary.price_per_sqm_high,
+            current_price_gbp=frozen_price_gbp,
+            current_price_basis_type=frozen_price_basis_type,
+            borough_id=frozen_context["borough_id"],
         )
 
         divergence_material = evaluate_divergence(
@@ -160,10 +166,10 @@ def _build_or_refresh_valuation_for_assessment(
             else round(float(assessment_run.result.approval_probability_raw) * uplift_mid, 2)
         )
 
-        policy_inputs_known = assessment_run.site.borough_id is not None
+        policy_inputs_known = frozen_context["borough_id"] is not None
         scenario_area_stable = (
-            not assessment_run.scenario.manual_review_required
-            and not bool(assessment_run.scenario.stale_reason)
+            not frozen_context["scenario_manual_review_required"]
+            and not frozen_context["scenario_is_stale"]
         )
         quality = derive_valuation_quality(
             asking_price_present=bool(residual.basis_json.get("basis_available")),
@@ -276,6 +282,16 @@ def latest_valuation_run(assessment_run: AssessmentRun) -> ValuationRun | None:
     )[0]
 
 
+def frozen_valuation_run(assessment_run: AssessmentRun) -> ValuationRun | None:
+    ledger = assessment_run.prediction_ledger
+    if ledger is not None and ledger.valuation_run_id is not None:
+        return next(
+            (row for row in assessment_run.valuation_runs if row.id == ledger.valuation_run_id),
+            ledger.valuation_run,
+        )
+    return None
+
+
 def _get_or_create_run(
     *,
     session: Session,
@@ -292,7 +308,6 @@ def _get_or_create_run(
         None,
     )
     if existing is not None:
-        existing.input_hash = input_hash
         return existing
 
     run = ValuationRun(
@@ -311,6 +326,7 @@ def _valuation_input_hash(
     assessment_run: AssessmentRun,
     assumption_set: ValuationAssumptionSet,
 ) -> str:
+    frozen_price_gbp, frozen_price_basis_type = _frozen_basis_inputs(assessment_run)
     feature_hash = (
         None
         if assessment_run.feature_snapshot is None
@@ -322,10 +338,8 @@ def _valuation_input_hash(
             "feature_hash": feature_hash,
             "scenario_id": str(assessment_run.scenario_id),
             "scenario_geom_hash": assessment_run.scenario.red_line_geom_hash,
-            "current_price_gbp": assessment_run.site.current_price_gbp,
-            "current_price_basis_type": assessment_run.site.current_price_basis_type.value
-            if assessment_run.site.current_price_basis_type
-            else None,
+            "current_price_gbp": frozen_price_gbp,
+            "current_price_basis_type": frozen_price_basis_type.value,
             "approval_probability_raw": assessment_run.result.approval_probability_raw,
             "valuation_assumption_set_id": str(assumption_set.id),
             "valuation_assumption_set_version": assumption_set.version,
@@ -334,3 +348,59 @@ def _valuation_input_hash(
             "discount_json": assumption_set.discount_json,
         }
     )
+
+
+def _frozen_basis_inputs(
+    assessment_run: AssessmentRun,
+) -> tuple[int | None, PriceBasisType]:
+    feature_json = (
+        {}
+        if assessment_run.feature_snapshot is None
+        else dict(assessment_run.feature_snapshot.feature_json or {})
+    )
+    values = feature_json.get("values")
+    if not isinstance(values, dict):
+        values = {}
+    current_price_gbp = values.get("current_price_gbp")
+    if not isinstance(current_price_gbp, int):
+        current_price_gbp = None
+    basis_type_value = values.get("current_price_basis_type")
+    try:
+        basis_type = PriceBasisType(str(basis_type_value))
+    except ValueError:
+        basis_type = PriceBasisType.UNKNOWN
+    return current_price_gbp, basis_type
+
+
+def _frozen_assessment_context(assessment_run: AssessmentRun) -> dict[str, object]:
+    feature_json = (
+        {}
+        if assessment_run.feature_snapshot is None
+        else dict(assessment_run.feature_snapshot.feature_json or {})
+    )
+    values = feature_json.get("values")
+    if not isinstance(values, dict):
+        values = {}
+    borough_id = values.get("borough_id")
+    if not isinstance(borough_id, str) or not borough_id.strip():
+        borough_id = assessment_run.site.borough_id
+    scenario_template_key = values.get("scenario_template_key")
+    if not isinstance(scenario_template_key, str) or not scenario_template_key.strip():
+        scenario_template_key = assessment_run.scenario.template_key
+    return {
+        "borough_id": borough_id,
+        "scenario_template_key": scenario_template_key,
+        "scenario_proposal_form": values.get(
+            "scenario_proposal_form",
+            assessment_run.scenario.proposal_form,
+        ),
+        "scenario_manual_review_required": bool(
+            values.get(
+                "scenario_manual_review_required",
+                assessment_run.scenario.manual_review_required,
+            )
+        ),
+        "scenario_is_stale": bool(
+            values.get("scenario_is_stale", bool(assessment_run.scenario.stale_reason))
+        ),
+    }

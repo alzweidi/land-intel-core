@@ -52,7 +52,7 @@ from landintel.review.visibility import evaluate_assessment_visibility
 from landintel.services.listings_readback import serialize_raw_asset
 from landintel.services.scenarios_readback import serialize_site_scenario_summary
 from landintel.services.sites_readback import serialize_site_summary
-from landintel.valuation.service import latest_valuation_run
+from landintel.valuation.service import frozen_valuation_run
 
 
 def list_assessments(
@@ -211,7 +211,7 @@ def serialize_assessment_detail(
             )
         ),
         valuation=_serialize_valuation_result(
-            latest_valuation_run(run),
+            frozen_valuation_run(run),
             visibility=visibility,
         ),
         override_summary=override_summary,
@@ -266,6 +266,7 @@ def _serialize_assessment_result(
                 "details remain restricted in Phase 8A."
             ),
         }
+    include_internal_diagnostics = visibility.hidden_probability_allowed
     return AssessmentResultRead(
         id=result.id,
         model_release_id=(
@@ -289,13 +290,15 @@ def _serialize_assessment_result(
             if visibility.hidden_probability_allowed or visibility.visible_probability_allowed
             else None
         ),
-        estimate_quality=result.estimate_quality,
-        source_coverage_quality=result.source_coverage_quality,
-        geometry_quality=result.geometry_quality,
-        support_quality=result.support_quality,
-        scenario_quality=result.scenario_quality,
-        ood_quality=result.ood_quality,
-        ood_status=result.ood_status,
+        estimate_quality=result.estimate_quality if include_internal_diagnostics else None,
+        source_coverage_quality=(
+            result.source_coverage_quality if include_internal_diagnostics else None
+        ),
+        geometry_quality=result.geometry_quality if include_internal_diagnostics else None,
+        support_quality=result.support_quality if include_internal_diagnostics else None,
+        scenario_quality=result.scenario_quality if include_internal_diagnostics else None,
+        ood_quality=result.ood_quality if include_internal_diagnostics else None,
+        ood_status=result.ood_status if include_internal_diagnostics else None,
         manual_review_required=result.manual_review_required,
         result_json=result_json,
         published_at=result.published_at,

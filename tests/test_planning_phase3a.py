@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import io
 import uuid
+from datetime import date
 
 import respx
 from httpx import Response
@@ -19,7 +20,9 @@ from landintel.domain.models import (
     PlanningApplicationDocument,
     RawAsset,
     SiteCandidate,
+    SourceSnapshot,
 )
+from landintel.features.build import build_feature_snapshot
 from landintel.geospatial.geometry import normalize_geojson_geometry
 from landintel.planning.enrich import refresh_site_planning_context
 from landintel.planning.extant_permission import evaluate_site_extant_permission
@@ -323,9 +326,10 @@ def test_missing_coverage_never_returns_false_clean_permission_state(
 def test_data_health_exposes_coverage_and_baseline_pack(
     client,
     seed_planning_data,
+    auth_headers,
 ):
     del seed_planning_data
-    response = client.get("/api/health/data")
+    response = client.get("/api/health/data", headers=auth_headers("admin"))
     assert response.status_code == 200
     payload = response.json()
     assert payload["coverage"]
@@ -339,3 +343,203 @@ def test_planning_documents_reference_persisted_raw_assets(seed_planning_data, d
     assert documents
     for document in documents:
         assert db_session.get(RawAsset, document.asset_id) is not None
+
+
+def test_site_detail_preserves_link_level_source_snapshot_ids_after_parent_rows_move(
+    client,
+    drain_jobs,
+    seed_listing_sources,
+    seed_planning_data,
+    session_factory,
+):
+    del seed_listing_sources
+    del seed_planning_data
+
+    payload = _build_camden_site(client, drain_jobs)
+    site_id = uuid.UUID(payload["id"])
+
+    with session_factory() as session:
+        site = session.get(SiteCandidate, site_id)
+        assert site is not None
+        assert site.planning_links
+        assert site.policy_facts
+        assert site.constraint_facts
+
+        planning_link = site.planning_links[0]
+        policy_fact = site.policy_facts[0]
+        constraint_fact = site.constraint_facts[0]
+
+        original_snapshot_ids = {
+            planning_link.source_snapshot_id,
+            policy_fact.source_snapshot_id,
+            constraint_fact.source_snapshot_id,
+        }
+        replacement_snapshot_ids = [
+            snapshot.id
+            for snapshot in session.query(SourceSnapshot).all()
+            if snapshot.id not in original_snapshot_ids
+        ]
+        assert len(replacement_snapshot_ids) >= 3
+
+        planning_application_id = str(planning_link.planning_application_id)
+        policy_area_id = str(policy_fact.policy_area_id)
+        constraint_feature_id = str(constraint_fact.constraint_feature_id)
+
+        original_planning_snapshot_id = str(planning_link.source_snapshot_id)
+        original_policy_snapshot_id = str(policy_fact.source_snapshot_id)
+        original_constraint_snapshot_id = str(constraint_fact.source_snapshot_id)
+        original_planning_description = planning_link.planning_application.proposal_description
+        original_planning_url = planning_link.planning_application.source_url
+        original_policy_name = policy_fact.policy_area.name
+        original_policy_url = policy_fact.policy_area.source_url
+        original_constraint_subtype = constraint_fact.constraint_feature.feature_subtype
+        original_constraint_status = constraint_fact.constraint_feature.legal_status
+
+        planning_link.planning_application.source_snapshot_id = replacement_snapshot_ids[0]
+        planning_link.planning_application.proposal_description = "Mutated application description."
+        planning_link.planning_application.source_url = "https://mutated.example/planning"
+        policy_fact.policy_area.source_snapshot_id = replacement_snapshot_ids[1]
+        policy_fact.policy_area.name = "Mutated policy name"
+        policy_fact.policy_area.source_url = "https://mutated.example/policy"
+        constraint_fact.constraint_feature.source_snapshot_id = replacement_snapshot_ids[2]
+        constraint_fact.constraint_feature.feature_subtype = "mutated_constraint"
+        constraint_fact.constraint_feature.legal_status = "MUTATED"
+        session.commit()
+
+    response = client.get(f"/api/sites/{site_id}")
+    assert response.status_code == 200
+    detail = response.json()
+
+    planning_entry = next(
+        item
+        for item in detail["planning_history"]
+        if item["planning_application"]["id"] == planning_application_id
+    )
+    policy_entry = next(
+        item for item in detail["policy_facts"] if item["policy_area"]["id"] == policy_area_id
+    )
+    constraint_entry = next(
+        item
+        for item in detail["constraint_facts"]
+        if item["constraint_feature"]["id"] == constraint_feature_id
+    )
+
+    assert (
+        planning_entry["planning_application"]["source_snapshot_id"]
+        == original_planning_snapshot_id
+    )
+    assert (
+        planning_entry["planning_application"]["proposal_description"]
+        == original_planning_description
+    )
+    assert planning_entry["planning_application"]["source_url"] == original_planning_url
+    assert policy_entry["policy_area"]["source_snapshot_id"] == original_policy_snapshot_id
+    assert policy_entry["policy_area"]["name"] == original_policy_name
+    assert policy_entry["policy_area"]["source_url"] == original_policy_url
+    assert (
+        constraint_entry["constraint_feature"]["source_snapshot_id"]
+        == original_constraint_snapshot_id
+    )
+    assert constraint_entry["constraint_feature"]["feature_subtype"] == original_constraint_subtype
+    assert constraint_entry["constraint_feature"]["legal_status"] == original_constraint_status
+
+
+def test_feature_snapshot_designation_provenance_uses_site_context_snapshots(
+    client,
+    drain_jobs,
+    seed_listing_sources,
+    seed_planning_data,
+    db_session,
+):
+    del seed_listing_sources
+    del seed_planning_data
+
+    from tests.test_assessments_phase5a import _build_confirmed_camden_scenario
+
+    site_payload, scenario_payload = _build_confirmed_camden_scenario(client, drain_jobs)
+    site = db_session.get(SiteCandidate, uuid.UUID(site_payload["id"]))
+    assert site is not None
+    scenario = next(row for row in site.scenarios if str(row.id) == scenario_payload["id"])
+    policy_fact = site.policy_facts[0]
+    constraint_fact = site.constraint_facts[0]
+    original_policy_snapshot_id = str(policy_fact.source_snapshot_id)
+    original_constraint_snapshot_id = str(constraint_fact.source_snapshot_id)
+
+    replacement_snapshot_ids = [
+        snapshot.id
+        for snapshot in db_session.query(SourceSnapshot).all()
+        if snapshot.id not in {policy_fact.source_snapshot_id, constraint_fact.source_snapshot_id}
+    ]
+    assert len(replacement_snapshot_ids) >= 2
+
+    policy_fact.policy_area.source_snapshot_id = replacement_snapshot_ids[0]
+    constraint_fact.constraint_feature.source_snapshot_id = replacement_snapshot_ids[1]
+    db_session.commit()
+    db_session.refresh(site)
+
+    features = build_feature_snapshot(
+        session=db_session,
+        site=site,
+        scenario=scenario,
+        as_of_date=date(2026, 4, 15),
+    )
+    designation_sources = set(
+        features.feature_json["provenance"]["designation_archetype_key"]["source_snapshot_ids"]
+    )
+    assert original_policy_snapshot_id in designation_sources
+    assert original_constraint_snapshot_id in designation_sources
+
+
+def test_feature_snapshot_uses_planning_application_snapshots_for_on_site_history(
+    client,
+    drain_jobs,
+    seed_listing_sources,
+    seed_planning_data,
+    db_session,
+):
+    del seed_listing_sources
+    del seed_planning_data
+
+    from tests.test_assessments_phase5a import _build_confirmed_camden_scenario
+
+    site_payload, scenario_payload = _build_confirmed_camden_scenario(client, drain_jobs)
+    site = db_session.get(SiteCandidate, uuid.UUID(site_payload["id"]))
+    assert site is not None
+    scenario = next(row for row in site.scenarios if str(row.id) == scenario_payload["id"])
+    planning_link = site.planning_links[0]
+    application = planning_link.planning_application
+
+    baseline = build_feature_snapshot(
+        session=db_session,
+        site=site,
+        scenario=scenario,
+        as_of_date=date(2026, 4, 15),
+    )
+    baseline_values = baseline.feature_json["values"]
+
+    application.route_normalized = "PRIOR_APPROVAL"
+    application.units_proposed = 99
+    application.raw_record_json = {**dict(application.raw_record_json or {}), "active_extant": True}
+    db_session.commit()
+    db_session.refresh(site)
+
+    rebuilt = build_feature_snapshot(
+        session=db_session,
+        site=site,
+        scenario=scenario,
+        as_of_date=date(2026, 4, 15),
+    )
+    rebuilt_values = rebuilt.feature_json["values"]
+
+    assert (
+        rebuilt_values["prior_approval_history_count"]
+        == baseline_values["prior_approval_history_count"]
+    )
+    assert (
+        rebuilt_values["active_extant_permission_count"]
+        == baseline_values["active_extant_permission_count"]
+    )
+    assert (
+        rebuilt_values["onsite_max_units_approved"]
+        == baseline_values["onsite_max_units_approved"]
+    )

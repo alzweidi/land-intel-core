@@ -1,5 +1,7 @@
 import { NextRequest } from 'next/server';
 
+import { AUTH_SESSION_COOKIE_NAME } from '@/lib/auth/config';
+
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
 
@@ -61,6 +63,13 @@ function buildUpstreamHeaders(request: NextRequest): Headers {
     }
   });
   headers.set('authorization', getBasicAuthHeader());
+  const sessionToken =
+    request.cookies.get(AUTH_SESSION_COOKIE_NAME)?.value ??
+    request.cookies.get('landintel-session')?.value ??
+    request.cookies.get('__Host-landintel-session')?.value;
+  if (sessionToken) {
+    headers.set('x-landintel-session', sessionToken);
+  }
   return headers;
 }
 

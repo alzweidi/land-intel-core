@@ -18,6 +18,11 @@ from landintel.planning.enrich import (
     list_brownfield_states_for_site,
     list_latest_coverage_snapshots,
 )
+from landintel.planning.site_context_snapshots import (
+    constraint_snapshot,
+    planning_application_snapshot,
+    policy_area_snapshot,
+)
 
 
 def assemble_site_evidence(
@@ -109,17 +114,38 @@ def assemble_site_evidence(
 
     for link in site.planning_links:
         app = link.planning_application
+        app_snapshot = planning_application_snapshot(link)
+        document_snapshots = app_snapshot.get("documents")
+        first_document = (
+            document_snapshots[0]
+            if isinstance(document_snapshots, list)
+            and document_snapshots
+            and isinstance(document_snapshots[0], dict)
+            else None
+        )
         evidence = EvidenceItemRead(
-            polarity=_planning_polarity(app.status),
-            claim_text=f"{app.external_ref}: {app.proposal_description}",
+            polarity=_planning_polarity(str(app_snapshot.get("status", app.status))),
+            claim_text=(
+                f"{app_snapshot.get('external_ref', app.external_ref)}: "
+                f"{app_snapshot.get('proposal_description', app.proposal_description)}"
+            ),
             topic="planning_history",
-            importance=_planning_importance(app.status),
-            source_class=_source_class_for_system(app.source_system),
-            source_label=f"{app.source_system} {app.external_ref}",
-            source_url=app.source_url,
-            source_snapshot_id=app.source_snapshot_id,
-            raw_asset_id=app.documents[0].asset_id if app.documents else None,
-            excerpt_text=app.decision or app.status,
+            importance=_planning_importance(str(app_snapshot.get("status", app.status))),
+            source_class=_source_class_for_system(
+                str(app_snapshot.get("source_system", app.source_system))
+            ),
+            source_label=(
+                f"{app_snapshot.get('source_system', app.source_system)} "
+                f"{app_snapshot.get('external_ref', app.external_ref)}"
+            ),
+            source_url=app_snapshot.get("source_url", app.source_url),
+            source_snapshot_id=(
+                getattr(link, "source_snapshot_id", None)
+                or app_snapshot.get("source_snapshot_id")
+                or app.source_snapshot_id
+            ),
+            raw_asset_id=None if first_document is None else first_document.get("asset_id"),
+            excerpt_text=app_snapshot.get("decision") or app_snapshot.get("status", app.status),
             verified_status=VerifiedStatus.VERIFIED,
         )
         _append_by_polarity(
@@ -168,16 +194,25 @@ def assemble_site_evidence(
         )
 
     for fact in site.policy_facts:
-        raw = fact.policy_area.raw_record_json
+        area = fact.policy_area
+        snapshot = policy_area_snapshot(fact)
+        raw = snapshot.get("raw_record_json", area.raw_record_json)
         evidence = EvidenceItemRead(
             polarity=_polarity_from_record(raw, default=EvidencePolarity.FOR),
-            claim_text=str(raw.get("summary") or fact.policy_area.name),
+            claim_text=str(raw.get("summary") or snapshot.get("name", area.name)),
             topic="policy",
             importance=fact.importance,
-            source_class=fact.policy_area.source_class,
-            source_label=f"{fact.policy_area.policy_family} {fact.policy_area.policy_code}",
-            source_url=fact.policy_area.source_url,
-            source_snapshot_id=fact.policy_area.source_snapshot_id,
+            source_class=snapshot.get("source_class", area.source_class),
+            source_label=(
+                f"{snapshot.get('policy_family', area.policy_family)} "
+                f"{snapshot.get('policy_code', area.policy_code)}"
+            ),
+            source_url=snapshot.get("source_url", area.source_url),
+            source_snapshot_id=(
+                getattr(fact, "source_snapshot_id", None)
+                or snapshot.get("source_snapshot_id")
+                or area.source_snapshot_id
+            ),
             raw_asset_id=None,
             excerpt_text=fact.relation_type,
             verified_status=VerifiedStatus.VERIFIED,
@@ -190,21 +225,29 @@ def assemble_site_evidence(
         )
 
     for fact in site.constraint_facts:
-        raw = fact.constraint_feature.raw_record_json
+        feature = fact.constraint_feature
+        snapshot = constraint_snapshot(fact)
+        raw = snapshot.get("raw_record_json", feature.raw_record_json)
         evidence = EvidenceItemRead(
             polarity=_polarity_from_record(raw, default=EvidencePolarity.AGAINST),
-            claim_text=str(raw.get("summary") or fact.constraint_feature.feature_subtype),
+            claim_text=str(
+                raw.get("summary") or snapshot.get("feature_subtype", feature.feature_subtype)
+            ),
             topic="constraint",
             importance=fact.severity,
-            source_class=fact.constraint_feature.source_class,
+            source_class=snapshot.get("source_class", feature.source_class),
             source_label=(
-                f"{fact.constraint_feature.feature_family} "
-                f"{fact.constraint_feature.feature_subtype}"
+                f"{snapshot.get('feature_family', feature.feature_family)} "
+                f"{snapshot.get('feature_subtype', feature.feature_subtype)}"
             ),
-            source_url=fact.constraint_feature.source_url,
-            source_snapshot_id=fact.constraint_feature.source_snapshot_id,
+            source_url=snapshot.get("source_url", feature.source_url),
+            source_snapshot_id=(
+                getattr(fact, "source_snapshot_id", None)
+                or snapshot.get("source_snapshot_id")
+                or feature.source_snapshot_id
+            ),
             raw_asset_id=None,
-            excerpt_text=fact.constraint_feature.legal_status,
+            excerpt_text=snapshot.get("legal_status", feature.legal_status),
             verified_status=VerifiedStatus.VERIFIED,
         )
         _append_by_polarity(
