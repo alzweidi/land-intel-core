@@ -2,6 +2,7 @@ import type { AppRole } from './types';
 
 export const AUTH_SESSION_TTL_SECONDS = 60 * 60 * 12;
 const DEFAULT_AUTH_SESSION_SECRET = 'landintel-local-web-session-secret';
+const LOCAL_APP_ENVS = new Set(['development', 'local', 'test']);
 
 function resolveAuthSessionSecret(): string {
   const secret =
@@ -21,7 +22,7 @@ function resolveAuthSessionSecret(): string {
     .trim()
     .toLowerCase();
 
-  if (appEnv !== 'development' && appEnv !== 'test' && secret === DEFAULT_AUTH_SESSION_SECRET) {
+  if (!LOCAL_APP_ENVS.has(appEnv) && secret === DEFAULT_AUTH_SESSION_SECRET) {
     throw new Error(
       'LANDINTEL_WEB_AUTH_SECRET must be set to a non-default value outside local dev.'
     );

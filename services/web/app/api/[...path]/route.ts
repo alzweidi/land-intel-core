@@ -4,6 +4,7 @@ import { AUTH_SESSION_COOKIE_NAME } from '@/lib/auth/config';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
+const LOCAL_APP_ENVS = new Set(['development', 'local', 'test']);
 
 const HOP_BY_HOP_HEADERS = new Set([
   'authorization',
@@ -27,18 +28,35 @@ type RouteContext = {
 };
 
 function getBackendOrigin(): string {
-  const origin = process.env.BACKEND_API_ORIGIN?.trim();
+  const origin =
+    process.env.BACKEND_API_ORIGIN?.trim() ||
+    process.env.INTERNAL_API_BASE_URL?.trim() ||
+    process.env.NEXT_PUBLIC_API_BASE_URL?.trim();
   if (!origin) {
-    throw new Error('BACKEND_API_ORIGIN is required for the production API proxy.');
+    throw new Error('A backend API origin is required for the API proxy.');
   }
   return origin.replace(/\/+$/, '');
 }
 
-function getBasicAuthHeader(): string {
+function isLocalAppEnv(): boolean {
+  const appEnv = (
+    process.env.NEXT_PUBLIC_APP_ENV ??
+    process.env.APP_ENV ??
+    'development'
+  )
+    .trim()
+    .toLowerCase();
+  return LOCAL_APP_ENVS.has(appEnv);
+}
+
+function getBasicAuthHeader(): string | null {
   const username = process.env.BACKEND_BASIC_AUTH_USER?.trim();
   const password = process.env.BACKEND_BASIC_AUTH_PASSWORD?.trim();
 
   if (!username || !password) {
+    if (isLocalAppEnv()) {
+      return null;
+    }
     throw new Error(
       'BACKEND_BASIC_AUTH_USER and BACKEND_BASIC_AUTH_PASSWORD are required for the production API proxy.'
     );
@@ -62,7 +80,10 @@ function buildUpstreamHeaders(request: NextRequest): Headers {
       headers.set(key, value);
     }
   });
-  headers.set('authorization', getBasicAuthHeader());
+  const basicAuthHeader = getBasicAuthHeader();
+  if (basicAuthHeader) {
+    headers.set('authorization', basicAuthHeader);
+  }
   const sessionToken =
     request.cookies.get(AUTH_SESSION_COOKIE_NAME)?.value ??
     request.cookies.get('landintel-session')?.value ??

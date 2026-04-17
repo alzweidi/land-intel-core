@@ -388,6 +388,17 @@ def rebuild_listing_clusters(session: Session) -> list[ListingCluster]:
         for cluster in cluster_results
         for member in cluster.members
     }
+    rebuilt_listing_item_ids = list(listing_cluster_by_item_id)
+
+    if rebuilt_listing_item_ids:
+        # Clear prior memberships before reinserting rebuilt cluster rows so listings that move
+        # into a different cluster ID do not trip the unique constraint on listing_item_id.
+        session.execute(
+            delete(ListingClusterMember).where(
+                ListingClusterMember.listing_item_id.in_(rebuilt_listing_item_ids)
+            )
+        )
+        session.flush()
 
     cluster_models: list[ListingCluster] = []
     for cluster in cluster_results:
@@ -402,11 +413,6 @@ def rebuild_listing_clusters(session: Session) -> list[ListingCluster]:
         else:
             cluster_model.cluster_key = cluster.cluster_key
             cluster_model.cluster_status = cluster.cluster_status
-            session.execute(
-                delete(ListingClusterMember).where(
-                    ListingClusterMember.listing_cluster_id == cluster.cluster_id
-                )
-            )
         cluster_models.append(cluster_model)
         for member in cluster.members:
             session.add(
@@ -508,7 +514,7 @@ def _store_bytes_idempotently(
 ) -> None:
     try:
         existing_payload = storage.get_bytes(storage_path)
-    except (FileNotFoundError, RuntimeError):
+    except FileNotFoundError:
         storage.put_bytes(storage_path, payload, content_type=content_type)
         return
 

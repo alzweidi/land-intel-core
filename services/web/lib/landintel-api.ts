@@ -1086,15 +1086,19 @@ async function requestJson(path: string, init?: ApiRequestInit): Promise<unknown
   const timeout = globalThis.setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
 
   try {
+    const requestInit = { ...(init ?? {}) } as ApiRequestInit;
+    delete requestInit.sessionToken;
+    delete requestInit.headers;
+
     const headers = new Headers(init?.headers ?? {});
     headers.set('Accept', 'application/json');
     if (init?.sessionToken) {
       headers.set('x-landintel-session', init.sessionToken);
     }
     const response = await fetch(`${API_BASE_URL}${path}`, {
+      ...requestInit,
       cache: 'no-store',
       headers,
-      ...init,
       signal: controller.signal
     });
 

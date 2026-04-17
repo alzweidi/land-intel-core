@@ -147,6 +147,12 @@ def test_non_dev_settings_require_non_default_web_auth_secret():
     )
     assert settings.web_auth_session_secret == DEFAULT_WEB_AUTH_SESSION_SECRET
 
+    local_settings = Settings(
+        app_env="local",
+        web_auth_session_secret=DEFAULT_WEB_AUTH_SESSION_SECRET,
+    )
+    assert local_settings.web_auth_session_secret == DEFAULT_WEB_AUTH_SESSION_SECRET
+
 
 def test_missing_app_env_with_non_local_database_requires_explicit_secret():
     with pytest.raises(ValidationError):

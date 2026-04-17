@@ -64,6 +64,8 @@ def process_next_job(
             session.commit()
             return False
 
+        # Persist the RUNNING claim before the heartbeat uses its own DB session.
+        session.commit()
         stop_event, heartbeat_thread = _start_job_heartbeat(
             settings=settings,
             session_factory=session_factory,

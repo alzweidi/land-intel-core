@@ -7,6 +7,7 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 from landintel.domain.enums import StorageBackend
 
 DEFAULT_WEB_AUTH_SESSION_SECRET = "landintel-local-web-session-secret"
+LOCAL_APP_ENVS = {"development", "local", "test"}
 
 
 class Settings(BaseSettings):
@@ -55,7 +56,7 @@ class Settings(BaseSettings):
         app_env_explicit = "app_env" in self.model_fields_set
         app_env = self.app_env.strip().lower()
         if (
-            app_env not in {"development", "test"}
+            app_env not in LOCAL_APP_ENVS
             and self.web_auth_session_secret == DEFAULT_WEB_AUTH_SESSION_SECRET
         ):
             raise ValueError(
