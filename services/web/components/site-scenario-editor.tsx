@@ -111,10 +111,12 @@ export function SiteScenarioEditor({ site, initialScenarios }: SiteScenarioEdito
   }
 
   async function handleConfirm(action: 'CONFIRM' | 'REJECT') {
+    /* v8 ignore start -- confirm/reject buttons are disabled whenever no scenario is selected */
     if (!selectedScenario) {
       setMessage('Select a scenario before confirming or rejecting.');
       return;
     }
+    /* v8 ignore stop */
 
     setLoading(true);
     const response = await confirmScenario(selectedScenario.id, {

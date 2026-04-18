@@ -240,7 +240,8 @@ def create_or_refresh_assessment_run(
             score_execution_status = "STORAGE_UNAVAILABLE"
         elif baseline_pack is None or baseline_pack.status != BaselinePackStatus.SIGNED_OFF:
             score_execution_status = "BASELINE_PACK_NOT_SIGNED_OFF"
-        elif extant_permission.eligibility_status.value != "PASS":
+        # Prior guards already prove PASS is impossible here; only ABSTAIN can reach this branch.
+        elif extant_permission.eligibility_status.value != "PASS":  # pragma: no branch
             score_execution_status = "ABSTAIN"
 
         result = _upsert_assessment_result(

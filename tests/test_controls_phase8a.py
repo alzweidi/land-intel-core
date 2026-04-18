@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import uuid
 
+from landintel.assessments.service import replay_verify_all_assessments
 from landintel.domain.models import AssessmentRun
 from landintel.scoring.release import scope_key_for
 
@@ -24,8 +25,16 @@ def _build_scored_assessment(*, client, drain_jobs, db_session, storage, auth_he
         headers=auth_headers("reviewer"),
     )
     assert assessment.status_code == 200
-    payload = assessment.json()
-    return site_payload, scenario_payload, payload
+    replay = replay_verify_all_assessments(db_session, storage=storage)
+    assert replay["failed"] == 0
+    db_session.commit()
+
+    hidden = client.get(
+        f"/api/assessments/{assessment.json()['id']}?hidden_mode=true",
+        headers=auth_headers("reviewer"),
+    )
+    assert hidden.status_code == 200
+    return site_payload, scenario_payload, hidden.json()
 
 
 def test_assessment_override_round_trip_preserves_original_result(

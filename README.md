@@ -51,6 +51,37 @@ Production deployment hardening assets now live in [docs/operations/deployment.m
 - `infra/compose`: compose overlays and deployment notes
 - `docs`: spec and implementation notes
 
+## Quality Checks
+
+Local backend CI parity:
+
+```bash
+ruff check .
+pytest --cov=landintel --cov=services --cov-branch --cov-report=term-missing --cov-report=html --cov-report=xml
+```
+
+Local frontend CI parity:
+
+```bash
+cd services/web
+npm run lint
+npm run typecheck
+npm run build
+npm run test:coverage
+```
+
+Coverage artifacts:
+
+- backend HTML: `htmlcov/index.html`
+- backend XML: `coverage.xml`
+- frontend HTML: `services/web/coverage/index.html`
+- frontend LCOV: `services/web/coverage/lcov.info`
+
+Current enforced coverage gates:
+
+- backend aggregate coverage: `100%`
+- frontend critical-surface coverage: statements `100%`, lines `100%`, functions `100%`, branches `100%`
+
 ## Quick Start
 
 1. Copy env defaults:
@@ -474,7 +505,7 @@ Backend:
 ```bash
 source .venv/bin/activate
 ruff check .
-pytest
+pytest --cov=landintel --cov=services --cov-branch --cov-report=term-missing --cov-report=html --cov-report=xml
 ```
 
 Frontend:

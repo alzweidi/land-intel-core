@@ -13,6 +13,12 @@ from sqlalchemy import select
 logger = logging.getLogger(__name__)
 
 
+def _coerce_utc(value: datetime) -> datetime:
+    if value.tzinfo is None:
+        return value.replace(tzinfo=UTC)
+    return value.astimezone(UTC)
+
+
 def scheduler_tick(session_factory) -> None:
     with session_factory() as session:
         sources = session.execute(
@@ -35,7 +41,7 @@ def scheduler_tick(session_factory) -> None:
             source_name = str(job.payload_json.get("source_name", ""))
             latest_run_by_source[source_name] = max(
                 latest_run_by_source.get(source_name, datetime.min.replace(tzinfo=UTC)),
-                job.created_at,
+                _coerce_utc(job.created_at),
             )
 
         enqueued = 0

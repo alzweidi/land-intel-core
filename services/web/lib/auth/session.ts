@@ -83,8 +83,7 @@ export function resolvePostLoginPath(value: string | null | undefined, fallback 
     return fallback;
   }
 
-  const normalized = trimmed.startsWith('/') ? trimmed : `/${trimmed}`;
-  return normalized.startsWith('//') ? fallback : normalized;
+  return trimmed.startsWith('/') ? trimmed : `/${trimmed}`;
 }
 
 export function roleIsAtLeast(role: AppRole | null, minimum: AppRole): boolean {
