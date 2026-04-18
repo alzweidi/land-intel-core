@@ -230,3 +230,8 @@
   - every new test must correspond to a real branch or invariant named in the coverage report;
   - if a test reveals a production defect, fix the defect and keep the regression test;
   - end only after a fresh full backend coverage run confirms the actual result.
+
+## Warning cleanup addendum (2026-04-18)
+- Scope: eliminate current pytest warning classes without relaxing assertions or changing Phase 8A behavior.
+- Targets: deprecated HTTP status constant references in tests, runpy module re-execution warnings in bootstrap/worker/scheduler tests, and Pydantic enum serialization warnings caused by string fixtures in tests.
+- Constraints: prefer test fixes over product changes unless a warning reveals real incorrect logic; preserve 100% coverage gates.

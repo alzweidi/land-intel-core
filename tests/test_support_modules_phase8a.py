@@ -1141,6 +1141,7 @@ def test_bootstrap_module_main_guards_execute(
 ) -> None:
     patches(monkeypatch)
     monkeypatch.setattr(sys, "argv", argv)
+    sys.modules.pop(module_name, None)
     runpy.run_module(module_name, run_name="__main__")
     assert capsys.readouterr().out
 

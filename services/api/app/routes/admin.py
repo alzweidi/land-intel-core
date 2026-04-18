@@ -374,7 +374,7 @@ def activate_hidden_release(
     except (ReviewAccessError, ValueError) as exc:
         session.rollback()
         raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             detail=str(exc),
         ) from exc
     detail = get_model_release_read(session=session, release_id=release_id)
@@ -406,7 +406,7 @@ def retire_hidden_release(
     except (ReviewAccessError, ValueError) as exc:
         session.rollback()
         raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             detail=str(exc),
         ) from exc
     detail = get_model_release_read(session=session, release_id=release_id)
@@ -441,7 +441,7 @@ def update_release_scope_visibility(
     except ReviewAccessError as exc:
         session.rollback()
         raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             detail=str(exc),
         ) from exc
     return list_model_releases_read(session=session)
@@ -482,7 +482,7 @@ def manage_release_scope_incident(
     except ReviewAccessError as exc:
         session.rollback()
         raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             detail=str(exc),
         ) from exc
 

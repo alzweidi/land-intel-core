@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import runpy
+import sys
 import time
 from datetime import UTC, datetime
 from types import SimpleNamespace
@@ -143,6 +144,7 @@ def test_valuation_basis_fallback_and_main_guards_via_runpy(monkeypatch) -> None
         "apscheduler.schedulers.blocking.BlockingScheduler",
         _BlockingSchedulerStub,
     )
+    sys.modules.pop("services.scheduler.app.main", None)
     with pytest.raises(RuntimeError, match="scheduler-stop"):
         runpy.run_module("services.scheduler.app.main", run_name="__main__")
     assert _BlockingSchedulerStub.instances[-1].jobs[0]["id"] == "listing-refresh-enqueue"
@@ -174,5 +176,6 @@ def test_valuation_basis_fallback_and_main_guards_via_runpy(monkeypatch) -> None
         "sleep",
         lambda _seconds: (_ for _ in ()).throw(RuntimeError("worker-stop")),
     )
+    sys.modules.pop("services.worker.app.main", None)
     with pytest.raises(RuntimeError, match="worker-stop"):
         runpy.run_module("services.worker.app.main", run_name="__main__")
