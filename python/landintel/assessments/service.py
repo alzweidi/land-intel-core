@@ -144,7 +144,11 @@ def create_or_refresh_assessment_run(
             feature_result=feature_result,
         )
 
-        extant_permission = evaluate_site_extant_permission(session=session, site=site)
+        extant_permission = evaluate_site_extant_permission(
+            session=session,
+            site=site,
+            as_of_date=as_of_date,
+        )
         baseline_pack = get_borough_baseline_pack(session=session, borough_id=site.borough_id)
         site_evidence = assemble_site_evidence(
             session=session,
@@ -423,7 +427,7 @@ def verify_assessment_replay(
         site_id=assessment_run.site_id,
         scenario_id=assessment_run.scenario_id,
         as_of_date=assessment_run.as_of_date,
-        red_line_geom_hash=assessment_run.scenario.red_line_geom_hash,
+        red_line_geom_hash=_frozen_red_line_geom_hash(assessment_run=assessment_run),
         feature_snapshot=assessment_run.feature_snapshot,
         result=assessment_run.result,
         valuation_payload=(
@@ -443,7 +447,7 @@ def verify_assessment_replay(
         and payload_hash == assessment_run.prediction_ledger.result_payload_hash
         and scored_fields_match
     )
-    return {
+    result = {
         "assessment_run_id": str(assessment_run.id),
         "feature_hash_matches": (
             canonical_json_hash(assessment_run.feature_snapshot.feature_json)
@@ -457,6 +461,9 @@ def verify_assessment_replay(
         "scored_fields_match": scored_fields_match,
         "replay_passed": replay_passed,
     }
+    _record_replay_verification(assessment_run=assessment_run, check=result)
+    session.flush()
+    return result
 
 
 def replay_verify_all_assessments(
@@ -479,30 +486,6 @@ def replay_verify_all_assessments(
         for run in runs
     ]
     failures = [check for check in checks if not check["replay_passed"]]
-    for run, check in zip(runs, checks, strict=False):
-        if run.prediction_ledger is None:
-            continue
-        run.prediction_ledger.replay_verification_status = (
-            "VERIFIED" if check["replay_passed"] else "FAILED"
-        )
-        run.prediction_ledger.replay_verified_at = datetime.now(UTC)
-        if check["replay_passed"]:
-            run.prediction_ledger.replay_verification_note = (
-                "Replay verification passed for frozen features, scored fields, and payload."
-            )
-        else:
-            failing_checks = [
-                label
-                for label in (
-                    "feature_hash_matches",
-                    "payload_hash_matches",
-                    "scored_fields_match",
-                )
-                if not check[label]
-            ]
-            run.prediction_ledger.replay_verification_note = (
-                "Replay verification failed: " + ", ".join(failing_checks)
-            )
     return {
         "total": len(checks),
         "failed": len(failures),
@@ -737,7 +720,7 @@ def _stable_result_payload(
         site_id=site.id,
         scenario_id=scenario.id,
         as_of_date=run.as_of_date,
-        red_line_geom_hash=scenario.red_line_geom_hash,
+        red_line_geom_hash=_frozen_red_line_geom_hash(assessment_run=run),
         feature_snapshot=feature_snapshot,
         result=result,
         valuation_payload=_serialize_valuation_payload(valuation_run),
@@ -770,8 +753,9 @@ def _upsert_prediction_ledger(
     source_snapshot_ids.update(comparable_result.source_snapshot_ids)
     raw_asset_ids.update(comparable_result.raw_asset_ids)
 
-    ledger = run.prediction_ledger or PredictionLedger(assessment_run_id=run.id)
-    ledger.site_geom_hash = run.scenario.red_line_geom_hash
+    ledger = run.prediction_ledger or PredictionLedger(assessment_run=run)
+    run.prediction_ledger = ledger
+    ledger.site_geom_hash = _frozen_red_line_geom_hash(assessment_run=run)
     ledger.feature_hash = feature_snapshot.feature_hash
     ledger.model_release_id = (
         None
@@ -800,9 +784,11 @@ def _upsert_prediction_ledger(
     ledger.raw_asset_ids_json = sorted(raw_asset_ids)
     ledger.result_payload_hash = canonical_json_hash(stable_payload)
     ledger.response_json = stable_payload
-    ledger.replay_verification_status = "VERIFIED"
-    ledger.replay_verified_at = datetime.now(UTC)
-    ledger.replay_verification_note = "Stable payload hash captured at frozen assessment build."
+    ledger.replay_verification_status = "HASH_CAPTURED"
+    ledger.replay_verified_at = None
+    ledger.replay_verification_note = (
+        "Stable payload hash captured; explicit replay verification has not run yet."
+    )
     session.add(ledger)
     session.flush()
     return ledger
@@ -869,6 +855,44 @@ def _serialize_valuation_payload(valuation_run: ValuationRun | None) -> dict[str
         "result_json": result.result_json,
         "payload_hash": result.payload_hash,
     }
+
+
+def _frozen_red_line_geom_hash(*, assessment_run: AssessmentRun) -> str | None:
+    if (
+        assessment_run.prediction_ledger is not None
+        and assessment_run.prediction_ledger.site_geom_hash
+    ):
+        return assessment_run.prediction_ledger.site_geom_hash
+    return assessment_run.scenario.red_line_geom_hash
+
+
+def _record_replay_verification(
+    *,
+    assessment_run: AssessmentRun,
+    check: dict[str, object],
+) -> None:
+    ledger = assessment_run.prediction_ledger
+    if ledger is None:
+        return
+    ledger.replay_verification_status = "VERIFIED" if check["replay_passed"] else "FAILED"
+    ledger.replay_verified_at = datetime.now(UTC)
+    if check["replay_passed"]:
+        ledger.replay_verification_note = (
+            "Replay verification passed for frozen features, scored fields, and payload."
+        )
+        return
+    failing_checks = [
+        label
+        for label in (
+            "feature_hash_matches",
+            "payload_hash_matches",
+            "scored_fields_match",
+        )
+        if not check[label]
+    ]
+    ledger.replay_verification_note = "Replay verification failed: " + ", ".join(
+        failing_checks
+    )
 
 
 def _build_stable_result_payload(

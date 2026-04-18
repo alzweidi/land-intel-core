@@ -559,4 +559,16 @@ def _rulepack_citations_complete(rule_json: dict[str, object] | None) -> bool:
             return False
         if not isinstance(citation.get("source_family"), str) or not citation.get("source_family"):
             return False
+        if (
+            not isinstance(citation.get("effective_date"), str)
+            or not citation.get("effective_date")
+        ):
+            return False
+        source_url = citation.get("source_url") or citation.get("url")
+        if not (
+            citation.get("source_snapshot_id")
+            or citation.get("raw_asset_id")
+            or (isinstance(source_url, str) and source_url)
+        ):
+            return False
     return True

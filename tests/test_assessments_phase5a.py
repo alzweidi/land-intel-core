@@ -4,6 +4,7 @@ from datetime import date
 from types import SimpleNamespace
 from uuid import UUID
 
+from landintel.assessments import service as assessment_service
 from landintel.assessments.comparables import _select_members
 from landintel.assessments.service import (
     build_assessment_artifacts_for_run,
@@ -16,7 +17,10 @@ from landintel.domain.enums import (
     GoldSetReviewStatus,
     HistoricalLabelClass,
 )
+from landintel.domain.models import PlanningApplication, SiteScenario
 from landintel.features.build import FEATURE_VERSION
+from landintel.planning import extant_permission as extant_permission_service
+from landintel.planning.enrich import refresh_site_planning_context
 from landintel.planning.historical_labels import (
     list_historical_label_cases,
     rebuild_historical_case_labels,
@@ -290,6 +294,7 @@ def test_replay_verification_and_gold_set_review_flow(
     assert replay["checks"]
     assert all(check["feature_hash_matches"] for check in replay["checks"])
     assert all(check["payload_hash_matches"] for check in replay["checks"])
+    db_session.commit()
 
     cases = client.get("/api/admin/gold-set/cases", headers=auth_headers("reviewer"))
     assert cases.status_code == 200
@@ -314,3 +319,92 @@ def test_replay_verification_and_gold_set_review_flow(
     assert reviewed_payload["review_status"] == GoldSetReviewStatus.CONFIRMED.value
     assert reviewed_payload["review_notes"] == "Confirmed against fixture provenance."
     assert reviewed_payload["planning_application"]["external_ref"]
+
+
+def test_assessment_rebuild_stays_point_in_time_across_calendar_days(
+    client,
+    drain_jobs,
+    seed_listing_sources,
+    seed_planning_data,
+    db_session,
+    monkeypatch,
+):
+    del seed_listing_sources
+    del seed_planning_data
+
+    def _fake_date(today_value: date):
+        class FrozenDate(date):
+            @classmethod
+            def today(cls) -> date:
+                return today_value
+
+        return FrozenDate
+
+    site_payload, scenario_payload = _build_confirmed_camden_scenario(client, drain_jobs)
+    scenario = db_session.get(SiteScenario, UUID(scenario_payload["id"]))
+    assert scenario is not None
+    site = scenario.site
+    active_app = PlanningApplication(
+        id=UUID("85cf6bc0-3174-4d68-a4c0-a861ec7be3d1"),
+        borough_id="camden",
+        source_system="BOROUGH_REGISTER",
+        source_snapshot_id=site.planning_links[0].planning_application.source_snapshot_id,
+        external_ref="CAM/2026/8888/A",
+        application_type="FULL",
+        proposal_description="Assessment point-in-time active residential permission.",
+        decision_type="FULL_RESIDENTIAL",
+        status="APPROVED",
+        route_normalized="FULL",
+        source_priority=100,
+        source_url="https://camden.example/planning/CAM-2026-8888-A",
+        site_geom_27700=site.geom_27700,
+        site_geom_4326=site.geom_4326,
+        raw_record_json={"dwelling_use": "C3", "active_extant": True, "expiry_date": "2026-04-16"},
+    )
+    db_session.add(active_app)
+    db_session.flush()
+    refresh_site_planning_context(session=db_session, site=site, requested_by="pytest")
+
+    monkeypatch.setattr(assessment_service, "date", _fake_date(date(2026, 4, 15)))
+    monkeypatch.setattr(extant_permission_service, "date", _fake_date(date(2026, 4, 15)))
+    first = create_or_refresh_assessment_run(
+        session=db_session,
+        site_id=UUID(site_payload["id"]),
+        scenario_id=UUID(scenario_payload["id"]),
+        as_of_date=date(2026, 4, 15),
+        requested_by="pytest",
+    )
+    db_session.flush()
+    first_evidence = [
+        (row.polarity.value, row.topic, row.claim_text, row.source_label)
+        for row in first.evidence_items
+    ]
+    first_feature_hash = first.feature_snapshot.feature_hash
+    first_payload_hash = first.prediction_ledger.result_payload_hash
+    first_eligibility = first.result.eligibility_status
+    first_valuation_present = first.prediction_ledger.valuation_run_id is not None
+
+    first.state = first.state.__class__.PENDING
+    first.finished_at = None
+    first.error_text = None
+    db_session.flush()
+    db_session.expire_all()
+
+    monkeypatch.setattr(assessment_service, "date", _fake_date(date(2026, 4, 18)))
+    monkeypatch.setattr(extant_permission_service, "date", _fake_date(date(2026, 4, 18)))
+    second = create_or_refresh_assessment_run(
+        session=db_session,
+        site_id=UUID(site_payload["id"]),
+        scenario_id=UUID(scenario_payload["id"]),
+        as_of_date=date(2026, 4, 15),
+        requested_by="pytest-rerun",
+    )
+
+    assert second.result.eligibility_status == first_eligibility
+    assert second.feature_snapshot.feature_hash == first_feature_hash
+    assert second.prediction_ledger.result_payload_hash == first_payload_hash
+    assert [
+        (row.polarity.value, row.topic, row.claim_text, row.source_label)
+        for row in second.evidence_items
+    ] == first_evidence
+    assert (second.prediction_ledger.valuation_run_id is not None) == first_valuation_present

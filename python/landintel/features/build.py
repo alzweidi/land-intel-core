@@ -475,6 +475,12 @@ def build_feature_snapshot(
     )
     add_feature(
         family="location_and_access",
+        name="scenario_housing_mix_assumed_json",
+        value=dict(getattr(scenario, "housing_mix_assumed_json", None) or {}),
+        analyst_override=scenario.scenario_source == ScenarioSource.ANALYST,
+    )
+    add_feature(
+        family="location_and_access",
         name="site_manual_review_required",
         value=bool(getattr(site, "manual_review_required", False)),
     )
@@ -882,6 +888,7 @@ def build_historical_feature_snapshot(
     scenario = SimpleNamespace(
         template_key=historical_label.template_key,
         units_assumed=historical_label.units_proposed or 0,
+        housing_mix_assumed_json={},
         proposal_form=historical_label.proposal_form or ProposalForm.REDEVELOPMENT,
         scenario_source=ScenarioSource.AUTO,
         route_assumed=application.route_normalized or "FULL",

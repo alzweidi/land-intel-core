@@ -4,6 +4,7 @@ import uuid
 from datetime import date
 from types import SimpleNamespace
 
+from landintel.assessments.service import replay_verify_all_assessments
 from landintel.domain import models
 from landintel.domain.enums import (
     OpportunityBand,
@@ -276,7 +277,7 @@ def test_assessment_builds_valuation_block_and_replay_is_stable(
     )
     assert first_payload["valuation"]["post_permission_value_mid"] is not None
     assert first_payload["valuation"]["uplift_mid"] is not None
-    assert first_payload["valuation"]["expected_uplift_mid"] is not None
+    assert first_payload["valuation"]["expected_uplift_mid"] is None
     assert first_payload["valuation"]["payload_hash"]
 
     second = client.post("/api/assessments", json=payload, headers=auth_headers("reviewer"))
@@ -289,12 +290,17 @@ def test_assessment_builds_valuation_block_and_replay_is_stable(
         == first_payload["prediction_ledger"]["result_payload_hash"]
     )
 
+    replay = replay_verify_all_assessments(db_session, storage=storage)
+    assert replay["failed"] == 0
+    db_session.commit()
+
     detail = client.get(
         f"/api/assessments/{first_payload['id']}?hidden_mode=true",
         headers=auth_headers("reviewer"),
     )
     assert detail.status_code == 200
     detail_payload = detail.json()
+    assert detail_payload["valuation"]["expected_uplift_mid"] is not None
     assert detail_payload["valuation"]["sense_check_json"]["fallback_path"]
     assert detail_payload["valuation"]["valuation_quality"] in {"MEDIUM", "LOW", "HIGH"}
 
@@ -374,6 +380,9 @@ def test_frozen_assessment_readback_stays_bound_to_original_valuation(
     run.site.current_price_gbp = 1_234_567
     run.site.current_price_basis_type = PriceBasisType.GUIDE_PRICE
     run.site.borough_id = "hackney"
+    run.scenario.template_key = "resi_1_4_full"
+    run.scenario.units_assumed = 3
+    run.scenario.housing_mix_assumed_json = {"studio": 1.0}
     run.scenario.manual_review_required = True
     run.scenario.stale_reason = "Scenario changed after assessment freeze."
     db_session.commit()
@@ -391,6 +400,9 @@ def test_frozen_assessment_readback_stays_bound_to_original_valuation(
     assert rerun.result.sense_check_json["fallback_path"] == expected_fallback_path
     assert rerun.result.valuation_quality == expected_quality
     assert rerun.result.manual_review_required == expected_manual_review_required
+
+    replay = replay_verify_all_assessments(db_session, storage=storage)
+    assert replay["failed"] == 0
 
     detail = client.get(
         f"/api/assessments/{created_payload['id']}?hidden_mode=true",

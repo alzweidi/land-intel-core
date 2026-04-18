@@ -72,11 +72,13 @@
               {
                 "label": "Camden borough-register fixture",
                 "source_family": "BOROUGH_REGISTER",
+                "effective_date": "2026-04-01",
                 "url": "https://camden.example/planning/CAM-2025-1100-P"
               },
               {
                 "label": "Camden policy-area fixture",
                 "source_family": "POLICY_LAYER",
+                "effective_date": "2026-04-01",
                 "url": "https://camden.example/policy/small-sites"
               }
             ]
@@ -109,11 +111,13 @@
               {
                 "label": "Camden borough-register fixture",
                 "source_family": "BOROUGH_REGISTER",
+                "effective_date": "2026-04-01",
                 "url": "https://camden.example/planning/CAM-2025-1100-P"
               },
               {
                 "label": "Camden heritage/article 4 fixture",
                 "source_family": "HERITAGE_ARTICLE4",
+                "effective_date": "2026-04-01",
                 "url": "https://camden.example/policy/heritage-controls"
               }
             ]
@@ -146,11 +150,13 @@
               {
                 "label": "Camden policy-area fixture",
                 "source_family": "POLICY_LAYER",
+                "effective_date": "2026-04-01",
                 "url": "https://camden.example/policy/growth-areas"
               },
               {
                 "label": "Camden flood fixture",
                 "source_family": "FLOOD",
+                "effective_date": "2026-04-01",
                 "url": "https://camden.example/environment/flood-zones"
               }
             ]
@@ -209,11 +215,13 @@
               {
                 "label": "Southwark supplemental PLD fixture",
                 "source_family": "PLD",
+                "effective_date": "2026-04-01",
                 "url": "https://planning.data.gov.uk/applications/PLD-2025-0001"
               },
               {
                 "label": "Southwark brownfield fixture",
                 "source_family": "BROWNFIELD",
+                "effective_date": "2026-04-01",
                 "url": "https://southwark.example/brownfield/part2"
               }
             ]
@@ -246,11 +254,13 @@
               {
                 "label": "Southwark supplemental PLD fixture",
                 "source_family": "PLD",
+                "effective_date": "2026-04-01",
                 "url": "https://planning.data.gov.uk/applications/PLD-2025-0001"
               },
               {
                 "label": "Southwark policy-area fixture",
                 "source_family": "POLICY_LAYER",
+                "effective_date": "2026-04-01",
                 "url": "https://southwark.example/policy/intensification"
               }
             ]
@@ -283,11 +293,13 @@
               {
                 "label": "Southwark policy-area fixture",
                 "source_family": "POLICY_LAYER",
+                "effective_date": "2026-04-01",
                 "url": "https://southwark.example/policy/opportunity-areas"
               },
               {
                 "label": "Southwark flood fixture",
                 "source_family": "FLOOD",
+                "effective_date": "2026-04-01",
                 "url": "https://southwark.example/environment/flood-zones"
               }
             ]

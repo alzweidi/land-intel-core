@@ -828,7 +828,22 @@ def _citations_complete(citations: list[dict[str, Any]]) -> bool:
     if not citations:
         return False
     for citation in citations:
-        if not citation.get("label") or not citation.get("source_family"):
+        label = citation.get("label")
+        source_family = citation.get("source_family")
+        effective_date = citation.get("effective_date")
+        source_url = citation.get("source_url") or citation.get("url")
+        has_durable_reference = bool(
+            citation.get("source_snapshot_id")
+            or citation.get("raw_asset_id")
+            or (isinstance(source_url, str) and source_url.strip())
+        )
+        if not isinstance(label, str) or not label.strip():
+            return False
+        if not isinstance(source_family, str) or not source_family.strip():
+            return False
+        if not isinstance(effective_date, str) or not effective_date.strip():
+            return False
+        if not has_durable_reference:
             return False
     return True
 

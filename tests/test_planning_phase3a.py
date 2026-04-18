@@ -323,6 +323,65 @@ def test_missing_coverage_never_returns_false_clean_permission_state(
     assert result.status != ExtantPermissionStatus.NO_ACTIVE_PERMISSION_FOUND
 
 
+def test_extant_permission_respects_supplied_as_of_date(seed_planning_data, db_session):
+    del seed_planning_data
+    site = _make_site(
+        db_session,
+        site_id=uuid.uuid4(),
+        cluster_key="camden-point-in-time-extant",
+        borough_id="camden",
+        geometry_4326={
+            "type": "Polygon",
+            "coordinates": [
+                [
+                    [-0.14256, 51.53600],
+                    [-0.14157, 51.53600],
+                    [-0.14157, 51.53634],
+                    [-0.14256, 51.53634],
+                    [-0.14256, 51.53600],
+                ]
+            ],
+        },
+    )
+    refresh_site_planning_context(session=db_session, site=site, requested_by="pytest")
+    active_app = PlanningApplication(
+        id=uuid.uuid4(),
+        borough_id="camden",
+        source_system="BOROUGH_REGISTER",
+        source_snapshot_id=site.planning_links[0].planning_application.source_snapshot_id,
+        external_ref="CAM/2026/7777/A",
+        application_type="FULL",
+        proposal_description="Point-in-time active residential permission over the example site.",
+        decision_type="FULL_RESIDENTIAL",
+        status="APPROVED",
+        route_normalized="FULL",
+        source_priority=100,
+        source_url="https://camden.example/planning/CAM-2026-7777-A",
+        site_geom_27700=site.geom_27700,
+        site_geom_4326=site.geom_4326,
+        raw_record_json={"dwelling_use": "C3", "active_extant": True, "expiry_date": "2026-04-16"},
+    )
+    db_session.add(active_app)
+    db_session.flush()
+    refresh_site_planning_context(session=db_session, site=site, requested_by="pytest")
+
+    active = evaluate_site_extant_permission(
+        session=db_session,
+        site=site,
+        as_of_date=date(2026, 4, 15),
+    )
+    expired = evaluate_site_extant_permission(
+        session=db_session,
+        site=site,
+        as_of_date=date(2026, 4, 17),
+    )
+
+    assert active.status == ExtantPermissionStatus.ACTIVE_EXTANT_PERMISSION_FOUND
+    assert active.eligibility_status == EligibilityStatus.FAIL
+    assert expired.status == ExtantPermissionStatus.NO_ACTIVE_PERMISSION_FOUND
+    assert expired.eligibility_status == EligibilityStatus.PASS
+
+
 def test_data_health_exposes_coverage_and_baseline_pack(
     client,
     seed_planning_data,

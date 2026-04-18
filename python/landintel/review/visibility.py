@@ -175,6 +175,7 @@ def evaluate_assessment_visibility(
         and role in _PRIVILEGED_ROLES
         and result is not None
         and result.approval_probability_raw is not None
+        and not blocked_reason_codes
     )
     visible_probability_allowed = (
         not include_hidden
@@ -412,6 +413,7 @@ def _payload_hash_matches(assessment_run: AssessmentRun) -> bool:
 
     from landintel.assessments.service import (
         _build_stable_result_payload,
+        _frozen_red_line_geom_hash,
         _note_for_result,
         _pack_from_rows,
         _serialize_valuation_payload,
@@ -432,7 +434,7 @@ def _payload_hash_matches(assessment_run: AssessmentRun) -> bool:
         site_id=assessment_run.site_id,
         scenario_id=assessment_run.scenario_id,
         as_of_date=assessment_run.as_of_date,
-        red_line_geom_hash=assessment_run.scenario.red_line_geom_hash,
+        red_line_geom_hash=_frozen_red_line_geom_hash(assessment_run=assessment_run),
         feature_snapshot=assessment_run.feature_snapshot,
         result=assessment_run.result,
         valuation_payload=valuation_payload,

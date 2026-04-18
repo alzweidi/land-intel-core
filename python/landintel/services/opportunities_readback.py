@@ -193,6 +193,12 @@ def _serialize_opportunity_summary(
         viewer_role=viewer_role,
         include_hidden=include_hidden,
     )
+    ranking_visibility = evaluate_assessment_visibility(
+        session=session,
+        assessment_run=run,
+        viewer_role=AppRoleName.REVIEWER,
+        include_hidden=False,
+    )
     override_summary = build_override_summary(session=session, assessment_run=run)
     valuation_run = frozen_valuation_run(run)
     effective_valuation = (
@@ -212,9 +218,11 @@ def _serialize_opportunity_summary(
     ranking_suppressed = bool(
         override_summary.ranking_suppressed if override_summary is not None else False
     )
-    if result is not None and visibility.blocked:
+    if result is not None and _ranking_output_blocked(run=run, visibility=ranking_visibility):
         band = OpportunityBand.HOLD
-        hold_reason = visibility.blocked_reason_text or "Visible planning band is blocked."
+        hold_reason = (
+            ranking_visibility.blocked_reason_text or "Visible planning band is blocked."
+        )
     elif ranking_suppressed:
         band = OpportunityBand.HOLD
         hold_reason = (
@@ -305,6 +313,16 @@ def _serialize_opportunity_summary(
             baseline_pack=None,
             site=site,
         ),
+    )
+
+
+def _ranking_output_blocked(*, run: AssessmentRun, visibility) -> bool:
+    if not visibility.blocked:
+        return False
+    return not (
+        set(visibility.blocked_reason_codes or []) == {"REPLAY_FAILED"}
+        and run.prediction_ledger is not None
+        and run.prediction_ledger.replay_verification_status == "HASH_CAPTURED"
     )
 
 

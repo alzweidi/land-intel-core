@@ -12,6 +12,7 @@ from landintel.domain import models
 from landintel.domain.enums import (
     CalibrationMethod,
     GeomConfidence,
+    GeomSourceType,
     ModelReleaseStatus,
     ReleaseChannel,
 )
@@ -243,6 +244,20 @@ def test_hidden_score_assessment_is_redacted_by_default_and_replay_stable(
     assert created["result"]["result_json"]["hidden_score_redacted"] is True
     assert created["prediction_ledger"]["model_release_id"] is None
     assert created["prediction_ledger"]["response_json"]["hidden_score_redacted"] is True
+    assert created["prediction_ledger"]["replay_verification_status"] == "HASH_CAPTURED"
+
+    detail_hidden = client.get(
+        f"/api/assessments/{created['id']}?hidden_mode=true",
+        headers=auth_headers("reviewer"),
+    )
+    assert detail_hidden.status_code == 200
+    hidden_before_replay = detail_hidden.json()
+    assert hidden_before_replay["result"]["approval_probability_raw"] is None
+    assert hidden_before_replay["result"]["approval_probability_display"] is None
+
+    replay = replay_verify_all_assessments(db_session, storage=storage)
+    assert replay["failed"] == 0
+    db_session.commit()
 
     detail_hidden = client.get(
         f"/api/assessments/{created['id']}?hidden_mode=true",
@@ -277,9 +292,6 @@ def test_hidden_score_assessment_is_redacted_by_default_and_replay_stable(
         == hidden["prediction_ledger"]["result_payload_hash"]
     )
 
-    db_session.expire_all()
-    replay = replay_verify_all_assessments(db_session, storage=storage)
-    assert replay["failed"] == 0
     assert replay["checks"]
     assert all(check["feature_hash_matches"] for check in replay["checks"])
     assert all(check["payload_hash_matches"] for check in replay["checks"])
@@ -387,6 +399,95 @@ def test_replay_verification_uses_frozen_site_and_scenario_state(
     assert replay["failed"] == 0
     assert replay["checks"][0]["scored_fields_match"] is True
     assert replay["checks"][0]["replay_passed"] is True
+
+
+def test_geometry_reconfirmation_supersedes_assessed_scenario_without_breaking_replay(
+    client,
+    drain_jobs,
+    seed_listing_sources,
+    seed_planning_data,
+    db_session,
+    storage,
+    auth_headers,
+):
+    del seed_listing_sources
+    del seed_planning_data
+    _build_hidden_releases(db_session=db_session, storage=storage)
+
+    site_payload, scenario_payload = _build_confirmed_camden_scenario(client, drain_jobs)
+    created = client.post(
+        "/api/assessments",
+        json={
+            "site_id": site_payload["id"],
+            "scenario_id": scenario_payload["id"],
+            "as_of_date": "2026-04-15",
+            "requested_by": "pytest",
+            "hidden_mode": True,
+        },
+        headers=auth_headers("reviewer"),
+    )
+    assert created.status_code == 200
+    created_payload = created.json()
+    assessment_run_id = uuid.UUID(created_payload["id"])
+    original_scenario_id = scenario_payload["id"]
+
+    geometry_update = client.post(
+        f"/api/sites/{site_payload['id']}/geometry",
+        json={
+            "geom_4326": {
+                "type": "Polygon",
+                "coordinates": [[
+                    [-0.14270, 51.53594],
+                    [-0.14130, 51.53594],
+                    [-0.14130, 51.53644],
+                    [-0.14270, 51.53644],
+                    [-0.14270, 51.53594]
+                ]]
+            },
+            "source_type": GeomSourceType.ANALYST_DRAWN,
+            "confidence": GeomConfidence.HIGH,
+            "reason": "Geometry change before reconfirmation replay test.",
+            "created_by": "pytest"
+        },
+    )
+    assert geometry_update.status_code == 200
+
+    reconfirmed = client.post(
+        f"/api/scenarios/{original_scenario_id}/confirm",
+        json={"requested_by": "pytest", "review_notes": "Reconfirm after geometry change."},
+    )
+    assert reconfirmed.status_code == 200
+    reconfirmed_payload = reconfirmed.json()
+    assert reconfirmed_payload["id"] != original_scenario_id
+    assert reconfirmed_payload["supersedes_id"] == original_scenario_id
+
+    new_assessment = client.post(
+        "/api/assessments",
+        json={
+            "site_id": site_payload["id"],
+            "scenario_id": reconfirmed_payload["id"],
+            "as_of_date": "2026-04-15",
+            "requested_by": "pytest",
+            "hidden_mode": True,
+        },
+        headers=auth_headers("reviewer"),
+    )
+    assert new_assessment.status_code == 200
+
+    replay = replay_verify_all_assessments(db_session, storage=storage)
+    assert replay["failed"] == 0
+
+    db_session.expire_all()
+    old_run = db_session.get(models.AssessmentRun, assessment_run_id)
+    new_run = db_session.get(models.AssessmentRun, uuid.UUID(new_assessment.json()["id"]))
+    assert old_run is not None
+    assert new_run is not None
+    assert old_run.scenario_id == uuid.UUID(original_scenario_id)
+    assert old_run.prediction_ledger is not None
+    assert new_run.prediction_ledger is not None
+    assert old_run.prediction_ledger.site_geom_hash != new_run.prediction_ledger.site_geom_hash
+    assert old_run.prediction_ledger.replay_verification_status == "VERIFIED"
+    assert new_run.prediction_ledger.replay_verification_status == "VERIFIED"
 
 
 def test_model_release_activation_and_rollback(seed_planning_data, db_session, storage):

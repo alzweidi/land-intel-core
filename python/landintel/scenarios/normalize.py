@@ -66,8 +66,9 @@ def confirm_or_update_scenario(
         return scenario
 
     edits_present = _edits_present(request)
+    requires_supersede = edits_present or bool(scenario.assessment_runs)
     target = scenario
-    if edits_present:
+    if requires_supersede:
         scenario.is_current = False
         scenario.is_headline = False
         target = _superseding_scenario(
@@ -92,11 +93,22 @@ def confirm_or_update_scenario(
             "Current extant-permission state is exclusionary, so the scenario is out of scope."
         )
         _append_warning_code(target, "OUT_OF_SCOPE_EXTANT_PERMISSION")
+        _remove_warning_code(target, "EXTANT_PERMISSION_REVIEW_REQUIRED")
+        _remove_warning_code(target, "SCENARIO_STALE_GEOMETRY")
+    elif extant_permission.eligibility_status == EligibilityStatus.ABSTAIN:
+        target.status = ScenarioStatus.ANALYST_REQUIRED
+        target.manual_review_required = True
+        target.stale_reason = extant_permission.summary
+        _append_warning_code(target, "EXTANT_PERMISSION_REVIEW_REQUIRED")
+        _remove_warning_code(target, "OUT_OF_SCOPE_EXTANT_PERMISSION")
+        _remove_warning_code(target, "SCENARIO_STALE_GEOMETRY")
     else:
         target.status = ScenarioStatus.ANALYST_CONFIRMED
         target.manual_review_required = False
         target.stale_reason = None
         _remove_warning_code(target, "SCENARIO_STALE_GEOMETRY")
+        _remove_warning_code(target, "EXTANT_PERMISSION_REVIEW_REQUIRED")
+        _remove_warning_code(target, "OUT_OF_SCOPE_EXTANT_PERMISSION")
 
     _add_review(
         session=session,
@@ -110,7 +122,9 @@ def confirm_or_update_scenario(
     _record_scenario_audit(
         session=session,
         action=(
-            "scenario_superseded_and_confirmed" if edits_present else "scenario_confirmed"
+            "scenario_superseded_and_confirmed"
+            if requires_supersede
+            else "scenario_confirmed"
         ),
         scenario=target,
         before_json=before_payload,
@@ -203,6 +217,7 @@ def _load_scenario(*, session: Session, scenario_id: uuid.UUID) -> SiteScenario:
         .where(SiteScenario.id == scenario_id)
         .options(
             selectinload(SiteScenario.reviews),
+            selectinload(SiteScenario.assessment_runs),
             selectinload(SiteScenario.site).selectinload(SiteCandidate.geometry_revisions),
             selectinload(SiteScenario.site).selectinload(SiteCandidate.scenarios).selectinload(
                 SiteScenario.reviews

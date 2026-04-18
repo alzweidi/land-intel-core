@@ -1869,7 +1869,7 @@ class PredictionLedger(Base):
     replay_verification_status: Mapped[str] = mapped_column(
         String(32),
         nullable=False,
-        default="VERIFIED",
+        default="HASH_CAPTURED",
     )
     replay_verified_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     replay_verification_note: Mapped[str | None] = mapped_column(Text)

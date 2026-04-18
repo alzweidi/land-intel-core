@@ -10,18 +10,53 @@ from landintel.domain.enums import (
     ScenarioStatus,
 )
 from landintel.domain.models import SiteScenario
+from landintel.domain.schemas import ScenarioConfirmRequest
 from landintel.planning.enrich import get_borough_baseline_pack
-from landintel.scenarios.normalize import mark_site_scenarios_stale_for_geometry_change
+from landintel.scenarios.normalize import (
+    confirm_or_update_scenario,
+    mark_site_scenarios_stale_for_geometry_change,
+)
 from landintel.scenarios.suggest import _auto_confirm_allowed, _citations_complete
 
 from tests.test_planning_phase3a import _build_camden_site, _build_southwark_site
 
 
-def test_rulepack_citations_require_label_and_source_family() -> None:
-    assert _citations_complete([{"label": "Rule source", "source_family": "BOROUGH_REGISTER"}])
+def test_rulepack_citations_require_durable_provenance() -> None:
+    assert _citations_complete(
+        [
+            {
+                "label": "Rule source",
+                "source_family": "BOROUGH_REGISTER",
+                "effective_date": "2026-04-01",
+                "url": "https://camden.example/planning/CAM-2025-1100-P",
+            }
+        ]
+    )
+    assert _citations_complete(
+        [
+            {
+                "label": "Rule source",
+                "source_family": "BOROUGH_REGISTER",
+                "effective_date": "2026-04-01",
+                "source_snapshot_id": "snapshot-1",
+            }
+        ]
+    )
     assert not _citations_complete([])
     assert not _citations_complete([{"label": "Rule source"}])
     assert not _citations_complete([{"source_family": "BOROUGH_REGISTER"}])
+    assert not _citations_complete(
+        [{"label": "Rule source", "source_family": "BOROUGH_REGISTER"}]
+    )
+    assert not _citations_complete(
+        [
+            {
+                "label": "Rule source",
+                "source_family": "BOROUGH_REGISTER",
+                "url": "https://camden.example/planning/CAM-2025-1100-P",
+            }
+        ]
+    )
 
 
 def test_auto_confirm_gate_stays_conservative_without_strong_history() -> None:
@@ -190,6 +225,42 @@ def test_rulepack_fixture_is_visible_through_baseline_pack(seed_planning_data, d
         _citations_complete(list(rule.rule_json.get("citations") or []))
         for rule in pack.rulepacks
     )
+
+
+def test_confirm_keeps_extant_abstain_sites_in_analyst_required(
+    client,
+    drain_jobs,
+    seed_listing_sources,
+    seed_planning_data,
+    db_session,
+):
+    del seed_listing_sources
+    del seed_planning_data
+    site_payload = _build_camden_site(client, drain_jobs)
+    suggest = client.post(
+        f"/api/sites/{site_payload['id']}/scenarios/suggest",
+        json={"requested_by": "pytest"},
+    ).json()
+    scenario_id = uuid.UUID(suggest["items"][0]["id"])
+
+    db_session.expire_all()
+    scenario = db_session.get(SiteScenario, scenario_id)
+    assert scenario is not None
+    scenario.site.borough_id = "islington"
+    db_session.flush()
+
+    confirmed = confirm_or_update_scenario(
+        session=db_session,
+        scenario_id=scenario_id,
+        request=ScenarioConfirmRequest(
+            requested_by="pytest",
+            review_notes="Confirm while mandatory coverage is incomplete.",
+        ),
+    )
+    assert confirmed.status == ScenarioStatus.ANALYST_REQUIRED
+    assert confirmed.manual_review_required is True
+    assert confirmed.stale_reason is not None
+    assert "extant permission screening must abstain" in confirmed.stale_reason.lower()
 
 
 def test_mark_site_scenarios_stale_for_geometry_change_downgrades_confirmed_status(

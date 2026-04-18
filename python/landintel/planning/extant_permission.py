@@ -41,7 +41,9 @@ def evaluate_site_extant_permission(
     *,
     session: Session,
     site: SiteCandidate,
+    as_of_date: date | None = None,
 ) -> ExtantPermissionRead:
+    effective_as_of_date = as_of_date or date.today()
     coverage_rows = list_latest_coverage_snapshots(session=session, borough_id=site.borough_id)
     coverage_by_family = {row.source_family: row for row in coverage_rows}
     coverage_gaps = _coverage_gaps(coverage_by_family)
@@ -86,12 +88,14 @@ def evaluate_site_extant_permission(
                 application=application,
                 application_snapshot=application_snapshot,
                 material=material,
+                as_of_date=effective_as_of_date,
             ),
         )
 
         if _is_active_residential_permission(
             application,
             application_snapshot=application_snapshot,
+            as_of_date=effective_as_of_date,
         ):
             if application_snapshot.get("source_system", application.source_system) == "PLD":
                 supplemental_active_matches.append(match)
@@ -104,18 +108,30 @@ def evaluate_site_extant_permission(
         if _is_non_exclusionary_permission(
             application,
             application_snapshot=application_snapshot,
+            as_of_date=effective_as_of_date,
         ):
             non_exclusionary_matches.append(match)
 
     brownfield_states = list_brownfield_states_for_site(session=session, site=site)
     for state in brownfield_states:
-        match = _brownfield_match(site_geometry=site_geometry, site_area_sqm=site_area, state=state)
+        match = _brownfield_match(
+            site_geometry=site_geometry,
+            site_area_sqm=site_area,
+            state=state,
+            as_of_date=effective_as_of_date,
+        )
         if match is None:
             continue
-        if _is_active_brownfield_exclusion(state) and match.material:
+        if (
+            _is_active_brownfield_exclusion(
+                state,
+                as_of_date=effective_as_of_date,
+            )
+            and match.material
+        ):
             active_material_matches.append(match)
             continue
-        if _is_active_brownfield_exclusion(state):
+        if _is_active_brownfield_exclusion(state, as_of_date=effective_as_of_date):
             active_nonmaterial_matches.append(match)
             continue
         non_exclusionary_matches.append(match)
@@ -303,6 +319,7 @@ def _is_active_residential_permission(
     application: PlanningApplication,
     *,
     application_snapshot: dict[str, Any] | None = None,
+    as_of_date: date,
 ) -> bool:
     snapshot = application_snapshot if isinstance(application_snapshot, dict) else {}
     route_normalized = str(
@@ -321,7 +338,7 @@ def _is_active_residential_permission(
     if not _is_residential(raw_record_json):
         return False
     expiry_date = _parse_date_from_record(raw_record_json, "expiry_date")
-    if expiry_date is not None and expiry_date < date.today():
+    if expiry_date is not None and expiry_date < as_of_date:
         return False
     return bool(raw_record_json.get("active_extant", True))
 
@@ -330,6 +347,7 @@ def _is_non_exclusionary_permission(
     application: PlanningApplication,
     *,
     application_snapshot: dict[str, Any] | None = None,
+    as_of_date: date,
 ) -> bool:
     snapshot = application_snapshot if isinstance(application_snapshot, dict) else {}
     status = str(snapshot.get("status") or application.status or "")
@@ -339,7 +357,7 @@ def _is_non_exclusionary_permission(
     if bool(raw_record_json.get("lapsed")):
         return True
     expiry_date = _parse_date_from_record(raw_record_json, "expiry_date")
-    return expiry_date is not None and expiry_date < date.today()
+    return expiry_date is not None and expiry_date < as_of_date
 
 
 def _is_residential(raw_record_json: dict[str, Any] | None) -> bool:
@@ -349,12 +367,16 @@ def _is_residential(raw_record_json: dict[str, Any] | None) -> bool:
     return dwelling_use.startswith("C3") or "RESI" in dwelling_use
 
 
-def _is_active_brownfield_exclusion(state: BrownfieldSiteState) -> bool:
+def _is_active_brownfield_exclusion(
+    state: BrownfieldSiteState,
+    *,
+    as_of_date: date,
+) -> bool:
     part = state.part.upper()
     if part == "PART_1":
         return False
     effective_to = state.effective_to
-    if effective_to is not None and effective_to < date.today():
+    if effective_to is not None and effective_to < as_of_date:
         return False
     pip_active = (state.pip_status or "").upper() == "ACTIVE"
     tdc_active = (state.tdc_status or "").upper() == "ACTIVE"
@@ -366,6 +388,7 @@ def _brownfield_match(
     site_geometry,
     site_area_sqm: float,
     state: BrownfieldSiteState,
+    as_of_date: date,
 ) -> ExtantPermissionMatchRead | None:
     match = match_generic_geometry(
         site_geometry=site_geometry,
@@ -389,7 +412,7 @@ def _brownfield_match(
         or bool(match.overlap_sqm and match.overlap_sqm >= 100.0),
         detail=(
             "Brownfield Part 2 entry with active PiP/TDC evidence."
-            if _is_active_brownfield_exclusion(state)
+            if _is_active_brownfield_exclusion(state, as_of_date=as_of_date)
             else "Brownfield Part 1 or inactive brownfield entry; informative but not exclusionary."
         ),
     )
@@ -400,6 +423,7 @@ def _planning_detail(
     application: PlanningApplication,
     application_snapshot: dict[str, Any] | None = None,
     material: bool,
+    as_of_date: date,
 ) -> str:
     snapshot = application_snapshot if isinstance(application_snapshot, dict) else {}
     route_or_type = (
@@ -409,14 +433,22 @@ def _planning_detail(
         or application.application_type.lower()
     )
     external_ref = snapshot.get("external_ref") or application.external_ref
-    if _is_active_residential_permission(application, application_snapshot=snapshot):
+    if _is_active_residential_permission(
+        application,
+        application_snapshot=snapshot,
+        as_of_date=as_of_date,
+    ):
         prefix = "Material" if material else "Potential"
         return (
             f"{prefix} active "
             f"{route_or_type} "
             f"permission recorded under {external_ref}."
         )
-    if _is_non_exclusionary_permission(application, application_snapshot=snapshot):
+    if _is_non_exclusionary_permission(
+        application,
+        application_snapshot=snapshot,
+        as_of_date=as_of_date,
+    ):
         return (
             f"Historic or non-active planning record {external_ref} "
             "remains relevant evidence."

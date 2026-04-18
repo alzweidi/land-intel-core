@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import uuid
 from datetime import UTC, datetime
+from types import SimpleNamespace
 
 from sqlalchemy.orm import Session
 
@@ -109,9 +110,10 @@ def _build_or_refresh_valuation_for_assessment(
             proposal_form=frozen_context["scenario_proposal_form"],
             as_of_date=assessment_run.as_of_date,
         )
+        frozen_scenario = _frozen_scenario_for_valuation(assessment_run)
         residual = compute_residual_valuation(
             site=assessment_run.site,
-            scenario=assessment_run.scenario,
+            scenario=frozen_scenario,
             assumption_set=assumption_set,
             price_per_sqm_low=sales_summary.price_per_sqm_low,
             price_per_sqm_mid=sales_summary.price_per_sqm_mid,
@@ -337,7 +339,11 @@ def _valuation_input_hash(
             "assessment_run_id": str(assessment_run.id),
             "feature_hash": feature_hash,
             "scenario_id": str(assessment_run.scenario_id),
-            "scenario_geom_hash": assessment_run.scenario.red_line_geom_hash,
+            "scenario_geom_hash": (
+                assessment_run.prediction_ledger.site_geom_hash
+                if assessment_run.prediction_ledger is not None
+                else assessment_run.scenario.red_line_geom_hash
+            ),
             "current_price_gbp": frozen_price_gbp,
             "current_price_basis_type": frozen_price_basis_type.value,
             "approval_probability_raw": assessment_run.result.approval_probability_raw,
@@ -404,3 +410,28 @@ def _frozen_assessment_context(assessment_run: AssessmentRun) -> dict[str, objec
             values.get("scenario_is_stale", bool(assessment_run.scenario.stale_reason))
         ),
     }
+
+
+def _frozen_scenario_for_valuation(assessment_run: AssessmentRun) -> SimpleNamespace:
+    feature_json = (
+        {}
+        if assessment_run.feature_snapshot is None
+        else dict(assessment_run.feature_snapshot.feature_json or {})
+    )
+    values = feature_json.get("values")
+    if not isinstance(values, dict):
+        values = {}
+    units_assumed = values.get("scenario_units_assumed")
+    if not isinstance(units_assumed, int):
+        units_assumed = assessment_run.scenario.units_assumed
+    template_key = values.get("scenario_template_key")
+    if not isinstance(template_key, str) or not template_key.strip():
+        template_key = assessment_run.scenario.template_key
+    housing_mix_assumed_json = values.get("scenario_housing_mix_assumed_json")
+    if not isinstance(housing_mix_assumed_json, dict):
+        housing_mix_assumed_json = dict(assessment_run.scenario.housing_mix_assumed_json or {})
+    return SimpleNamespace(
+        template_key=template_key,
+        units_assumed=units_assumed,
+        housing_mix_assumed_json=dict(housing_mix_assumed_json),
+    )

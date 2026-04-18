@@ -256,14 +256,18 @@ def _serialize_assessment_result(
                 "and internal explanation payloads remain redacted in the standard view."
             ),
         }
-    elif hidden_score_present and not include_hidden:
+    elif hidden_score_present:
         result_json = {
             "phase": "Phase 8A",
             "score_execution_status": result_json.get("score_execution_status", "HIDDEN_ONLY"),
             "hidden_score_redacted": True,
             "note": (
-                "Probability is redacted for this scope and viewer role. Hidden/internal score "
-                "details remain restricted in Phase 8A."
+                visibility.blocked_reason_text
+                if include_hidden and visibility.blocked
+                else (
+                    "Probability is redacted for this scope and viewer role. Hidden/internal "
+                    "score details remain restricted in Phase 8A."
+                )
             ),
         }
     include_internal_diagnostics = visibility.hidden_probability_allowed

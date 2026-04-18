@@ -536,9 +536,10 @@ def _append_by_polarity(
 
 def _citation_url(citations: list[dict[str, object]]) -> str | None:
     for citation in citations:
-        url = citation.get("url")
-        if isinstance(url, str) and url:
-            return url
+        for key in ("source_url", "url"):
+            url = citation.get(key)
+            if isinstance(url, str) and url:
+                return url
     return None
 
 
