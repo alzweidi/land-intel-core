@@ -244,7 +244,7 @@ def test_phase2_site_build_and_geometry_edit(
         json={"url": MANUAL_LISTING_URL, "source_name": "manual_url", "requested_by": "pytest"},
     )
     client.post(
-        "/api/listings/connectors/public_page_fixture/run",
+        "/api/listings/connectors/example_public_page/run",
         json={"requested_by": "pytest"},
     )
     processed = drain_jobs(max_iterations=10)

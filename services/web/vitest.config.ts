@@ -17,9 +17,13 @@ export default defineConfig({
       reportsDirectory: './coverage',
       include: [
         'app/assessments/page.tsx',
+        'app/admin/source-runs/page.tsx',
+        'app/listings/page.tsx',
         'components/assessment-run-builder.tsx',
+        'components/listing-run-panel.tsx',
         'components/site-scenario-editor.tsx',
-        'lib/auth/session.ts'
+        'lib/auth/session.ts',
+        'lib/listing-source-console.ts'
       ],
       exclude: ['**/*.d.ts'],
       thresholds: {

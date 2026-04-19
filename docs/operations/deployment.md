@@ -260,6 +260,8 @@ From your workstation:
 ```bash
 export BACKEND_BASIC_AUTH_USER='<backend-basic-auth-user>'
 export BACKEND_BASIC_AUTH_PASSWORD='<backend-basic-auth-password>'
+export APP_AUTH_EMAIL='<reviewer-or-admin-email>'
+export APP_AUTH_PASSWORD='<reviewer-or-admin-password>'
 ./scripts/smoke_prod.sh https://app.<domain> https://api.<domain>
 ```
 

@@ -17,6 +17,7 @@ from landintel.domain.enums import (
     SourceParseStatus,
 )
 from landintel.domain.models import (
+    JobRun,
     ListingCluster,
     ListingClusterMember,
     ListingDocument,
@@ -337,7 +338,7 @@ def test_phase1a_ingestion_and_cluster_integration(
     assert csv_response.status_code == 202
 
     connector_response = client.post(
-        "/api/listings/connectors/public_page_fixture/run",
+        "/api/listings/connectors/example_public_page/run",
         json={"requested_by": "pytest"},
     )
     assert connector_response.status_code == 202
@@ -394,6 +395,44 @@ def test_phase1a_ingestion_and_cluster_integration(
     cluster_detail_response = client.get(f"/api/listing-clusters/{active_cluster_payload['id']}")
     assert cluster_detail_response.status_code == 200
     assert len(cluster_detail_response.json()["members"]) == 2
+
+
+def test_get_listing_sources_returns_live_source_catalog(client, seed_listing_sources) -> None:
+    response = client.get("/api/listings/sources")
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert [item["name"] for item in payload] == ["csv_import", "example_public_page", "manual_url"]
+    automated = next(item for item in payload if item["name"] == "example_public_page")
+    assert automated["refresh_policy_json"]["interval_hours"] == 24
+
+
+def test_connector_run_route_reuses_active_job(client, db_session, seed_listing_sources) -> None:
+    del seed_listing_sources
+
+    first = client.post(
+        "/api/listings/connectors/example_public_page/run",
+        json={"requested_by": "pytest"},
+    )
+    second = client.post(
+        "/api/listings/connectors/example_public_page/run",
+        json={"requested_by": "pytest"},
+    )
+
+    assert first.status_code == 202
+    assert second.status_code == 202
+    first_payload = first.json()
+    second_payload = second.json()
+    assert first_payload["job_id"] == second_payload["job_id"]
+
+    queued_jobs = [
+        job
+        for job in db_session.query(JobRun).all()
+        if job.job_type.value == "LISTING_SOURCE_RUN"
+        and job.payload_json.get("source_name") == "example_public_page"
+    ]
+    assert len(queued_jobs) == 1
+    assert queued_jobs[0].payload_json["dedupe_key"] == "source:example_public_page"
 
 
 def test_storage_is_immutable(storage, test_settings) -> None:

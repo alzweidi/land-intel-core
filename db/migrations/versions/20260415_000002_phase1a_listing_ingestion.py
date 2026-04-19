@@ -339,6 +339,7 @@ def upgrade() -> None:
                 "connector_type": ConnectorType.PUBLIC_PAGE.value,
                 "compliance_mode": ComplianceMode.COMPLIANT_AUTOMATED.value,
                 "refresh_policy_json": {
+                    "interval_hours": 24,
                     "seed_urls": ["https://example.com"],
                     "max_listings": 1,
                 },

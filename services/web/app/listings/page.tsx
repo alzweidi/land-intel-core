@@ -3,7 +3,6 @@ import Link from 'next/link';
 import { Badge, DefinitionList, PageHeader, Panel, StatCard, TableShell } from '@/components/ui';
 import { getAuthContext } from '@/lib/auth/server';
 import { getListingSources, getListings } from '@/lib/landintel-api';
-import { phase1ASources } from '@/lib/phase1a-data';
 import { getListingLabel, getSourceLabel } from '@/lib/presentation';
 
 export const dynamic = 'force-dynamic';
@@ -35,7 +34,7 @@ export default async function ListingsPage({ searchParams }: { searchParams?: Se
   };
 
   const [listingResult, sourceResult] = await Promise.all([getListings(filters), getListingSources()]);
-  const sourceItems = sourceResult.items.length > 0 ? sourceResult.items : phase1ASources;
+  const sourceItems = sourceResult.items;
 
   return (
     <div className="page-stack">
@@ -64,7 +63,7 @@ export default async function ListingsPage({ searchParams }: { searchParams?: Se
           value={displayCount(listingResult.items.length)}
           detail={listingResult.apiAvailable ? 'Live API rows in the current query' : 'Local fallback rows in the current query'}
         />
-        <StatCard tone="success" label="Sources" value={displayCount(sourceItems.length)} detail="Manual, CSV, and approved public sources" />
+        <StatCard tone="success" label="Sources" value={displayCount(sourceItems.length)} detail={sourceResult.apiAvailable ? 'Live source metadata for listing filters' : 'Source filters unavailable until /api/listings/sources responds'} />
         <StatCard tone="warning" label="Query" value={filters.q ? 'Filtered' : 'All rows'} detail="GET form filters the visible list" />
         <StatCard tone="neutral" label="Compliance" value="Enforced" detail="Public-page runs remain blocked unless approved" />
       </section>
@@ -126,12 +125,16 @@ export default async function ListingsPage({ searchParams }: { searchParams?: Se
         </Panel>
 
         <Panel eyebrow="Source posture" title="Approved source modes">
-          <DefinitionList
-            items={sourceItems.slice(0, 6).map((source) => ({
-              label: source.source_key,
-              value: `${source.compliance_mode} · ${source.coverage_note}`
-            }))}
-          />
+          {sourceItems.length > 0 ? (
+            <DefinitionList
+              items={sourceItems.slice(0, 6).map((source) => ({
+                label: source.source_key,
+                value: `${source.compliance_mode} · ${source.refresh_policy}`
+              }))}
+            />
+          ) : (
+            <p className="empty-note">No live source metadata was returned. Listing rows can still render, but source filters and posture are unavailable.</p>
+          )}
         </Panel>
       </div>
 
@@ -192,12 +195,16 @@ export default async function ListingsPage({ searchParams }: { searchParams?: Se
 
       <section className="split-grid">
         <Panel eyebrow="Source approval" title="Connector guardrails">
-          <DefinitionList
-            items={sourceItems.map((source) => ({
-              label: source.source_key,
-              value: `${source.compliance_mode} · ${source.coverage_note}`
-            }))}
-          />
+          {sourceItems.length > 0 ? (
+            <DefinitionList
+              items={sourceItems.map((source) => ({
+                label: source.source_key,
+                value: `${source.compliance_mode} · ${source.refresh_policy}`
+              }))}
+            />
+          ) : (
+            <p className="empty-note">No live listing-source metadata was returned for this environment.</p>
+          )}
         </Panel>
         <Panel eyebrow="Notes" title="Analyst reminders">
           <ul className="checklist">

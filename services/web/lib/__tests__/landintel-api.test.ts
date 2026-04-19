@@ -1,6 +1,15 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { createAssessment, getAssessment, getSites } from '@/lib/landintel-api';
+import {
+  createAssessment,
+  getAdminJobs,
+  getListings,
+  getAssessment,
+  getListingSources,
+  getSites,
+  runConnector,
+  runCsvImport
+} from '@/lib/landintel-api';
 
 describe('landintel-api', () => {
   const fetchMock = vi.fn();
@@ -72,5 +81,110 @@ describe('landintel-api', () => {
       hidden_mode: true,
       viewer_role: 'reviewer'
     });
+  });
+
+  it('maps live listing sources without fixture fallback', async () => {
+    fetchMock.mockResolvedValueOnce(
+      new Response(
+        JSON.stringify([
+          {
+            id: 'source-1',
+            name: 'example_public_page',
+            connector_type: 'PUBLIC_PAGE',
+            compliance_mode: 'COMPLIANT_AUTOMATED',
+            active: true,
+            refresh_policy_json: { interval_hours: 24 }
+          }
+        ]),
+        {
+          status: 200,
+          headers: { 'content-type': 'application/json' }
+        }
+      )
+    );
+
+    const result = await getListingSources();
+
+    expect(result.apiAvailable).toBe(true);
+    expect(result.items).toEqual([
+      {
+        id: 'source-1',
+        source_key: 'example_public_page',
+        name: 'example_public_page',
+        connector_type: 'public_page',
+        compliance_mode: 'COMPLIANT_AUTOMATED',
+        active: true,
+        refresh_policy: 'Every 24h',
+        coverage_note: 'Every 24h'
+      }
+    ]);
+  });
+
+  it('treats empty live listing collections as fixture fallback rows', async () => {
+    fetchMock.mockResolvedValueOnce(
+      new Response(JSON.stringify([]), {
+        status: 200,
+        headers: { 'content-type': 'application/json' }
+      })
+    );
+
+    const result = await getListings();
+
+    expect(result.apiAvailable).toBe(false);
+    expect(result.items.length).toBeGreaterThan(0);
+  });
+
+  it('loads admin jobs from the live admin endpoint', async () => {
+    fetchMock.mockResolvedValueOnce(
+      new Response(
+        JSON.stringify([
+          {
+            id: 'job-1',
+            job_type: 'LISTING_SOURCE_RUN',
+            status: 'QUEUED',
+            requested_by: 'scheduler'
+          }
+        ]),
+        {
+          status: 200,
+          headers: { 'content-type': 'application/json' }
+        }
+      )
+    );
+
+    const result = await getAdminJobs({ sessionToken: 'signed-session' });
+
+    expect(result.apiAvailable).toBe(true);
+    expect(result.items[0]).toMatchObject({
+      id: 'job-1',
+      job_type: 'LISTING_SOURCE_RUN',
+      status: 'QUEUED',
+      requested_by: 'scheduler'
+    });
+    const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect(url).toContain('/api/admin/jobs');
+    expect(new Headers(init.headers).get('x-landintel-session')).toBe('signed-session');
+  });
+
+  it('normalizes legacy connector source keys before posting', async () => {
+    fetchMock.mockResolvedValueOnce(
+      new Response(JSON.stringify({ ok: true }), {
+        status: 200,
+        headers: { 'content-type': 'application/json' }
+      })
+    );
+
+    await runConnector('approved_public_page', { coverage_note: 'pytest' });
+
+    const [url] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect(url).toContain('/api/listings/connectors/example_public_page/run');
+  });
+
+  it('requires a file for CSV import submissions', async () => {
+    await expect(
+      runCsvImport({
+        file: null as never
+      })
+    ).rejects.toThrow('CSV file is required.');
   });
 });

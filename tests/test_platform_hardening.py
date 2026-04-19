@@ -936,7 +936,14 @@ def test_admin_model_release_routes_cover_rebuild_activate_retire_and_errors(
 
     sources = client.get("/api/admin/listing-sources", headers=auth_headers("admin"))
     assert sources.status_code == 200
-    assert {row["name"] for row in sources.json()} >= {"manual_url", "csv_import"}
+    source_rows = sources.json()
+    assert {row["name"] for row in source_rows} >= {
+        "manual_url",
+        "csv_import",
+        "example_public_page",
+    }
+    example_public_page = next(row for row in source_rows if row["name"] == "example_public_page")
+    assert example_public_page["refresh_policy_json"]["interval_hours"] == 24
 
     missing_release = client.get(
         f"/api/admin/model-releases/{uuid.uuid4()}",
@@ -967,3 +974,15 @@ def test_job_service_deduplicates_and_reuses_existing_jobs(db_session):
         requested_by="pytest",
     )
     assert site_first.id == site_second.id
+
+    connector_first = enqueue_connector_run_job(
+        db_session,
+        source_name="example_public_page",
+        requested_by="pytest",
+    )
+    connector_second = enqueue_connector_run_job(
+        db_session,
+        source_name="example_public_page",
+        requested_by="pytest",
+    )
+    assert connector_first.id == connector_second.id

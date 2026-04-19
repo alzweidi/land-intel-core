@@ -1,7 +1,7 @@
 """Phase 8A lineage integrity hardening.
 
 Revision ID: 20260417_000010_phase8a_lineage_integrity
-Revises: 20260415_000009_phase8a_controls_visibility
+Revises: 20260416_000009a_alembic_len
 Create Date: 2026-04-17
 """
 
@@ -13,7 +13,7 @@ import sqlalchemy as sa
 from alembic import op
 
 revision = "20260417_000010_phase8a_lineage_integrity"
-down_revision = "20260415_000009_phase8a_controls_visibility"
+down_revision = "20260416_000009a_alembic_len"
 branch_labels = None
 depends_on = None
 
