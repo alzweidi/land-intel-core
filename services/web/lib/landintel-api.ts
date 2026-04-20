@@ -1042,6 +1042,26 @@ function pickCollection<T>(value: ApiCollectionResponse<T>): T[] {
   return [];
 }
 
+function isApiCollectionPayload<T>(value: ApiCollectionResponse<T>): boolean {
+  if (Array.isArray(value)) {
+    return true;
+  }
+
+  if (!value || !isRecord(value)) {
+    return false;
+  }
+
+  return [
+    value.items,
+    value.results,
+    value.data,
+    value.listings,
+    value.clusters,
+    value.runs,
+    value.sources
+  ].some((item) => Array.isArray(item));
+}
+
 function toStringValue(value: unknown, fallback = ''): string {
   if (typeof value === 'string') {
     return value;
@@ -1384,12 +1404,15 @@ export async function getListingSources(): Promise<{ items: Phase1ASource[]; api
 
 export async function getListings(query: ListingsQuery = {}): Promise<{ items: Phase1AListingSummary[]; apiAvailable: boolean }> {
   const url = `/api/listings${buildQueryString(query)}`;
-  const result = await queryApiCollection(url, mapListingSummary);
-  const usingLiveItems = result.apiAvailable && result.items.length > 0;
-  const base = usingLiveItems ? result.items : phase1AListings;
+  const payload = await requestJson(url);
+  const apiAvailable = isApiCollectionPayload(payload as ApiCollectionResponse<unknown>);
+  const liveItems = apiAvailable
+    ? pickCollection(payload as ApiCollectionResponse<unknown>).map(mapListingSummary)
+    : [];
+  const base = apiAvailable ? liveItems : phase1AListings;
   return {
     items: filterListings(base, query),
-    apiAvailable: usingLiveItems
+    apiAvailable
   };
 }
 

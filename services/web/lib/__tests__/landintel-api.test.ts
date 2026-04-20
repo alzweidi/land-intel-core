@@ -120,9 +120,23 @@ describe('landintel-api', () => {
     ]);
   });
 
-  it('treats empty live listing collections as fixture fallback rows', async () => {
+  it('keeps empty live listing collections available without fixture fallback', async () => {
     fetchMock.mockResolvedValueOnce(
       new Response(JSON.stringify([]), {
+        status: 200,
+        headers: { 'content-type': 'application/json' }
+      })
+    );
+
+    const result = await getListings();
+
+    expect(result.apiAvailable).toBe(true);
+    expect(result.items).toEqual([]);
+  });
+
+  it('falls back to fixture rows when the listings payload is invalid', async () => {
+    fetchMock.mockResolvedValueOnce(
+      new Response(JSON.stringify({ unexpected: true }), {
         status: 200,
         headers: { 'content-type': 'application/json' }
       })

@@ -229,6 +229,11 @@ Enable Netlify site protection so the frontend stays private:
 
 The app login behind that outer layer is still the built-in role adapter today. Treat it as an internal convenience, not a production-grade auth boundary.
 
+If your frontend protection layer needs curl to send a password, header, cookie,
+or other extra options before the app login route is reachable, store that in a
+curl config file and point the smoke script at it with `APP_CURL_CONFIG`.
+Keep that file out of the repo.
+
 ## 6. First Deploy
 
 From your workstation:
@@ -262,13 +267,25 @@ export BACKEND_BASIC_AUTH_USER='<backend-basic-auth-user>'
 export BACKEND_BASIC_AUTH_PASSWORD='<backend-basic-auth-password>'
 export APP_AUTH_EMAIL='<reviewer-or-admin-email>'
 export APP_AUTH_PASSWORD='<reviewer-or-admin-password>'
+# Optional when app.<domain> is behind Netlify site protection or another
+# outer frontend gate:
+# export APP_CURL_CONFIG="$HOME/.config/landintel/app-protection.curlrc"
 ./scripts/smoke_prod.sh https://app.<domain> https://api.<domain>
+```
+
+Example `app-protection.curlrc`:
+
+```text
+# Use whichever directive your frontend protection layer requires.
+# user = "site-protection-user:site-protection-password"
+# header = "x-site-access: <token>"
+# cookie = "site_access=<cookie>"
 ```
 
 Then manually confirm:
 
 1. Open `https://app.<domain>`.
-2. Pass Netlify site protection.
+2. Pass Netlify site protection if you are checking manually in the browser.
 3. Log into the private frontend.
 4. Verify the dashboard loads and privileged calls succeed through the same-origin frontend proxy.
 5. If you need privileged CLI checks, sign in through `https://app.<domain>/api/auth/login` first and reuse that cookie against `https://app.<domain>/api/...`.
