@@ -303,17 +303,26 @@ def test_geospatial_import_remote_geojson_covers_remote_success_and_fallback(
     assert snapshot.manifest_json["fetch_mode"] == "remote"
     assert asset.mime_type == "application/geo+json"
 
-    rollback_calls: list[str] = []
+    nested_calls: list[str] = []
     seen_paths.clear()
     fallback_snapshot = SimpleNamespace(source_uri="fixture", manifest_json={})
     fallback_lookup = {
         (geospatial_official_sources.SourceSnapshot, snapshot_id): fallback_snapshot,
         (geospatial_official_sources.RawAsset, asset_id): asset,
     }
+    class _NestedScope:
+        def __enter__(self):
+            nested_calls.append("entered")
+            return self
+
+        def __exit__(self, exc_type, exc, tb):
+            nested_calls.append("rolled-back" if exc_type else "committed")
+            return False
+
     fallback_session = SimpleNamespace(
         get=lambda model, key: fallback_lookup.get((model, key)),
         flush=lambda: None,
-        rollback=lambda: rollback_calls.append("rolled-back"),
+        begin_nested=lambda: _NestedScope(),
     )
 
     def _import_fallback(**kwargs):
@@ -340,7 +349,7 @@ def test_geospatial_import_remote_geojson_covers_remote_success_and_fallback(
     assert len(seen_paths) == 2
     assert seen_paths[0] != fixture_path
     assert seen_paths[1] == fixture_path
-    assert rollback_calls == ["rolled-back"]
+    assert nested_calls == ["entered", "rolled-back"]
     assert fallback_snapshot.manifest_json["fetch_mode"] == "fixture_fallback"
 
 

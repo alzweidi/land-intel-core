@@ -60,6 +60,30 @@ describe('API proxy route', () => {
     expect(response.headers.get('cache-control')).toBe('no-store');
   });
 
+  it('ignores spoofed forwarded origin headers when rewriting redirects', async () => {
+    fetchMock.mockResolvedValue(
+      new Response(null, {
+        status: 307,
+        headers: {
+          location: 'http://api:8000/api/opportunities/'
+        }
+      })
+    );
+
+    const request = new NextRequest('http://localhost:3000/api/opportunities', {
+      headers: {
+        'x-forwarded-host': 'evil.example',
+        'x-forwarded-proto': 'https'
+      }
+    });
+    const response = await GET(request, {
+      params: Promise.resolve({ path: ['opportunities'] })
+    });
+
+    expect(response.status).toBe(307);
+    expect(response.headers.get('location')).toBe('http://localhost:3000/api/opportunities/');
+  });
+
   it('follows same-origin upstream redirects internally for collection endpoints', async () => {
     fetchMock
       .mockResolvedValueOnce(

@@ -30,6 +30,28 @@ from landintel.planning.import_common import PlanningImportResult
 from landintel.valuation import official_sources as valuation_official_sources
 
 
+def _source_snapshot(
+    snapshot_id: uuid.UUID,
+    label: str,
+    source_family: str = "fixture",
+) -> SourceSnapshot:
+    digest = hashlib.sha256(label.encode("utf-8")).hexdigest()
+    return SourceSnapshot(
+        id=snapshot_id,
+        source_family=source_family,
+        source_name=label,
+        source_uri=f"file://{label}",
+        acquired_at=datetime.now(UTC),
+        schema_hash=digest,
+        content_hash=digest,
+        coverage_note=label,
+        freshness_status=SourceFreshnessStatus.FRESH,
+        parse_status=SourceParseStatus.PARSED,
+        parse_error_text=None,
+        manifest_json={"label": label},
+    )
+
+
 @respx.mock
 def test_fetch_http_asset_uses_content_type_and_final_url() -> None:
     url = "https://example.test/data.json"
@@ -215,7 +237,7 @@ def test_geospatial_official_source_derives_fixture_compatible_borough_ids(
     assert snapshot.manifest_json["fetch_mode"] == "remote"
 
 
-def test_geospatial_official_source_rolls_back_before_fixture_fallback_after_db_error(
+def test_geospatial_official_source_fallback_isolates_remote_db_error_and_preserves_prior_work(
     db_session,
     storage,
     monkeypatch,
@@ -248,23 +270,15 @@ def test_geospatial_official_source_rolls_back_before_fixture_fallback_after_db_
         )
     )
     attempts: list[Path] = []
-
-    def _snapshot(snapshot_id: uuid.UUID, label: str) -> SourceSnapshot:
-        digest = hashlib.sha256(label.encode("utf-8")).hexdigest()
-        return SourceSnapshot(
-            id=snapshot_id,
-            source_family="reference.lpa_boundary",
-            source_name="london_borough_boundaries",
-            source_uri=f"file://{fixture_path}",
-            acquired_at=datetime.now(UTC),
-            schema_hash=digest,
-            content_hash=digest,
-            coverage_note=label,
-            freshness_status=SourceFreshnessStatus.FRESH,
-            parse_status=SourceParseStatus.PARSED,
-            parse_error_text=None,
-            manifest_json={},
+    preserved_snapshot_id = uuid.uuid4()
+    db_session.add(
+        _source_snapshot(
+            preserved_snapshot_id,
+            "preserved-lpa",
+            "reference.lpa_boundary",
         )
+    )
+    db_session.flush()
 
     def _fixture_importer(**kwargs) -> ReferenceImportResult:
         del kwargs["storage"], kwargs["requested_by"]
@@ -272,12 +286,24 @@ def test_geospatial_official_source_rolls_back_before_fixture_fallback_after_db_
         attempts.append(Path(kwargs["fixture_path"]))
         if len(attempts) == 1:
             duplicate_id = uuid.uuid4()
-            session.add(_snapshot(duplicate_id, "remote-first"))
+            session.add(
+                _source_snapshot(
+                    duplicate_id,
+                    "remote-first",
+                    "reference.lpa_boundary",
+                )
+            )
             session.flush()
-            session.add(_snapshot(duplicate_id, "remote-duplicate"))
+            session.add(
+                _source_snapshot(
+                    duplicate_id,
+                    "remote-duplicate",
+                    "reference.lpa_boundary",
+                )
+            )
             session.flush()
         fallback_id = uuid.uuid4()
-        session.add(_snapshot(fallback_id, "fixture-fallback"))
+        session.add(_source_snapshot(fallback_id, "fixture-fallback", "reference.lpa_boundary"))
         session.flush()
         return ReferenceImportResult(
             source_snapshot_id=fallback_id,
@@ -312,6 +338,7 @@ def test_geospatial_official_source_rolls_back_before_fixture_fallback_after_db_
     snapshot = db_session.get(SourceSnapshot, result.source_snapshot_id)
     assert snapshot is not None
     assert snapshot.manifest_json["fetch_mode"] == "fixture_fallback"
+    assert db_session.get(SourceSnapshot, preserved_snapshot_id) is not None
 
 
 def test_geospatial_official_helper_branches_cover_suffix_and_fallback_noop(
@@ -346,6 +373,76 @@ def test_geospatial_official_helper_branches_cover_suffix_and_fallback_noop(
         remote_url="https://example.test/lpa.geojson",
         fallback_reason="boom",
     )
+
+
+def test_planning_official_source_fallback_isolates_remote_db_error_and_preserves_prior_work(
+    db_session,
+    monkeypatch,
+    tmp_path,
+) -> None:
+    fixture_path = tmp_path / "fallback.json"
+    fixture_path.write_text("{}")
+    preserved_snapshot_id = uuid.uuid4()
+    db_session.add(
+        _source_snapshot(
+            preserved_snapshot_id,
+            "preserved-planning",
+            "planning.fixture",
+        )
+    )
+    db_session.flush()
+    attempts: list[Path] = []
+
+    def _fixture_importer(**kwargs) -> PlanningImportResult:
+        del kwargs["storage"], kwargs["requested_by"]
+        session = kwargs["session"]
+        attempts.append(Path(kwargs["fixture_path"]))
+        if len(attempts) == 1:
+            duplicate_id = uuid.uuid4()
+            session.add(_source_snapshot(duplicate_id, "planning-remote-first", "planning.fixture"))
+            session.flush()
+            session.add(
+                _source_snapshot(duplicate_id, "planning-remote-duplicate", "planning.fixture")
+            )
+            session.flush()
+        fallback_id = uuid.uuid4()
+        session.add(_source_snapshot(fallback_id, "planning-fixture-fallback", "planning.fixture"))
+        session.flush()
+        return PlanningImportResult(
+            source_snapshot_id=fallback_id,
+            raw_asset_id=uuid.uuid4(),
+            imported_count=1,
+            coverage_count=0,
+        )
+
+    monkeypatch.setattr(
+        planning_official_sources,
+        "fetch_http_asset",
+        lambda remote_url, timeout_seconds: SimpleNamespace(
+            content=b"{}",
+            content_type="application/json",
+            final_url=remote_url,
+            fetched_at=datetime.now(UTC),
+            status_code=200,
+        ),
+    )
+
+    result = planning_official_sources._import_remote_json_or_fixture(
+        session=db_session,
+        storage=SimpleNamespace(),
+        fixture_path=fixture_path,
+        requested_by="pytest",
+        remote_url="https://example.test/planning.json",
+        fixture_importer=_fixture_importer,
+    )
+
+    assert len(attempts) == 2
+    assert attempts[0] != fixture_path
+    assert attempts[1] == fixture_path
+    snapshot = db_session.get(SourceSnapshot, result.source_snapshot_id)
+    assert snapshot is not None
+    assert snapshot.manifest_json["fetch_mode"] == "fixture_fallback"
+    assert db_session.get(SourceSnapshot, preserved_snapshot_id) is not None
 
 
 def test_planning_official_helper_branches_cover_direct_wrappers_and_suffixes(
@@ -449,6 +546,69 @@ def test_planning_official_helper_branches_cover_direct_wrappers_and_suffixes(
         remote_url="https://example.test/constraints.json",
         fallback_reason="boom",
     )
+
+
+def test_valuation_official_source_fallback_isolates_remote_db_error_and_preserves_prior_work(
+    seed_reference_data,
+    db_session,
+    storage,
+    monkeypatch,
+) -> None:
+    del seed_reference_data
+    preserved_snapshot_id = uuid.uuid4()
+    db_session.add(
+        _source_snapshot(
+            preserved_snapshot_id,
+            "preserved-valuation",
+            "valuation.fixture",
+        )
+    )
+    db_session.flush()
+
+    remote_url = "https://example.test/price-paid.csv"
+    csv_payload = "\n".join(
+        [
+            "transaction_unique_identifier,date,price,district,property_type,duration,postcode,street,town,county",
+            "CAM-PPD-REMOTE-1,2025-01-15,845000,Camden,FLAT,L,NW1 1AA,"
+            "1 Example Mews,London,Greater London",
+        ]
+    )
+    monkeypatch.setattr(
+        valuation_official_sources,
+        "fetch_http_asset",
+        lambda url, timeout_seconds: SimpleNamespace(
+            content=csv_payload.encode("utf-8"),
+            content_type="text/csv",
+            final_url=url,
+            fetched_at=datetime.now(UTC),
+            status_code=200,
+        ),
+    )
+    monkeypatch.setattr(
+        valuation_official_sources,
+        "_upsert_hmlr_price_paid_rows",
+        lambda **kwargs: (_ for _ in ()).throw(RuntimeError("malformed remote row")),
+    )
+
+    result = valuation_official_sources.import_hmlr_price_paid_fixture(
+        session=db_session,
+        storage=storage,
+        fixture_path=(
+            Path(__file__).parent / "fixtures" / "valuation" / "hmlr_price_paid_london.json"
+        ),
+        requested_by="pytest",
+        remote_url=remote_url,
+    )
+
+    snapshot = db_session.get(SourceSnapshot, result.source_snapshot_id)
+    assert snapshot is not None
+    assert snapshot.manifest_json["fetch_mode"] == "fixture_fallback"
+    assert db_session.get(SourceSnapshot, preserved_snapshot_id) is not None
+    source_snapshot_ids = {
+        row[0]
+        for row in db_session.query(MarketSaleComp.source_snapshot_id).distinct().all()
+    }
+    assert source_snapshot_ids == {result.source_snapshot_id}
 
 
 def test_valuation_official_helper_parsers_and_scalar_helpers() -> None:

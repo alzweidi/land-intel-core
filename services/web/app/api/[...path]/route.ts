@@ -74,17 +74,7 @@ function buildUpstreamUrl(request: NextRequest, segments: string[]): URL {
 }
 
 function getAppOrigin(request: NextRequest): string {
-  const forwardedHost = request.headers
-    .get('x-forwarded-host')
-    ?.split(',')[0]
-    ?.trim();
-  const host = forwardedHost || request.headers.get('host')?.trim() || request.nextUrl.host;
-  const forwardedProto = request.headers
-    .get('x-forwarded-proto')
-    ?.split(',')[0]
-    ?.trim();
-  const protocol = forwardedProto || request.nextUrl.protocol.replace(/:$/, '');
-  return `${protocol}://${host}`;
+  return request.nextUrl.origin;
 }
 
 function buildUpstreamHeaders(request: NextRequest): Headers {

@@ -4,6 +4,7 @@ import csv
 import io
 import json
 import uuid
+from contextlib import nullcontext
 from pathlib import Path
 from typing import Any
 
@@ -47,41 +48,45 @@ def import_hmlr_price_paid_fixture(
                 timeout_seconds=get_settings().snapshot_http_timeout_seconds,
             )
             payload = _parse_hmlr_price_paid_payload(fetched.content, fetched.content_type)
-            snapshot, asset = _register_remote_snapshot(
-                session=session,
-                storage=storage,
-                raw_bytes=fetched.content,
-                content_type=fetched.content_type,
-                dataset_key="valuation_hmlr_price_paid",
-                source_family="HMLR_PRICE_PAID",
-                source_name="HMLR Price Paid official source",
-                schema_key="valuation_hmlr_price_paid_v1",
-                coverage_note="Official HMLR Price Paid evidence for Phase 8A valuation refresh.",
-                requested_by=requested_by,
-                remote_url=fetched.final_url,
-            )
-            coverage_count = _upsert_hmlr_coverage_snapshots(
-                session=session,
-                snapshot=snapshot,
-                rows=payload,
-            )
-            imported_count = _upsert_hmlr_price_paid_rows(
-                session=session,
-                snapshot=snapshot,
-                raw_asset_id=asset.id,
-                rows=payload,
-            )
-            snapshot.manifest_json = {
-                **snapshot.manifest_json,
-                "coverage_rows": coverage_count,
-                "record_count": imported_count,
-                "fetch_mode": "remote",
-                "remote_url": fetched.final_url,
-                "content_type": fetched.content_type,
-                "status_code": fetched.status_code,
-            }
-            asset.original_url = fetched.final_url
-            session.flush()
+            with _begin_nested_if_supported(session):
+                snapshot, asset = _register_remote_snapshot(
+                    session=session,
+                    storage=storage,
+                    raw_bytes=fetched.content,
+                    content_type=fetched.content_type,
+                    dataset_key="valuation_hmlr_price_paid",
+                    source_family="HMLR_PRICE_PAID",
+                    source_name="HMLR Price Paid official source",
+                    schema_key="valuation_hmlr_price_paid_v1",
+                    coverage_note=(
+                        "Official HMLR Price Paid evidence for "
+                        "Phase 8A valuation refresh."
+                    ),
+                    requested_by=requested_by,
+                    remote_url=fetched.final_url,
+                )
+                coverage_count = _upsert_hmlr_coverage_snapshots(
+                    session=session,
+                    snapshot=snapshot,
+                    rows=payload,
+                )
+                imported_count = _upsert_hmlr_price_paid_rows(
+                    session=session,
+                    snapshot=snapshot,
+                    raw_asset_id=asset.id,
+                    rows=payload,
+                )
+                snapshot.manifest_json = {
+                    **snapshot.manifest_json,
+                    "coverage_rows": coverage_count,
+                    "record_count": imported_count,
+                    "fetch_mode": "remote",
+                    "remote_url": fetched.final_url,
+                    "content_type": fetched.content_type,
+                    "status_code": fetched.status_code,
+                }
+                asset.original_url = fetched.final_url
+                session.flush()
             return PlanningImportResult(
                 source_snapshot_id=snapshot.id,
                 raw_asset_id=asset.id,
@@ -128,41 +133,42 @@ def import_ukhpi_fixture(
                 timeout_seconds=get_settings().snapshot_http_timeout_seconds,
             )
             payload = _parse_ukhpi_payload(fetched.content, fetched.content_type)
-            snapshot, asset = _register_remote_snapshot(
-                session=session,
-                storage=storage,
-                raw_bytes=fetched.content,
-                content_type=fetched.content_type,
-                dataset_key="valuation_ukhpi",
-                source_family="UKHPI",
-                source_name="UKHPI official source",
-                schema_key="valuation_ukhpi_v1",
-                coverage_note="Official UKHPI evidence for Phase 8A valuation refresh.",
-                requested_by=requested_by,
-                remote_url=fetched.final_url,
-            )
-            coverage_count = _upsert_ukhpi_coverage_snapshots(
-                session=session,
-                snapshot=snapshot,
-                rows=payload,
-            )
-            imported_count = _upsert_ukhpi_rows(
-                session=session,
-                snapshot=snapshot,
-                raw_asset_id=asset.id,
-                rows=payload,
-            )
-            snapshot.manifest_json = {
-                **snapshot.manifest_json,
-                "coverage_rows": coverage_count,
-                "record_count": imported_count,
-                "fetch_mode": "remote",
-                "remote_url": fetched.final_url,
-                "content_type": fetched.content_type,
-                "status_code": fetched.status_code,
-            }
-            asset.original_url = fetched.final_url
-            session.flush()
+            with _begin_nested_if_supported(session):
+                snapshot, asset = _register_remote_snapshot(
+                    session=session,
+                    storage=storage,
+                    raw_bytes=fetched.content,
+                    content_type=fetched.content_type,
+                    dataset_key="valuation_ukhpi",
+                    source_family="UKHPI",
+                    source_name="UKHPI official source",
+                    schema_key="valuation_ukhpi_v1",
+                    coverage_note="Official UKHPI evidence for Phase 8A valuation refresh.",
+                    requested_by=requested_by,
+                    remote_url=fetched.final_url,
+                )
+                coverage_count = _upsert_ukhpi_coverage_snapshots(
+                    session=session,
+                    snapshot=snapshot,
+                    rows=payload,
+                )
+                imported_count = _upsert_ukhpi_rows(
+                    session=session,
+                    snapshot=snapshot,
+                    raw_asset_id=asset.id,
+                    rows=payload,
+                )
+                snapshot.manifest_json = {
+                    **snapshot.manifest_json,
+                    "coverage_rows": coverage_count,
+                    "record_count": imported_count,
+                    "fetch_mode": "remote",
+                    "remote_url": fetched.final_url,
+                    "content_type": fetched.content_type,
+                    "status_code": fetched.status_code,
+                }
+                asset.original_url = fetched.final_url
+                session.flush()
             return PlanningImportResult(
                 source_snapshot_id=snapshot.id,
                 raw_asset_id=asset.id,
@@ -515,6 +521,13 @@ def _annotate_fixture_fallback(
         "remote_url": remote_url,
         "fallback_reason": fallback_reason,
     }
+
+
+def _begin_nested_if_supported(session: Session):
+    begin_nested = getattr(session, "begin_nested", None)
+    if callable(begin_nested):
+        return begin_nested()
+    return nullcontext()
 
 
 def _suffix_for_content_type(content_type: str, remote_url: str) -> str:

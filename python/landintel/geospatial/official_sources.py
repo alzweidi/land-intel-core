@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import tempfile
+from contextlib import nullcontext
 from pathlib import Path
 
 from sqlalchemy.orm import Session
@@ -89,25 +90,25 @@ def _import_remote_geojson_or_fixture(
             with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp:
                 tmp.write(fetched.content)
                 remote_temp_path = Path(tmp.name)
-            result = fixture_importer(
-                session=session,
-                storage=storage,
-                fixture_path=remote_temp_path,
-                requested_by=requested_by,
-            )
-            _rewrite_remote_provenance(
-                session=session,
-                source_snapshot_id=result.source_snapshot_id,
-                raw_asset_id=result.raw_asset_id,
-                remote_url=fetched.final_url,
-                content_type=fetched.content_type,
-                fetched_at=fetched.fetched_at.isoformat(),
-                status_code=fetched.status_code,
-            )
-            session.flush()
+            with _begin_nested_if_supported(session):
+                result = fixture_importer(
+                    session=session,
+                    storage=storage,
+                    fixture_path=remote_temp_path,
+                    requested_by=requested_by,
+                )
+                _rewrite_remote_provenance(
+                    session=session,
+                    source_snapshot_id=result.source_snapshot_id,
+                    raw_asset_id=result.raw_asset_id,
+                    remote_url=fetched.final_url,
+                    content_type=fetched.content_type,
+                    fetched_at=fetched.fetched_at.isoformat(),
+                    status_code=fetched.status_code,
+                )
+                session.flush()
             return result
         except Exception as exc:
-            session.rollback()
             fallback_result = fixture_importer(
                 session=session,
                 storage=storage,
@@ -177,6 +178,13 @@ def _annotate_fixture_fallback(
         "remote_url": remote_url,
         "fallback_reason": fallback_reason,
     }
+
+
+def _begin_nested_if_supported(session: Session):
+    begin_nested = getattr(session, "begin_nested", None)
+    if callable(begin_nested):
+        return begin_nested()
+    return nullcontext()
 
 
 def _configured_remote_url(key: str) -> str | None:
