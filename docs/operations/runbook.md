@@ -47,7 +47,27 @@ From your workstation:
 ```bash
 export BACKEND_BASIC_AUTH_USER='<backend-basic-auth-user>'
 export BACKEND_BASIC_AUTH_PASSWORD='<backend-basic-auth-password>'
+export APP_AUTH_EMAIL='<reviewer-or-admin-email>'
+export APP_AUTH_PASSWORD='<reviewer-or-admin-password>'
+# Optional when app.<domain> is behind Netlify site protection or another
+# outer access layer:
+# export APP_CURL_CONFIG="$HOME/.config/landintel/app-protection.curlrc"
 ./scripts/smoke_prod.sh https://app.<domain> https://api.<domain>
+```
+
+If the frontend sits behind Netlify site protection or any other outer layer
+that curl must satisfy before the app login, create a curl config file and set
+`APP_CURL_CONFIG` before running the smoke script. The script applies that
+config to every `APP_ORIGIN` request, including the pre-login reachability
+checks and the app login itself.
+
+Example `app-protection.curlrc`:
+
+```text
+# Use whichever directive your outer protection layer needs.
+# user = "site-protection-user:site-protection-password"
+# header = "x-site-access: <token>"
+# cookie = "site_access=<cookie>"
 ```
 
 Inspect the health surfaces:
@@ -177,6 +197,10 @@ ssh deploy@<vps-ip> '
 ```bash
 export BACKEND_BASIC_AUTH_USER='<backend-basic-auth-user>'
 export BACKEND_BASIC_AUTH_PASSWORD='<backend-basic-auth-password>'
+export APP_AUTH_EMAIL='<reviewer-or-admin-email>'
+export APP_AUTH_PASSWORD='<reviewer-or-admin-password>'
+# Optional for Netlify site protection or another outer frontend gate:
+# export APP_CURL_CONFIG="$HOME/.config/landintel/app-protection.curlrc"
 ./scripts/smoke_prod.sh https://app.<domain> https://api.<domain>
 ```
 

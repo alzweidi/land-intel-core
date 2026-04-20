@@ -111,7 +111,7 @@ def _build_camden_site(client, drain_jobs):
         json={"url": MANUAL_LISTING_URL, "source_name": "manual_url", "requested_by": "pytest"},
     )
     client.post(
-        "/api/listings/connectors/public_page_fixture/run",
+        "/api/listings/connectors/example_public_page/run",
         json={"requested_by": "pytest"},
     )
     processed = drain_jobs(max_iterations=12)

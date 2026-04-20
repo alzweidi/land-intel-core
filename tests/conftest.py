@@ -103,11 +103,12 @@ def seed_listing_sources(db_session: Session) -> dict[str, ListingSource]:
             refresh_policy_json={"run_mode": "manual"},
             active=True,
         ),
-        "public_page_fixture": ListingSource(
-            name="public_page_fixture",
+        "example_public_page": ListingSource(
+            name="example_public_page",
             connector_type=ConnectorType.PUBLIC_PAGE,
             compliance_mode=ComplianceMode.COMPLIANT_AUTOMATED,
             refresh_policy_json={
+                "interval_hours": 24,
                 "seed_urls": ["https://public.example/land"],
                 "listing_link_selector": "a.listing-link",
                 "listing_url_patterns": [r"/listings/"],

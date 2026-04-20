@@ -2,15 +2,12 @@ import {
   getPhase1AClusterById,
   getPhase1AListingById,
   phase1AListings,
-  phase1ARuns,
-  phase1ASources,
   type Phase1AClusterDetail,
   type Phase1AClusterSummary,
   type Phase1ADocument,
   type Phase1AListingDetail,
   type Phase1AListingSnapshot,
   type Phase1AListingSummary,
-  type Phase1ARunRecord,
   type Phase1ASource
 } from '@/lib/phase1a-data';
 import {
@@ -18,6 +15,7 @@ import {
   getPhase2SiteById,
   phase2SiteSummaries
 } from '@/lib/phase2-data';
+import { normalizeListingSourceKey } from '@/lib/listing-source-console';
 
 const API_BASE_URL =
   typeof window === 'undefined'
@@ -35,6 +33,13 @@ type ListingsQuery = {
   status?: string;
   type?: string;
   cluster?: string;
+};
+
+export type AdminJobRecord = {
+  id: string;
+  job_type: string;
+  status: string;
+  requested_by: string | null;
 };
 
 export type GeometrySourceType =
@@ -1037,6 +1042,26 @@ function pickCollection<T>(value: ApiCollectionResponse<T>): T[] {
   return [];
 }
 
+function isApiCollectionPayload<T>(value: ApiCollectionResponse<T>): boolean {
+  if (Array.isArray(value)) {
+    return true;
+  }
+
+  if (!value || !isRecord(value)) {
+    return false;
+  }
+
+  return [
+    value.items,
+    value.results,
+    value.data,
+    value.listings,
+    value.clusters,
+    value.runs,
+    value.sources
+  ].some((item) => Array.isArray(item));
+}
+
 function toStringValue(value: unknown, fallback = ''): string {
   if (typeof value === 'string') {
     return value;
@@ -1060,6 +1085,14 @@ function toNumberValue(value: unknown): number | null {
   }
 
   return null;
+}
+
+function toBooleanValue(value: unknown, fallback = false): boolean {
+  if (typeof value === 'boolean') {
+    return value;
+  }
+
+  return fallback;
 }
 
 function buildQueryString(params: Record<string, QueryValue>): string {
@@ -1240,21 +1273,77 @@ function mapClusterSummary(value: unknown): Phase1AClusterSummary {
   };
 }
 
-function mapRun(value: unknown): Phase1ARunRecord {
+function mapConnectorType(value: unknown): Phase1ASource['connector_type'] {
+  const connectorType = toStringValue(value, 'PUBLIC_PAGE');
+  if (connectorType === 'MANUAL_URL') {
+    return 'manual_url';
+  }
+  if (connectorType === 'CSV_IMPORT') {
+    return 'csv_import';
+  }
+  return 'public_page';
+}
+
+function describeRefreshPolicy(
+  refreshPolicyJson: Record<string, unknown>,
+  complianceMode: Phase1ASource['compliance_mode']
+): string {
+  const intervalHours = toNumberValue(refreshPolicyJson.interval_hours);
+  if (intervalHours !== null) {
+    return `Every ${intervalHours}h`;
+  }
+
+  if (toStringValue(refreshPolicyJson.run_mode, '') === 'manual') {
+    return 'Manual only';
+  }
+
+  if (complianceMode === 'BLOCKED') {
+    return 'Blocked';
+  }
+
+  return 'No interval configured';
+}
+
+function mapListingSource(value: unknown): Phase1ASource {
   if (!isRecord(value)) {
-    throw new Error('Invalid run record');
+    throw new Error('Invalid listing source');
+  }
+
+  const sourceKey = toStringValue(value.name ?? value.source_key ?? value.sourceKey);
+  const refreshPolicyJson = isRecord(value.refresh_policy_json)
+    ? value.refresh_policy_json
+    : {};
+  const complianceMode = toStringValue(
+    value.compliance_mode ?? value.complianceMode,
+    'BLOCKED'
+  ) as Phase1ASource['compliance_mode'];
+  const refreshPolicy = describeRefreshPolicy(refreshPolicyJson, complianceMode);
+
+  return {
+    id: toStringValue(value.id),
+    source_key: sourceKey,
+    name: sourceKey,
+    connector_type: mapConnectorType(value.connector_type ?? value.connectorType),
+    compliance_mode: complianceMode,
+    active: toBooleanValue(value.active, false),
+    refresh_policy: refreshPolicy,
+    coverage_note: refreshPolicy
+  };
+}
+
+function mapAdminJob(value: unknown): AdminJobRecord {
+  if (!isRecord(value)) {
+    throw new Error('Invalid admin job');
   }
 
   return {
     id: toStringValue(value.id),
-    source_key: toStringValue(value.source_key ?? value.sourceKey),
-    source_name: toStringValue(value.source_name ?? value.sourceName),
-    connector_type: toStringValue(value.connector_type ?? value.connectorType, 'manual_url') as Phase1ARunRecord['connector_type'],
-    status: (toStringValue(value.status, 'QUEUED') as Phase1ARunRecord['status']),
-    coverage_note: toStringValue(value.coverage_note ?? value.coverageNote, ''),
-    parse_status: toStringValue(value.parse_status ?? value.parseStatus, 'PENDING'),
-    created_at: toStringValue(value.created_at ?? value.createdAt),
-    updated_at: toStringValue(value.updated_at ?? value.updatedAt)
+    job_type: toStringValue(value.job_type ?? value.jobType),
+    status: toStringValue(value.status),
+    requested_by:
+      value.requested_by === null || value.requested_by === undefined
+        ? null
+        : toStringValue(value.requested_by)
   };
 }
 
@@ -1310,18 +1399,20 @@ function filterListings(items: Phase1AListingSummary[], query: ListingsQuery): P
 }
 
 export async function getListingSources(): Promise<{ items: Phase1ASource[]; apiAvailable: boolean }> {
-  const fallback = { items: phase1ASources, apiAvailable: false };
-  const result = await queryApiCollection('/api/listings/sources', (value) => value as Phase1ASource);
-  return result.items.length > 0 ? result : fallback;
+  return queryApiCollection('/api/listings/sources', mapListingSource);
 }
 
 export async function getListings(query: ListingsQuery = {}): Promise<{ items: Phase1AListingSummary[]; apiAvailable: boolean }> {
   const url = `/api/listings${buildQueryString(query)}`;
-  const result = await queryApiCollection(url, mapListingSummary);
-  const base = result.items.length > 0 ? result.items : phase1AListings;
+  const payload = await requestJson(url);
+  const apiAvailable = isApiCollectionPayload(payload as ApiCollectionResponse<unknown>);
+  const liveItems = apiAvailable
+    ? pickCollection(payload as ApiCollectionResponse<unknown>).map(mapListingSummary)
+    : [];
+  const base = apiAvailable ? liveItems : phase1AListings;
   return {
     items: filterListings(base, query),
-    apiAvailable: result.apiAvailable
+    apiAvailable
   };
 }
 
@@ -1440,14 +1531,10 @@ export async function getCluster(clusterId: string): Promise<{ item: Phase1AClus
   };
 }
 
-export async function getSourceRuns(
+export async function getAdminJobs(
   options: { sessionToken?: string } = {}
-): Promise<{ items: Phase1ARunRecord[]; apiAvailable: boolean }> {
-  const result = await queryApiCollection('/api/listings/runs', mapRun, options);
-  return {
-    items: result.items.length > 0 ? result.items : phase1ARuns,
-    apiAvailable: result.apiAvailable
-  };
+): Promise<{ items: AdminJobRecord[]; apiAvailable: boolean }> {
+  return queryApiCollection('/api/admin/jobs', mapAdminJob, options);
 }
 
 export async function runManualUrlIntake(input: { url: string; coverage_note?: string }): Promise<unknown | null> {
@@ -1463,33 +1550,25 @@ export async function runManualUrlIntake(input: { url: string; coverage_note?: s
   });
 }
 
-export async function runCsvImport(input: { file?: File | null; csv_text?: string; coverage_note?: string }): Promise<unknown | null> {
-  if (input.file) {
-    const formData = new FormData();
-    formData.set('file', input.file);
-    if (input.coverage_note) {
-      formData.set('coverage_note', input.coverage_note);
-    }
-    return requestJson('/api/listings/import/csv', {
-      body: formData,
-      method: 'POST'
-    });
+export async function runCsvImport(input: { file: File; coverage_note?: string }): Promise<unknown | null> {
+  if (!input.file) {
+    throw new Error('CSV file is required.');
   }
 
+  const formData = new FormData();
+  formData.set('file', input.file);
+  if (input.coverage_note) {
+    formData.set('coverage_note', input.coverage_note);
+  }
   return requestJson('/api/listings/import/csv', {
-    body: JSON.stringify({
-      csv_text: input.csv_text ?? '',
-      coverage_note: input.coverage_note
-    }),
-    headers: {
-      'Content-Type': 'application/json'
-    },
+    body: formData,
     method: 'POST'
   });
 }
 
 export async function runConnector(sourceKey: string, input: { coverage_note?: string }): Promise<unknown | null> {
-  return requestJson(`/api/listings/connectors/${encodeURIComponent(sourceKey)}/run`, {
+  const normalizedSourceKey = normalizeListingSourceKey(sourceKey);
+  return requestJson(`/api/listings/connectors/${encodeURIComponent(normalizedSourceKey)}/run`, {
     body: JSON.stringify({
       coverage_note: input.coverage_note
     }),

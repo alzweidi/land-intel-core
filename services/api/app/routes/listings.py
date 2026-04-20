@@ -9,6 +9,7 @@ from landintel.domain.schemas import (
     ListingClusterListResponse,
     ListingDetailRead,
     ListingListResponse,
+    ListingSourceRead,
     ManualUrlIntakeRequest,
 )
 from landintel.jobs.service import (
@@ -20,6 +21,7 @@ from landintel.services.listings_readback import (
     get_listing,
     get_listing_cluster,
     list_listing_clusters,
+    list_listing_sources,
     list_listings,
 )
 from sqlalchemy.orm import Session
@@ -119,6 +121,13 @@ def get_listings(
         limit=limit,
         offset=offset,
     )
+
+
+@router.get("/api/listings/sources", response_model=list[ListingSourceRead])
+def get_listing_sources(
+    session: Session = Depends(get_db_session),
+) -> list[ListingSourceRead]:
+    return list_listing_sources(session=session)
 
 
 @router.get("/api/listings/{listing_id}", response_model=ListingDetailRead)

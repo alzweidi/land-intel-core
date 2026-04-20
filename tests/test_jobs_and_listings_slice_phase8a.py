@@ -171,7 +171,7 @@ def test_job_service_enqueue_helpers_cover_payloads_and_deduping(db_session):
             job_service.enqueue_connector_run_job,
             {"source_name": "public_page", "requested_by": "pytest"},
             JobType.LISTING_SOURCE_RUN,
-            {"source_name": "public_page"},
+            {"source_name": "public_page", "dedupe_key": "source:public_page"},
         ),
         (
             job_service.enqueue_cluster_rebuild_job,
@@ -328,6 +328,22 @@ def test_job_service_enqueue_helpers_cover_payloads_and_deduping(db_session):
         "dedupe_key": "site:site-4-template:resi_5_9_full,resi_10_plus_full:1",
     }
     assert manual_default.requested_by is None
+
+
+def test_enqueue_connector_run_job_reuses_existing_queued_job(db_session):
+    first = job_service.enqueue_connector_run_job(
+        db_session,
+        source_name="example_public_page",
+        requested_by="pytest",
+    )
+    second = job_service.enqueue_connector_run_job(
+        db_session,
+        source_name="example_public_page",
+        requested_by="pytest",
+    )
+
+    assert first.id == second.id
+    assert second.payload_json["dedupe_key"] == "source:example_public_page"
 
 
 def test_job_service_claim_mark_and_list_jobs_cover_remaining_branches(monkeypatch, db_session):

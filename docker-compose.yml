@@ -92,7 +92,9 @@ services:
     build:
       context: ./services/web
     environment:
-      AUTH_SESSION_SECRET: landintel-local-web-session-secret
+      APP_ENV: development
+      NEXT_PUBLIC_APP_ENV: development
+      LANDINTEL_WEB_AUTH_SECRET: landintel-local-web-session-secret
       LANDINTEL_WEB_AUTH_COOKIE_SECURE: "false"
       LANDINTEL_WEB_PUBLIC_ORIGIN: http://localhost:3000
       INTERNAL_API_BASE_URL: http://api:8000

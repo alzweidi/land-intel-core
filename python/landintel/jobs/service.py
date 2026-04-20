@@ -56,9 +56,10 @@ def enqueue_connector_run_job(
     source_name: str,
     requested_by: str | None,
 ) -> JobRun:
-    return _create_job(
+    return _deduplicated_job(
         session=session,
         job_type=JobType.LISTING_SOURCE_RUN,
+        dedupe_key=f"source:{source_name}",
         payload_json={"source_name": source_name},
         requested_by=requested_by,
     )

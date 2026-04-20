@@ -139,7 +139,7 @@ def _build_site_stub(*, include_listing: bool) -> SimpleNamespace:
     source_snapshot = SimpleNamespace(
         id=_fixed_uuid(301),
         source_family="PUBLIC_PAGE",
-        source_name="public_page_fixture",
+        source_name="example_public_page",
         source_uri="https://example.test/source",
         acquired_at=datetime(2026, 4, 15, 10, 0, tzinfo=UTC),
         effective_from=None,
@@ -173,7 +173,7 @@ def _build_site_stub(*, include_listing: bool) -> SimpleNamespace:
     )
     listing = None
     if include_listing:
-        listing_source = SimpleNamespace(name="public_page_fixture")
+        listing_source = SimpleNamespace(name="example_public_page")
         listing = SimpleNamespace(
             id=_fixed_uuid(303),
             source_id=_fixed_uuid(304),
@@ -378,7 +378,7 @@ def test_listings_readback_branch_paths(db_session, seed_listing_sources):
     primary_snapshot = SourceSnapshot(
         id=_fixed_uuid(101),
         source_family="PUBLIC_PAGE",
-        source_name="public_page_fixture",
+        source_name="example_public_page",
         source_uri="https://example.test/source/a",
         acquired_at=datetime(2026, 4, 15, 11, 0, tzinfo=UTC),
         effective_from=None,
@@ -635,7 +635,7 @@ def test_listings_readback_branch_paths(db_session, seed_listing_sources):
                 raw_record_json={},
             )
         ],
-        source=SimpleNamespace(name="public_page_fixture"),
+        source=SimpleNamespace(name="example_public_page"),
         source_id=_fixed_uuid(994),
         source_listing_id="bogus",
         canonical_url="https://example.test/bogus",
