@@ -7,11 +7,9 @@ from landintel.config import get_settings
 from landintel.db.session import get_session_factory
 from landintel.storage.factory import build_storage
 from landintel.valuation.assumptions import ensure_default_assumption_set
-from landintel.valuation.market import (
-    import_hmlr_price_paid_fixture,
-    import_land_comp_fixture,
-    import_ukhpi_fixture,
-)
+from landintel.valuation.market import import_land_comp_fixture
+
+from .official_sources import import_hmlr_price_paid_fixture, import_ukhpi_fixture
 
 
 def build_parser() -> argparse.ArgumentParser:

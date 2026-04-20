@@ -7,6 +7,8 @@ from uuid import UUID
 from landintel.domain.enums import (
     AppRoleName,
     AssessmentRunState,
+    ComplianceMode,
+    ConnectorType,
     EligibilityStatus,
     EstimateQuality,
     EstimateStatus,
@@ -15,6 +17,7 @@ from landintel.domain.enums import (
     GeomSourceType,
     ListingClusterStatus,
     ListingStatus,
+    ListingType,
     OpportunityBand,
     PriceBasisType,
     ProposalForm,
@@ -24,7 +27,15 @@ from landintel.domain.enums import (
     ValuationQuality,
     VisibilityMode,
 )
-from landintel.domain.models import ListingCluster, SiteCandidate
+from landintel.domain.models import (
+    ListingCluster,
+    ListingItem,
+    ListingSnapshot,
+    ListingSource,
+    SiteCandidate,
+    SiteScenario,
+    SourceSnapshot,
+)
 from landintel.domain.schemas import (
     AssessmentDetailRead,
     AssessmentOverrideSummaryRead,
@@ -586,3 +597,128 @@ def test_opportunity_tail_branches_cover_redaction_hold_and_filters(monkeypatch)
     )
     assert opportunity_list.total == 1
     assert opportunity_list.items[0].site_id == site.id
+
+
+def test_opportunity_readback_surfaces_unassessed_realistic_sites_as_hold(
+    db_session,
+    seed_reference_data,
+) -> None:
+    del seed_reference_data
+
+    source_snapshot = db_session.query(SourceSnapshot).first()
+    assert source_snapshot is not None
+
+    source = ListingSource(
+        id=_fixed_uuid(70),
+        name="fixture-automated-source",
+        connector_type=ConnectorType.TABULAR_FEED,
+        compliance_mode=ComplianceMode.COMPLIANT_AUTOMATED,
+        refresh_policy_json={"interval_hours": 24},
+        active=True,
+    )
+    cluster = ListingCluster(
+        id=_fixed_uuid(71),
+        cluster_key="real-hold-cluster",
+        cluster_status=ListingClusterStatus.SINGLETON,
+    )
+    listing = ListingItem(
+        id=_fixed_uuid(72),
+        source_id=source.id,
+        source_listing_id="hold-site-1",
+        canonical_url="https://example.test/hold-site-1",
+        listing_type=ListingType.LAND,
+        first_seen_at=datetime(2026, 4, 20, 14, 0, tzinfo=UTC),
+        last_seen_at=datetime(2026, 4, 20, 14, 0, tzinfo=UTC),
+        latest_status=ListingStatus.LIVE,
+        normalized_address="27 29 pond street london nw3 2pn",
+        search_text="27 29 pond street london nw3 2pn",
+    )
+    listing_snapshot = ListingSnapshot(
+        id=_fixed_uuid(73),
+        listing_item_id=listing.id,
+        source_snapshot_id=source_snapshot.id,
+        observed_at=datetime(2026, 4, 20, 14, 0, tzinfo=UTC),
+        headline="27-29 Pond Street",
+        description_text="Realistic fixture listing without a ready assessment yet.",
+        guide_price_gbp=None,
+        price_basis_type=PriceBasisType.UNKNOWN,
+        status=ListingStatus.LIVE,
+        address_text="27-29 Pond Street, London, NW3 2PN",
+        normalized_address=listing.normalized_address,
+        lat=51.554,
+        lon=-0.1666,
+        raw_record_json={"fixture": True},
+        search_text=listing.search_text,
+    )
+    listing.current_snapshot_id = listing_snapshot.id
+
+    site = _make_site(
+        site_id=_fixed_uuid(74),
+        cluster_id=cluster.id,
+        display_name="POND STREET, LONDON, NW3 2PN",
+        borough_id="camden",
+        lon=-0.1666,
+        lat=51.554,
+        site_status=SiteStatus.ACTIVE,
+        manual_review_required=False,
+    )
+    site.current_listing_id = listing.id
+    site.current_price_basis_type = PriceBasisType.UNKNOWN
+
+    scenario = SiteScenario(
+        id=_fixed_uuid(75),
+        site_id=site.id,
+        template_key="resi_1_4_full",
+        template_version="v1",
+        proposal_form=ProposalForm.INFILL,
+        units_assumed=1,
+        route_assumed="FULL",
+        height_band_assumed="LOW_RISE",
+        net_developable_area_pct=0.66,
+        housing_mix_assumed_json={"1b": 1.0},
+        parking_assumption="car-lite",
+        affordable_housing_assumption="small-site",
+        access_assumption="frontage review",
+        site_geometry_revision_id=None,
+        red_line_geom_hash=site.geom_hash,
+        scenario_source=ScenarioSource.AUTO,
+        status=ScenarioStatus.ANALYST_REQUIRED,
+        supersedes_id=None,
+        is_current=True,
+        is_headline=True,
+        heuristic_rank=97,
+        manual_review_required=True,
+        stale_reason=None,
+        rationale_json={
+            "reason_codes": [],
+            "missing_data_flags": ["NEAREST_HISTORICAL_SUPPORT_NOT_STRONG"],
+            "warning_codes": ["ANALYST_CONFIRMATION_REQUIRED"],
+        },
+        evidence_json={},
+        created_by="pytest",
+        created_at=datetime(2026, 4, 20, 14, 1, tzinfo=UTC),
+        updated_at=datetime(2026, 4, 20, 14, 1, tzinfo=UTC),
+    )
+
+    db_session.add_all([source, cluster, listing, listing_snapshot, site, scenario])
+    db_session.commit()
+
+    opportunity_list = opportunities_readback.list_opportunities(db_session)
+    by_site = {item.site_id: item for item in opportunity_list.items}
+    assert site.id in by_site
+    summary = by_site[site.id]
+    assert summary.assessment_id is None
+    assert summary.scenario_id == scenario.id
+    assert summary.probability_band == OpportunityBand.HOLD
+    assert summary.manual_review_required is True
+    assert "NEAREST_HISTORICAL_SUPPORT_NOT_STRONG" in summary.hold_reason
+    assert summary.site_summary is not None
+    assert summary.scenario_summary is not None
+
+    detail = opportunities_readback.get_opportunity(db_session, site_id=site.id)
+    assert detail is not None
+    assert detail.assessment is None
+    assert detail.valuation is None
+    assert detail.probability_band == OpportunityBand.HOLD
+    assert detail.ranking_factors["assessment_id"] is None
+    assert detail.ranking_factors["probability_band"] == OpportunityBand.HOLD.value

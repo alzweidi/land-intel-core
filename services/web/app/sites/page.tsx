@@ -2,7 +2,7 @@ import Link from 'next/link';
 
 import { Badge, DefinitionList, PageHeader, Panel, StatCard } from '@/components/ui';
 import { SiteMap } from '@/components/site-map';
-import { getSites } from '@/lib/landintel-api';
+import { getReadbackState, getSites } from '@/lib/landintel-api';
 
 export const dynamic = 'force-dynamic';
 
@@ -36,6 +36,30 @@ function summarizeWarnings(items: Array<{ warnings: string[] }>): string[] {
   return [...new Set(items.flatMap((item) => item.warnings))];
 }
 
+function readbackLabel(state: 'LIVE' | 'EMPTY' | 'FALLBACK'): string {
+  if (state === 'LIVE') {
+    return 'Live';
+  }
+
+  if (state === 'EMPTY') {
+    return 'Empty';
+  }
+
+  return 'Hold/manual review';
+}
+
+function readbackTone(state: 'LIVE' | 'EMPTY' | 'FALLBACK'): 'success' | 'warning' | 'danger' {
+  if (state === 'LIVE') {
+    return 'success';
+  }
+
+  if (state === 'EMPTY') {
+    return 'warning';
+  }
+
+  return 'danger';
+}
+
 export default async function SitesPage({ searchParams }: { searchParams?: SearchParams }) {
   const params = (await Promise.resolve(searchParams ?? {})) as Record<string, string | string[] | undefined>;
   const filters = {
@@ -46,6 +70,7 @@ export default async function SitesPage({ searchParams }: { searchParams?: Searc
 
   const result = await getSites(filters);
   const items = result.items;
+  const siteState = getReadbackState(result.apiAvailable, items.length);
   const selectedSiteId = firstValue(params.selected) || items[0]?.site_id;
   const selectedSite = items.find((item) => item.site_id === selectedSiteId) ?? items[0] ?? null;
   const warningSummary = summarizeWarnings(items);
@@ -58,6 +83,11 @@ export default async function SitesPage({ searchParams }: { searchParams?: Searc
         eyebrow="Sites"
         title="Site registry"
         summary="Work through confirmed site candidates with map, geometry confidence, borough assignment, planning context, and extant-permission posture in one dense review surface."
+        badges={
+          <div className="status-strip">
+            <Badge tone={readbackTone(siteState)}>{readbackLabel(siteState)}</Badge>
+          </div>
+        }
         actions={
           selectedSite ? (
             <Link className="button button--ghost" href={`/sites/${selectedSite.site_id}`}>
@@ -113,48 +143,56 @@ export default async function SitesPage({ searchParams }: { searchParams?: Searc
             </div>
           </form>
 
-          <div className="table-wrap">
-            <table className="table-shell table-shell--responsive site-list-table">
-              <thead>
-                <tr>
-                  <th>Site</th>
-                  <th>Borough / LPA</th>
-                  <th>Geometry</th>
-                  <th>Listing</th>
-                  <th>Warnings</th>
-                </tr>
-              </thead>
-              <tbody>
-                {items.map((item) => (
-                  <tr key={item.site_id}>
-                    <td data-label="Site">
-                      <div className="table-primary">
-                        <Link href={`/sites/${item.site_id}`}>{item.display_name}</Link>
-                      </div>
-                      <div className="table-secondary">{item.cluster_key}</div>
-                    </td>
-                    <td data-label="Borough / LPA">
-                      <div className="table-primary">{item.borough_name}</div>
-                      <div className="table-secondary">{item.controlling_lpa_name}</div>
-                    </td>
-                    <td data-label="Geometry">
-                      <Badge tone={confidenceTone(item.geometry_confidence)}>{item.geometry_source_type}</Badge>
-                      <div className="table-secondary">{item.geometry_confidence}</div>
-                      <div className="table-secondary">{item.site_area_sqm === null ? 'Area pending' : `${item.site_area_sqm.toLocaleString('en-GB')} sqm`}</div>
-                    </td>
-                    <td data-label="Listing">
-                      <div className="table-primary">{item.current_listing_headline}</div>
-                      <div className="table-secondary">{item.current_price_gbp === null ? 'Price pending' : `£${item.current_price_gbp.toLocaleString('en-GB')}`}</div>
-                    </td>
-                    <td data-label="Warnings">
-                      <div className="table-secondary">{item.review_flags.join(', ') || 'No manual flags'}</div>
-                      <div className="table-secondary">{item.warnings[0] ?? 'No warnings recorded'}</div>
-                    </td>
+          {items.length > 0 ? (
+            <div className="table-wrap">
+              <table className="table-shell table-shell--responsive site-list-table">
+                <thead>
+                  <tr>
+                    <th>Site</th>
+                    <th>Borough / LPA</th>
+                    <th>Geometry</th>
+                    <th>Listing</th>
+                    <th>Warnings</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+                </thead>
+                <tbody>
+                  {items.map((item) => (
+                    <tr key={item.site_id}>
+                      <td data-label="Site">
+                        <div className="table-primary">
+                          <Link href={`/sites/${item.site_id}`}>{item.display_name}</Link>
+                        </div>
+                        <div className="table-secondary">{item.cluster_key}</div>
+                      </td>
+                      <td data-label="Borough / LPA">
+                        <div className="table-primary">{item.borough_name}</div>
+                        <div className="table-secondary">{item.controlling_lpa_name}</div>
+                      </td>
+                      <td data-label="Geometry">
+                        <Badge tone={confidenceTone(item.geometry_confidence)}>{item.geometry_source_type}</Badge>
+                        <div className="table-secondary">{item.geometry_confidence}</div>
+                        <div className="table-secondary">{item.site_area_sqm === null ? 'Area pending' : `${item.site_area_sqm.toLocaleString('en-GB')} sqm`}</div>
+                      </td>
+                      <td data-label="Listing">
+                        <div className="table-primary">{item.current_listing_headline}</div>
+                        <div className="table-secondary">{item.current_price_gbp === null ? 'Price pending' : `£${item.current_price_gbp.toLocaleString('en-GB')}`}</div>
+                      </td>
+                      <td data-label="Warnings">
+                        <div className="table-secondary">{item.review_flags.join(', ') || 'No manual flags'}</div>
+                        <div className="table-secondary">{item.warnings[0] ?? 'No warnings recorded'}</div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          ) : (
+            <p className="empty-note">
+              {siteState === 'EMPTY'
+                ? 'No live site rows matched the current filter set.'
+                : 'Live site data is unavailable, so the registry is held in fallback mode.'}
+            </p>
+          )}
         </Panel>
       </div>
 

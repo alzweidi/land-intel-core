@@ -24,11 +24,50 @@ CYAN='\033[0;36m'
 NC='\033[0m'
 
 API_URL="${API_URL:-http://localhost:8000}"
+REAL_SOURCE_KEY="${REAL_SOURCE_KEY:-cabinet_office_surplus_property}"
+AUTO_SOURCE_TIMEOUT_SECONDS="${AUTO_SOURCE_TIMEOUT_SECONDS:-180}"
 
 log()  { echo -e "${CYAN}[setup]${NC} $*"; }
 ok()   { echo -e "${GREEN}  ✓${NC} $*"; }
 warn() { echo -e "${YELLOW}  ⚠${NC} $*"; }
 fail() { echo -e "${RED}  ✗${NC} $*"; exit 1; }
+
+count_collection_items() {
+    local url=$1
+    python3 -c '
+import json
+import subprocess
+import sys
+
+payload = subprocess.check_output(["curl", "-sf", sys.argv[1]], text=True)
+parsed = json.loads(payload)
+if isinstance(parsed, list):
+    print(len(parsed))
+elif isinstance(parsed, dict):
+    items = parsed.get("items")
+    print(len(items) if isinstance(items, list) else 0)
+else:
+    print(0)
+' "${url}"
+}
+
+wait_for_nonzero_count() {
+    local description=$1
+    local url=$2
+    local timeout_seconds=$3
+
+    log "Waiting for ${description} ..."
+    for i in $(seq 1 "${timeout_seconds}"); do
+        local count
+        count=$(count_collection_items "${url}" || echo "0")
+        if [ "${count}" -gt 0 ] 2>/dev/null; then
+            ok "${description} ready (${count})"
+            return 0
+        fi
+        sleep 1
+    done
+    return 1
+}
 
 # ------------------------------------------------------------------
 # Wait for API to be ready
@@ -100,6 +139,40 @@ PY
 ok "Hidden model release built and activated (${RELEASE_OUTPUT})"
 
 # ------------------------------------------------------------------
+# Step 5: Trigger the real automated source and wait for the pipeline
+# ------------------------------------------------------------------
+if curl -sf "${API_URL}/api/listings/sources" | grep -q "\"name\":\"${REAL_SOURCE_KEY}\""; then
+    log "Step 5/5 — Triggering approved automated source (${REAL_SOURCE_KEY}) ..."
+    curl -sf -X POST "${API_URL}/api/listings/connectors/${REAL_SOURCE_KEY}/run" \
+        -H 'Content-Type: application/json' \
+        -d '{"requested_by":"local-setup"}' >/dev/null
+    ok "Approved automated source enqueued"
+
+    wait_for_nonzero_count \
+        "real listing rows" \
+        "${API_URL}/api/listings?source=${REAL_SOURCE_KEY}" \
+        "${AUTO_SOURCE_TIMEOUT_SECONDS}" \
+        || fail "No live listing rows were produced for ${REAL_SOURCE_KEY}"
+    wait_for_nonzero_count \
+        "listing clusters" \
+        "${API_URL}/api/listing-clusters" \
+        "${AUTO_SOURCE_TIMEOUT_SECONDS}" \
+        || fail "No listing clusters were produced after automated refresh"
+    wait_for_nonzero_count \
+        "site candidates" \
+        "${API_URL}/api/sites" \
+        "${AUTO_SOURCE_TIMEOUT_SECONDS}" \
+        || fail "No site candidates were produced after automated refresh"
+    wait_for_nonzero_count \
+        "opportunities" \
+        "${API_URL}/api/opportunities/" \
+        "${AUTO_SOURCE_TIMEOUT_SECONDS}" \
+        || fail "No opportunities were produced after automated refresh"
+else
+    warn "Approved automated source ${REAL_SOURCE_KEY} is not present in /api/listings/sources; skipping real-data trigger."
+fi
+
+# ------------------------------------------------------------------
 # Done
 # ------------------------------------------------------------------
 echo ""
@@ -111,11 +184,9 @@ echo -e "  ${CYAN}Web UI:${NC}        http://localhost:3000"
 echo -e "  ${CYAN}API:${NC}           http://localhost:8000"
 echo -e "  ${CYAN}API docs:${NC}      http://localhost:8000/docs"
 echo ""
-echo -e "  ${YELLOW}Next step:${NC} Feed it a listing URL to analyze:"
-echo ""
-echo -e "  curl -X POST http://localhost:8000/api/listings/intake/url \\"
-echo -e "    -H 'Content-Type: application/json' \\"
-echo -e "    -d '{\"url\":\"https://www.rightmove.co.uk/properties/123456789\",\"source_name\":\"manual_url\"}'"
-echo ""
-echo -e "  Then open ${CYAN}http://localhost:3000/listings${NC} to see it."
+echo -e "  ${YELLOW}Next step:${NC} Open the live surfaces:"
+echo -e "  ${CYAN}http://localhost:3000/listings${NC}"
+echo -e "  ${CYAN}http://localhost:3000/listing-clusters${NC}"
+echo -e "  ${CYAN}http://localhost:3000/sites${NC}"
+echo -e "  ${CYAN}http://localhost:3000/opportunities${NC}"
 echo ""

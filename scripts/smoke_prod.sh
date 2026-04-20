@@ -34,6 +34,7 @@ fi
 
 APP_ORIGIN=${1%/}
 API_ORIGIN=${2%/}
+REAL_SOURCE_KEY=${REAL_SOURCE_KEY:-cabinet_office_surplus_property}
 : "${BACKEND_BASIC_AUTH_USER:?BACKEND_BASIC_AUTH_USER is required}"
 : "${BACKEND_BASIC_AUTH_PASSWORD:?BACKEND_BASIC_AUTH_PASSWORD is required}"
 
@@ -110,7 +111,56 @@ check_json() {
   shift 2
 
   echo "Checking ${description}: ${url}"
-  curl --fail --silent --show-error "$@" "${url}" >/dev/null
+  curl_cmd --fail --silent --show-error "$@" "${url}" >/dev/null
+}
+
+curl_cmd() {
+  local url="${!#}"
+  local command=("${CURL_BIN:-curl}")
+  if [[ "${url}" == "${APP_ORIGIN}"* ]] && (( ${#app_origin_curl[@]} )); then
+    command+=("${app_origin_curl[@]}")
+  fi
+  command+=("$@")
+  "${command[@]}"
+}
+
+count_collection_items() {
+  local url=$1
+  shift
+
+  local payload
+  payload=$(curl_cmd --fail --silent --show-error "$@" "${url}")
+
+  python3 -c '
+import json
+import sys
+
+payload = json.load(sys.stdin)
+if isinstance(payload, list):
+    print(len(payload))
+elif isinstance(payload, dict):
+    items = payload.get("items")
+    if isinstance(items, list):
+        print(len(items))
+    else:
+        print(0)
+else:
+    print(0)
+' <<<"${payload}"
+}
+
+check_count_positive() {
+  local description=$1
+  local url=$2
+  shift 2
+
+  echo "Checking ${description} count: ${url}"
+  local count
+  count=$(count_collection_items "${url}" "$@")
+  if [[ "${count}" -lt 1 ]]; then
+    echo "Expected at least one row for ${description}, found ${count}" >&2
+    exit 1
+  fi
 }
 
 check_body_contains() {
@@ -121,7 +171,7 @@ check_body_contains() {
 
   echo "Checking ${description}: ${url}"
   local body
-  body=$(curl --fail --silent --show-error "$@" "${url}")
+  body=$(curl_cmd --fail --silent --show-error "$@" "${url}")
   if ! grep -Fq "${expected_text}" <<<"${body}"; then
     echo "Expected response marker '${expected_text}' was not found for ${description}" >&2
     exit 1
@@ -136,7 +186,7 @@ check_page_contains() {
 
   echo "Checking ${description}: ${url}"
   local page
-  page=$(curl --fail --silent --show-error "$@" "${url}")
+  page=$(curl_cmd --fail --silent --show-error "$@" "${url}")
   if ! grep -Fq "${expected_text}" <<<"${page}"; then
     echo "Expected page marker '${expected_text}' was not found for ${description}" >&2
     exit 1
@@ -151,7 +201,7 @@ check_page_excludes() {
 
   echo "Checking ${description} does not contain fallback marker: ${url}"
   local page
-  page=$(curl --fail --silent --show-error "$@" "${url}")
+  page=$(curl_cmd --fail --silent --show-error "$@" "${url}")
   if grep -Fq "${unexpected_text}" <<<"${page}"; then
     echo "Unexpected page marker '${unexpected_text}' was found for ${description}" >&2
     exit 1
@@ -162,7 +212,11 @@ echo "== Backend health =="
 check_json "healthz" "${API_ORIGIN}/healthz"
 check_json "readyz" "${API_ORIGIN}/readyz"
 check_json "listing sources" "${API_ORIGIN}/api/listings/sources" "${auth[@]}"
-check_body_contains "listing sources contain seeded automated source" "${API_ORIGIN}/api/listings/sources" "example_public_page" "${auth[@]}"
+check_body_contains "listing sources contain real automated source" "${API_ORIGIN}/api/listings/sources" "${REAL_SOURCE_KEY}" "${auth[@]}"
+check_count_positive "backend listings" "${API_ORIGIN}/api/listings?source=${REAL_SOURCE_KEY}"
+check_count_positive "backend listing clusters" "${API_ORIGIN}/api/listing-clusters"
+check_count_positive "backend sites" "${API_ORIGIN}/api/sites"
+check_count_positive "backend opportunities" "${API_ORIGIN}/api/opportunities/"
 
 echo "== App proxy auth =="
 app_auth_email=$(resolve_app_auth_email) || {
@@ -174,7 +228,7 @@ app_auth_password=$(resolve_app_auth_password) || {
   exit 1
 }
 login_status=$(
-  curl "${app_origin_curl[@]}" --silent --show-error --output /dev/null --dump-header "${login_headers}" --write-out '%{http_code}' \
+  curl_cmd --silent --show-error --output /dev/null --dump-header "${login_headers}" --write-out '%{http_code}' \
     --cookie-jar "${cookie_jar}" \
     --data-urlencode "email=${app_auth_email}" \
     --data-urlencode "password=${app_auth_password}" \
@@ -202,50 +256,67 @@ case "${login_status}" in
 esac
 
 echo "== Protected app-proxy surfaces =="
-check_json "data health" "${APP_ORIGIN}/api/health/data" "${app_origin_curl[@]}" --cookie "${cookie_jar}"
-check_json "model health" "${APP_ORIGIN}/api/health/model" "${app_origin_curl[@]}" --cookie "${cookie_jar}"
-check_json "review queue" "${APP_ORIGIN}/api/admin/review-queue" "${app_origin_curl[@]}" --cookie "${cookie_jar}"
-check_json "listings proxy" "${APP_ORIGIN}/api/listings" "${app_origin_curl[@]}" --cookie "${cookie_jar}"
-check_json "listing sources proxy" "${APP_ORIGIN}/api/listings/sources" "${app_origin_curl[@]}" --cookie "${cookie_jar}"
-check_json "admin jobs proxy" "${APP_ORIGIN}/api/admin/jobs" "${app_origin_curl[@]}" --cookie "${cookie_jar}"
-check_body_contains "listings proxy contains live connector rows" "${APP_ORIGIN}/api/listings" "example_public_page" "${app_origin_curl[@]}" --cookie "${cookie_jar}"
-check_body_contains "listing sources proxy contains seeded automated source" "${APP_ORIGIN}/api/listings/sources" "example_public_page" "${app_origin_curl[@]}" --cookie "${cookie_jar}"
-check_body_contains "admin jobs proxy contains connector runs" "${APP_ORIGIN}/api/admin/jobs" "LISTING_SOURCE_RUN" "${app_origin_curl[@]}" --cookie "${cookie_jar}"
+check_json "data health" "${APP_ORIGIN}/api/health/data" --cookie "${cookie_jar}"
+check_json "model health" "${APP_ORIGIN}/api/health/model" --cookie "${cookie_jar}"
+check_json "review queue" "${APP_ORIGIN}/api/admin/review-queue" --cookie "${cookie_jar}"
+check_json "listings proxy" "${APP_ORIGIN}/api/listings" --cookie "${cookie_jar}"
+check_json "listing clusters proxy" "${APP_ORIGIN}/api/listing-clusters" --cookie "${cookie_jar}"
+check_json "sites proxy" "${APP_ORIGIN}/api/sites" --cookie "${cookie_jar}"
+check_json "opportunities proxy" "${APP_ORIGIN}/api/opportunities" --cookie "${cookie_jar}"
+check_json "listing sources proxy" "${APP_ORIGIN}/api/listings/sources" --cookie "${cookie_jar}"
+check_json "admin jobs proxy" "${APP_ORIGIN}/api/admin/jobs" --cookie "${cookie_jar}"
+check_body_contains "listings proxy contains live connector rows" "${APP_ORIGIN}/api/listings" "${REAL_SOURCE_KEY}" --cookie "${cookie_jar}"
+check_body_contains "listing sources proxy contains real automated source" "${APP_ORIGIN}/api/listings/sources" "${REAL_SOURCE_KEY}" --cookie "${cookie_jar}"
+check_body_contains "admin jobs proxy contains connector runs" "${APP_ORIGIN}/api/admin/jobs" "LISTING_SOURCE_RUN" --cookie "${cookie_jar}"
+check_count_positive "proxy listings" "${APP_ORIGIN}/api/listings?source=${REAL_SOURCE_KEY}" --cookie "${cookie_jar}"
+check_count_positive "proxy listing clusters" "${APP_ORIGIN}/api/listing-clusters" --cookie "${cookie_jar}"
+check_count_positive "proxy sites" "${APP_ORIGIN}/api/sites" --cookie "${cookie_jar}"
+check_count_positive "proxy opportunities" "${APP_ORIGIN}/api/opportunities" --cookie "${cookie_jar}"
 
 echo "== Authenticated frontend pages =="
 check_page_contains \
   "listings page" \
   "${APP_ORIGIN}/listings" \
   "Listing intake ledger" \
-  "${app_origin_curl[@]}" \
   --cookie "${cookie_jar}"
 check_page_contains \
   "listings page live-data marker" \
   "${APP_ORIGIN}/listings" \
   "Live API rows in the current query" \
-  "${app_origin_curl[@]}" \
   --cookie "${cookie_jar}"
 check_page_excludes \
   "listings page" \
   "${APP_ORIGIN}/listings" \
   "Local fallback rows in the current query" \
-  "${app_origin_curl[@]}" \
   --cookie "${cookie_jar}"
 check_page_contains \
   "source runs page" \
   "${APP_ORIGIN}/admin/source-runs" \
   "Connector run console" \
-  "${app_origin_curl[@]}" \
   --cookie "${cookie_jar}"
 check_page_contains \
   "source runs page live-data marker" \
   "${APP_ORIGIN}/admin/source-runs" \
   "Live API" \
-  "${app_origin_curl[@]}" \
+  --cookie "${cookie_jar}"
+check_page_contains \
+  "cluster page" \
+  "${APP_ORIGIN}/listing-clusters" \
+  "Cluster review queue" \
+  --cookie "${cookie_jar}"
+check_page_contains \
+  "sites page" \
+  "${APP_ORIGIN}/sites" \
+  "Site registry" \
+  --cookie "${cookie_jar}"
+check_page_contains \
+  "opportunities page" \
+  "${APP_ORIGIN}/opportunities" \
+  "Planning-first opportunity queue" \
   --cookie "${cookie_jar}"
 
 echo "== Frontend reachability =="
-app_status=$(curl "${app_origin_curl[@]}" --silent --show-error --output /dev/null --write-out '%{http_code}' "${APP_ORIGIN}")
+app_status=$(curl_cmd --silent --show-error --output /dev/null --write-out '%{http_code}' "${APP_ORIGIN}")
 case "${app_status}" in
   200|307|308|401|403)
     echo "Frontend reachable with status ${app_status}"
@@ -256,7 +327,7 @@ case "${app_status}" in
     ;;
 esac
 
-head_status=$(curl "${app_origin_curl[@]}" --silent --show-error --output /dev/null --write-out '%{http_code}' --head "${APP_ORIGIN}")
+head_status=$(curl_cmd --silent --show-error --output /dev/null --write-out '%{http_code}' --head "${APP_ORIGIN}")
 case "${head_status}" in
   200|307|308|401|403)
     echo "Frontend HEAD reachable with status ${head_status}"

@@ -9,16 +9,16 @@ from landintel.planning.extant_permission import (
     audit_extant_permission_check,
     evaluate_site_extant_permission,
 )
-from landintel.planning.planning_register_normalize import import_borough_register_fixture
-from landintel.planning.pld_ingest import import_pld_fixture
-from landintel.planning.reference_layers import (
-    import_baseline_pack_fixture,
+from landintel.planning.official_sources import (
+    import_borough_register_fixture,
     import_brownfield_fixture,
     import_constraint_fixture,
     import_flood_fixture,
     import_heritage_article4_fixture,
+    import_pld_fixture,
     import_policy_area_fixture,
 )
+from landintel.planning.reference_layers import import_baseline_pack_fixture
 from landintel.sites.service import SiteBuildError
 from sqlalchemy import select
 

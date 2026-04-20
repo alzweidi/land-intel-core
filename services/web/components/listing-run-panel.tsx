@@ -116,8 +116,8 @@ export function ListingRunPanel({ sourceOptions }: { sourceOptions: Phase1ASourc
 
       <section className="connector-card">
         <div className="connector-card__head">
-          <Badge tone="success">Approved public page</Badge>
-          <span className="connector-card__hint">Blocked unless source compliance mode allows it.</span>
+          <Badge tone="success">Approved automated source</Badge>
+          <span className="connector-card__hint">Runs only for active compliant sources, including tabular feeds.</span>
         </div>
         <label className="field">
           <span>Source key</span>

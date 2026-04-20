@@ -5,7 +5,7 @@ import { describe, expect, it, vi } from 'vitest';
 
 import SourceRunsPage from '@/app/admin/source-runs/page';
 import { readSessionTokenFromCookies } from '@/lib/auth/server';
-import { getAdminJobs, getListingSources } from '@/lib/landintel-api';
+import { getAdminJobs, getListingSources, getSourceSnapshots } from '@/lib/landintel-api';
 
 vi.mock('next/link', () => ({
   default: ({ children, href }: { children: ReactNode; href: string }) => (
@@ -25,7 +25,8 @@ vi.mock('@/lib/auth/server', () => ({
 
 vi.mock('@/lib/landintel-api', () => ({
   getAdminJobs: vi.fn(),
-  getListingSources: vi.fn()
+  getListingSources: vi.fn(),
+  getSourceSnapshots: vi.fn()
 }));
 
 describe('SourceRunsPage', () => {
@@ -49,9 +50,48 @@ describe('SourceRunsPage', () => {
     vi.mocked(getAdminJobs).mockResolvedValue({
       apiAvailable: true,
       items: [
-        { id: 'job-1', job_type: 'LISTING_SOURCE_RUN', status: 'QUEUED', requested_by: 'scheduler' },
-        { id: 'job-2', job_type: 'MANUAL_URL_SNAPSHOT', status: 'SUCCEEDED', requested_by: 'web-ui' },
-        { id: 'job-3', job_type: 'SITE_BUILD_REFRESH', status: 'SUCCEEDED', requested_by: 'worker' }
+        {
+          id: 'job-1',
+          job_type: 'LISTING_SOURCE_RUN',
+          status: 'QUEUED',
+          requested_by: 'scheduler',
+          created_at: '2026-04-20T09:00:00Z',
+          updated_at: '2026-04-20T09:01:00Z',
+          payload_json: { source_name: 'example_public_page' }
+        },
+        {
+          id: 'job-2',
+          job_type: 'MANUAL_URL_SNAPSHOT',
+          status: 'SUCCEEDED',
+          requested_by: 'web-ui',
+          created_at: '2026-04-20T09:00:00Z',
+          updated_at: '2026-04-20T09:01:00Z',
+          payload_json: {}
+        },
+        {
+          id: 'job-3',
+          job_type: 'SITE_BUILD_REFRESH',
+          status: 'SUCCEEDED',
+          requested_by: 'worker',
+          created_at: '2026-04-20T09:00:00Z',
+          updated_at: '2026-04-20T09:01:00Z',
+          payload_json: {}
+        }
+      ]
+    } as never);
+    vi.mocked(getSourceSnapshots).mockResolvedValue({
+      apiAvailable: true,
+      items: [
+        {
+          id: 'snapshot-1',
+          source_name: 'example_public_page',
+          source_family: 'public_page',
+          parse_status: 'PARSED',
+          acquired_at: '2026-04-20T09:02:00Z',
+          coverage_note: 'Snapshot preserved',
+          content_hash: 'hash-1',
+          manifest_json: {}
+        }
       ]
     } as never);
 
@@ -61,6 +101,7 @@ describe('SourceRunsPage', () => {
     expect(screen.getByText('Live API')).toBeInTheDocument();
     expect(screen.getByText('Every 24h')).toBeInTheDocument();
     expect(screen.getByTestId('listing-run-panel')).toHaveTextContent('example_public_page');
+    expect(screen.getByText('snapshot-1')).toBeInTheDocument();
   });
 
   it('renders an explicit empty state when live source metadata is unavailable', async () => {
@@ -73,12 +114,17 @@ describe('SourceRunsPage', () => {
       apiAvailable: false,
       items: []
     } as never);
+    vi.mocked(getSourceSnapshots).mockResolvedValue({
+      apiAvailable: false,
+      items: []
+    } as never);
 
     render(await SourceRunsPage());
 
     expect(screen.getByText('Unavailable')).toBeInTheDocument();
     expect(screen.getByText('No live listing-source metadata was returned. Seed approved sources and retry.')).toBeInTheDocument();
     expect(screen.getByTestId('listing-run-panel')).toHaveTextContent('');
+    expect(screen.getByText('Live source snapshot evidence is unavailable in this environment.')).toBeInTheDocument();
   });
 
   it('marks the API mode as partial when only one live data source responds', async () => {
@@ -89,6 +135,10 @@ describe('SourceRunsPage', () => {
     } as never);
     vi.mocked(getAdminJobs).mockResolvedValue({
       apiAvailable: false,
+      items: []
+    } as never);
+    vi.mocked(getSourceSnapshots).mockResolvedValue({
+      apiAvailable: true,
       items: []
     } as never);
 
@@ -115,6 +165,10 @@ describe('SourceRunsPage', () => {
       ]
     } as never);
     vi.mocked(getAdminJobs).mockResolvedValue({
+      apiAvailable: true,
+      items: []
+    } as never);
+    vi.mocked(getSourceSnapshots).mockResolvedValue({
       apiAvailable: true,
       items: []
     } as never);
@@ -146,10 +200,80 @@ describe('SourceRunsPage', () => {
       apiAvailable: true,
       items: []
     } as never);
+    vi.mocked(getSourceSnapshots).mockResolvedValue({
+      apiAvailable: true,
+      items: []
+    } as never);
 
     render(await SourceRunsPage());
 
     expect(screen.getByText('MANUAL_ONLY')).toBeInTheDocument();
     expect(screen.getByText('Yes')).toBeInTheDocument();
+  });
+
+  it('renders fallback values for recent run and snapshot rows', async () => {
+    vi.mocked(readSessionTokenFromCookies).mockResolvedValue(null);
+    vi.mocked(getListingSources).mockResolvedValue({
+      apiAvailable: true,
+      items: []
+    } as never);
+    vi.mocked(getAdminJobs).mockResolvedValue({
+      apiAvailable: true,
+      items: [
+        {
+          id: 'job-succeeded',
+          job_type: 'LISTING_SOURCE_RUN',
+          status: 'SUCCEEDED',
+          requested_by: 'scheduler',
+          created_at: '2026-04-20T09:00:00Z',
+          updated_at: '2026-04-20T09:02:00Z',
+          payload_json: { source_name: 'example_public_page' }
+        },
+        {
+          id: 'job-failed',
+          job_type: 'LISTING_SOURCE_RUN',
+          status: 'FAILED',
+          requested_by: null,
+          created_at: '2026-04-20T09:00:00Z',
+          updated_at: null,
+          payload_json: {}
+        }
+      ]
+    } as never);
+    vi.mocked(getSourceSnapshots).mockResolvedValue({
+      apiAvailable: true,
+      items: [
+        {
+          id: 'snapshot-failed',
+          source_name: 'example_public_page',
+          source_family: 'public_page',
+          parse_status: 'FAILED',
+          acquired_at: null,
+          coverage_note: '',
+          content_hash: 'hash-2',
+          manifest_json: {}
+        },
+        {
+          id: 'snapshot-pending',
+          source_name: 'example_public_page',
+          source_family: 'public_page',
+          parse_status: 'PENDING',
+          acquired_at: '2026-04-20T09:05:00Z',
+          coverage_note: 'Pending parse',
+          content_hash: 'hash-3',
+          manifest_json: {}
+        }
+      ]
+    } as never);
+
+    render(await SourceRunsPage());
+
+    expect(screen.getByText('unknown-source')).toBeInTheDocument();
+    expect(screen.getByText('unknown')).toBeInTheDocument();
+    expect(screen.getByText('SUCCEEDED')).toBeInTheDocument();
+    expect(screen.getByText('PENDING')).toBeInTheDocument();
+    expect(screen.getAllByText('FAILED')).toHaveLength(2);
+    expect(screen.getAllByText('n/a')).not.toHaveLength(0);
+    expect(screen.getByText('public_page')).toBeInTheDocument();
   });
 });

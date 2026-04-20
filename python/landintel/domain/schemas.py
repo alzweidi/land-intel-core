@@ -117,6 +117,9 @@ class JobRunRead(BaseModel):
     locked_at: datetime | None
     worker_id: str | None
     error_text: str | None
+    created_at: datetime
+    updated_at: datetime
+    requested_by: str | None
     payload_json: dict[str, Any]
 
 

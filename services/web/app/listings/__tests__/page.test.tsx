@@ -1,11 +1,15 @@
 import type { ReactNode } from 'react';
 
 import { render, screen } from '@testing-library/react';
-import { describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import ListingsPage from '@/app/listings/page';
 import { getAuthContext } from '@/lib/auth/server';
-import { getListingSources, getListings } from '@/lib/landintel-api';
+import {
+  getListingSources,
+  getListings,
+  getReadbackState,
+} from '@/lib/landintel-api';
 
 vi.mock('next/link', () => ({
   default: ({ children, href }: { children: ReactNode; href: string }) => (
@@ -19,10 +23,21 @@ vi.mock('@/lib/auth/server', () => ({
 
 vi.mock('@/lib/landintel-api', () => ({
   getListingSources: vi.fn(),
-  getListings: vi.fn()
+  getListings: vi.fn(),
+  getReadbackState: vi.fn()
 }));
 
 describe('ListingsPage', () => {
+  beforeEach(() => {
+    vi.mocked(getAuthContext).mockReset();
+    vi.mocked(getListings).mockReset();
+    vi.mocked(getListingSources).mockReset();
+    vi.mocked(getReadbackState).mockReset();
+    vi.mocked(getReadbackState).mockImplementation((apiAvailable, itemCount) =>
+      apiAvailable ? (itemCount > 0 ? 'LIVE' : 'EMPTY') : 'FALLBACK'
+    );
+  });
+
   it('renders live source posture for admin users', async () => {
     vi.mocked(getAuthContext).mockResolvedValue({
       isAuthenticated: true,
@@ -273,5 +288,42 @@ describe('ListingsPage', () => {
     expect(screen.getAllByText('SOLD')).not.toHaveLength(0);
     const clusterLink = screen.getByRole('link', { name: 'cluster-4' });
     expect(clusterLink).toHaveAttribute('href', '/listing-clusters/cluster-4');
+  });
+
+  it('renders truthful live-empty listing messaging without inventing rows', async () => {
+    vi.mocked(getAuthContext).mockResolvedValue({
+      isAuthenticated: true,
+      role: 'analyst',
+      session: null,
+      user: null
+    } as never);
+    vi.mocked(getListings).mockResolvedValue({
+      apiAvailable: true,
+      items: []
+    } as never);
+    vi.mocked(getListingSources).mockResolvedValue({
+      apiAvailable: true,
+      items: [
+        {
+          id: 'source-live',
+          source_key: 'example_public_page',
+          name: 'example_public_page',
+          connector_type: 'public_page',
+          compliance_mode: 'COMPLIANT_AUTOMATED',
+          active: true,
+          refresh_policy: 'Every 24h',
+          coverage_note: 'Every 24h'
+        }
+      ]
+    } as never);
+
+    render(await ListingsPage({}));
+
+    expect(screen.getByText('Live API returned zero rows for the current query')).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        'Live API returned zero listings for this query. Trigger an approved automated source or clear the filters.'
+      )
+    ).toBeInTheDocument();
   });
 });

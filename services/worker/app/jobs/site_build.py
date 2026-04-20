@@ -3,6 +3,7 @@ from __future__ import annotations
 from uuid import UUID
 
 from landintel.domain.models import SiteCandidate
+from landintel.jobs.service import enqueue_site_scenario_suggest_refresh_job
 from landintel.sites.service import (
     SiteBuildError,
     build_or_refresh_site_from_cluster,
@@ -13,11 +14,17 @@ from sqlalchemy import select
 
 def run_site_build_job(*, session, job) -> None:
     cluster_id = UUID(str(job.payload_json["cluster_id"]))
-    build_or_refresh_site_from_cluster(
+    site = build_or_refresh_site_from_cluster(
         session=session,
         cluster_id=cluster_id,
         requested_by=job.requested_by or "worker",
     )
+    enqueue_site_scenario_suggest_refresh_job(
+        session=session,
+        site_id=str(site.id),
+        requested_by=job.requested_by or "worker",
+    )
+    session.flush()
 
 
 def run_site_lpa_refresh_job(*, session, job) -> None:

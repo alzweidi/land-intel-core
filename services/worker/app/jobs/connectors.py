@@ -1,6 +1,10 @@
 from landintel.domain.enums import JobType
-from landintel.jobs.service import mark_job_failed, mark_job_succeeded
-from landintel.listings.service import execute_listing_job, rebuild_listing_clusters
+from landintel.jobs.service import enqueue_site_build_job, mark_job_failed, mark_job_succeeded
+from landintel.listings.service import (
+    execute_listing_job,
+    list_auto_site_build_cluster_ids,
+    rebuild_listing_clusters,
+)
 from landintel.storage.base import StorageAdapter
 
 from .assessment import (
@@ -43,6 +47,12 @@ def dispatch_connector_job(session, job, settings, storage: StorageAdapter) -> b
 
     if job.job_type == JobType.LISTING_CLUSTER_REBUILD:
         rebuild_listing_clusters(session=session)
+        for cluster_id in list_auto_site_build_cluster_ids(session=session):
+            enqueue_site_build_job(
+                session=session,
+                cluster_id=str(cluster_id),
+                requested_by=job.requested_by or "worker",
+            )
         mark_job_succeeded(session=session, job=job)
         return True
 
@@ -87,7 +97,7 @@ def dispatch_connector_job(session, job, settings, storage: StorageAdapter) -> b
         return True
 
     if job.job_type == JobType.SITE_SCENARIO_SUGGEST_REFRESH:
-        run_site_scenario_suggest_refresh_job(session=session, job=job)
+        run_site_scenario_suggest_refresh_job(session=session, job=job, storage=storage)
         mark_job_succeeded(session=session, job=job)
         return True
 

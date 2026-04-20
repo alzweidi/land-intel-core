@@ -49,6 +49,7 @@ export BACKEND_BASIC_AUTH_USER='<backend-basic-auth-user>'
 export BACKEND_BASIC_AUTH_PASSWORD='<backend-basic-auth-password>'
 export APP_AUTH_EMAIL='<reviewer-or-admin-email>'
 export APP_AUTH_PASSWORD='<reviewer-or-admin-password>'
+export REAL_SOURCE_KEY='cabinet_office_surplus_property'
 # Optional when app.<domain> is behind Netlify site protection or another
 # outer access layer:
 # export APP_CURL_CONFIG="$HOME/.config/landintel/app-protection.curlrc"
@@ -91,6 +92,7 @@ export SUPABASE_STORAGE_BUCKET='raw-assets'
 2. Confirm Supabase database backup/PITR posture in the dashboard.
 3. Review stale coverage, incidents, and blocked scopes in the admin UI.
 4. Review `manual_review_required`, `blocked`, and `Hold` rates for anything unexpected.
+5. Check `/admin/source-runs` for recent `LISTING_SOURCE_RUN` jobs and immutable source snapshots from the real automated source.
 
 ## Keep Visible Probability Hidden By Default
 

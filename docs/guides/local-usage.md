@@ -1,23 +1,24 @@
 # Land Intel — Usage Guide
 
-How to set up the platform locally, feed it land listing URLs, and see it score planning
+How to set up the platform locally, trigger the real automated source, optionally feed it land listing URLs, and see it score planning
 permission probability and rank opportunities in the web UI.
 
 ---
 
 ## What This System Actually Does
 
-Land Intel is an **analysis engine**, not a web scraper. It does not automatically go
-find land for sale. The workflow is:
+Land Intel is an **analysis engine** with a narrow approved automation path. It does not
+ship arbitrary portal scrapers. The workflow is:
 
-1. **You give it listing URLs** (e.g. Rightmove, auction sites) or upload a CSV of listings
-2. It **fetches, parses, and deduplicates** the listings
-3. You **promote a listing to a "site"** — the system then enriches it with planning data,
+1. It can **pull approved automated sources** such as the Cabinet Office surplus-property register
+2. You can also **give it listing URLs** or upload a CSV of listings when analyst-triggered intake is still needed
+3. It **fetches, parses, and deduplicates** the listings
+4. It auto-promotes eligible live land clusters into sites, then enriches them with planning data,
    borough boundaries, flood zones, heritage, brownfield status, etc.
-4. You **generate scenarios** (e.g. "build 1-4 homes here with full planning")
-5. The **probability engine scores** how likely planning permission is to be granted
-6. The **valuation engine** estimates post-permission value and uplift
-7. All results appear in the **web UI** as a ranked opportunity list
+5. You review or confirm scenarios when needed
+6. The **probability engine scores** how likely planning permission is to be granted
+7. The **valuation engine** estimates post-permission value and uplift
+8. All results appear in the **web UI** as a ranked opportunity list
 
 All the planning/policy/valuation reference data is **already included in this repo** as
 fixture files under `tests/fixtures/`. You don't need to download anything.
@@ -84,8 +85,11 @@ This single script automatically:
 2. Loads planning history, policy areas, brownfield, flood, heritage data (from `tests/fixtures/planning/`)
 3. Loads HMLR house prices, UKHPI index, and land comp data (from `tests/fixtures/valuation/`)
 4. Builds and activates the hidden probability model (trains a logistic regression on the historical planning data)
+5. Triggers the approved automated source `cabinet_office_surplus_property`
+6. Waits for live listings, clusters, sites, and opportunities to appear before returning success
 
 **You don't need to find or download any data.** It's all fixture files already in the repo.
+The real automated source is pulled live; the planning and valuation baseline remains fixture-backed unless you configure additional official source URLs in `.env`.
 
 When the script finishes, you'll see "Setup complete!" and you're ready to analyze listings.
 If the API is not reachable or no active hidden release is created, the script exits non-zero
@@ -93,9 +97,10 @@ instead of claiming success.
 
 ---
 
-## Step 3: Feed It A Listing
+## Step 3: Feed It Additional Listings (optional)
 
-Go find a land listing on Rightmove, an auction site, or any property portal. Copy the URL.
+The setup script already triggers the approved automated source and waits for real rows to appear.
+Use this step when you also want to add analyst-triggered URLs or CSV imports.
 
 ### Option A: Use the Web UI (easiest)
 

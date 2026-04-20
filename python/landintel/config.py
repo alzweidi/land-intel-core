@@ -37,6 +37,34 @@ class Settings(BaseSettings):
     supabase_service_role_key: str | None = None
     supabase_storage_bucket: str = "raw-assets"
     supabase_auth_jwks_url: str | None = None
+    real_data_mode: bool = Field(
+        default=False,
+        validation_alias=AliasChoices(
+            "LANDINTEL_REAL_DATA_MODE",
+            "REAL_DATA_MODE",
+        ),
+    )
+    geospatial_official_source_urls_json: dict[str, str] = Field(
+        default_factory=dict,
+        validation_alias=AliasChoices(
+            "LANDINTEL_GEOSPATIAL_OFFICIAL_SOURCE_URLS",
+            "GEOSPATIAL_OFFICIAL_SOURCE_URLS",
+        ),
+    )
+    planning_official_source_urls_json: dict[str, str] = Field(
+        default_factory=dict,
+        validation_alias=AliasChoices(
+            "LANDINTEL_PLANNING_OFFICIAL_SOURCE_URLS",
+            "PLANNING_OFFICIAL_SOURCE_URLS",
+        ),
+    )
+    valuation_official_source_urls_json: dict[str, str] = Field(
+        default_factory=dict,
+        validation_alias=AliasChoices(
+            "LANDINTEL_VALUATION_OFFICIAL_SOURCE_URLS",
+            "VALUATION_OFFICIAL_SOURCE_URLS",
+        ),
+    )
 
     snapshot_http_timeout_seconds: int = Field(default=20, ge=1)
     run_db_migrations: bool = False

@@ -203,10 +203,10 @@ describe('SiteScenarioEditor', () => {
 
     await waitFor(() => {
       expect(suggestSiteScenarios).toHaveBeenCalledWith('site-1', { requested_by: 'web-ui' });
+      expect(getScenario).toHaveBeenCalledWith('scenario-2');
     });
-    expect(getScenario).toHaveBeenCalledWith('scenario-2');
     expect(
-      screen.getByText('1 scenario(s) suggested, 1 template(s) excluded.')
+      await screen.findByText('1 scenario(s) suggested, 1 template(s) excluded.')
     ).toBeInTheDocument();
     expect(screen.getByText('REVIEW_GAP')).toBeInTheDocument();
     expect(screen.getAllByRole('link', { name: 'Open source' })).toHaveLength(3);

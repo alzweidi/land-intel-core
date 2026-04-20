@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import re
 import uuid
 from dataclasses import dataclass
 from pathlib import Path
@@ -169,16 +170,15 @@ def _upsert_lpa_boundaries(
     imported = 0
     for feature in feature_collection.get("features", []):
         properties = dict(feature.get("properties", {}))
-        lpa_id = str(
-            properties.get("borough_id")
-            or properties.get("lpa_id")
-            or properties.get("slug")
-            or feature.get("id")
-        )
         prepared = normalize_geojson_geometry(
             geometry_payload=feature["geometry"],
             source_epsg=int(properties.get("source_epsg", 4326)),
             source_type=GeomSourceType.SOURCE_POLYGON,
+        )
+        lpa_id = _resolve_lpa_boundary_id(
+            properties=properties,
+            feature=feature,
+            geom_hash=prepared.geom_hash,
         )
         row = session.get(LpaBoundary, lpa_id)
         if row is None:
@@ -198,6 +198,63 @@ def _upsert_lpa_boundaries(
         row.source_snapshot_id = source_snapshot_id
         imported += 1
     return imported
+
+
+def _resolve_lpa_boundary_id(
+    *,
+    properties: dict[str, Any],
+    feature: dict[str, Any],
+    geom_hash: str,
+) -> str:
+    for candidate in (
+        properties.get("borough_id"),
+        properties.get("lpa_id"),
+        properties.get("slug"),
+    ):
+        value = _clean_identifier(candidate)
+        if value is not None:
+            return value
+
+    derived_name = _derive_lpa_slug(properties.get("name"))
+    if derived_name is not None:
+        return derived_name
+
+    for candidate in (properties.get("gss_code"), feature.get("id")):
+        value = _clean_identifier(candidate)
+        if value is not None:
+            return value
+
+    return f"lpa_{geom_hash[:12]}"
+
+
+def _clean_identifier(value: Any) -> str | None:
+    if value is None:
+        return None
+    text = str(value).strip()
+    if not text or text.lower() == "none":
+        return None
+    return text
+
+
+def _derive_lpa_slug(value: Any) -> str | None:
+    text = _clean_identifier(value)
+    if text is None:
+        return None
+    lowered = text.lower()
+    prefixes = (
+        "the london borough of ",
+        "london borough of ",
+        "royal borough of ",
+        "london borough ",
+        "city of ",
+    )
+    for prefix in prefixes:
+        if lowered.startswith(prefix):
+            lowered = lowered[len(prefix) :]
+            break
+    lowered = lowered.replace("&", " and ")
+    slug = re.sub(r"[^a-z0-9]+", "_", lowered).strip("_")
+    return slug or None
 
 
 def _upsert_title_polygons(

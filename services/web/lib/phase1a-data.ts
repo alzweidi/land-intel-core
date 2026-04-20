@@ -4,7 +4,7 @@ export type Phase1ASource = {
   id: string;
   source_key: string;
   name: string;
-  connector_type: 'manual_url' | 'csv_import' | 'public_page';
+  connector_type: 'manual_url' | 'csv_import' | 'public_page' | 'tabular_feed';
   compliance_mode: ListingComplianceMode;
   active: boolean;
   refresh_policy: string;
@@ -538,4 +538,3 @@ export function getPhase1AListingById(listingId: string): Phase1AListingDetail |
 export function getPhase1AClusterById(clusterId: string): Phase1AClusterDetail | null {
   return sampleClusters.find((cluster) => cluster.id === clusterId) ?? null;
 }
-
