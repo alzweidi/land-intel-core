@@ -94,14 +94,14 @@ def test_tabular_feed_connector_transforms_rows_and_limits_output(
         },
         {
             "In Site Disposal Reference": "B2",
-            "Status of Sale": "Under Offer",
+            "Status of Sale": "On the Market",
             "Local Authority": "Royal Borough of Greenwich",
             "Region": "Greater London",
             "Latitude": "51.483",
             "Longitude": "0.000",
             "Property Name": "Greenwich Depot",
             "Contract Name": "Re-development opportunity",
-            "Land Usage": "Depot",
+            "Land Usage": "Development land",
             "Total Surplus Land Area": "0",
             "Total Surplus Floor Area": "18",
             "Property Number": "8",
@@ -167,6 +167,16 @@ def test_tabular_feed_connector_transforms_rows_and_limits_output(
                 "feed_url": feed_url,
                 "row_transform": "cabinet_office_surplus_property_v1",
                 "feed_format": "csv",
+                "status_of_sale_values": ["On the Market"],
+                "local_authority_contains_any": [
+                    "LONDON BOROUGH",
+                    "ROYAL BOROUGH",
+                    "CITY OF LONDON",
+                ],
+                "allowed_land_usage_contains_any": ["Surplus land", "Development land"],
+                "allowed_listing_types": ["LAND"],
+                "max_surplus_floor_area_sqm": 0,
+                "require_positive_land_area": True,
                 "max_listings": 2,
             }
         ),
@@ -181,16 +191,13 @@ def test_tabular_feed_connector_transforms_rows_and_limits_output(
     assert output.assets[0].asset_type == "CSV"
     assert output.assets[0].role == "TABULAR_FEED"
     assert output.assets[0].metadata["row_count"] == 5
-    assert output.assets[0].metadata["listing_count"] == 2
+    assert output.assets[0].metadata["listing_count"] == 1
     assert output.manifest_json["feed_url"] == final_url
-    assert output.manifest_json["listing_count"] == 2
-    assert [listing.source_listing_id for listing in output.listings] == ["A1", "B2"]
+    assert output.manifest_json["listing_count"] == 1
+    assert [listing.source_listing_id for listing in output.listings] == ["A1"]
     assert output.listings[0].listing_type is ListingType.LAND
     assert output.listings[0].status is ListingStatus.LIVE
     assert output.listings[0].canonical_url == f"{final_url}&disposal_id=A1"
-    assert output.listings[1].listing_type is ListingType.REDEVELOPMENT_SITE
-    assert output.listings[1].status is ListingStatus.UNDER_OFFER
-    assert output.listings[1].canonical_url == f"{final_url}&disposal_id=B2"
 
 
 @pytest.mark.parametrize(

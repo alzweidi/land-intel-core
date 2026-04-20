@@ -22,11 +22,21 @@ REAL_SOURCE_REFRESH_POLICY = {
     "feed_format": "xlsx",
     "sheet_name": "Register",
     "row_transform": "cabinet_office_surplus_property_v1",
-    "status_of_sale_values": ["On the Market", "Under Offer"],
+    "status_of_sale_values": ["On the Market"],
     "local_authority_contains_any": [
-        "LONDON BOROUGH OF CAMDEN",
-        "LONDON BOROUGH OF SOUTHWARK",
+        "LONDON BOROUGH",
+        "ROYAL BOROUGH",
+        "CITY OF LONDON",
     ],
+    "allowed_land_usage_contains_any": [
+        "Surplus Land",
+        "Development land",
+    ],
+    "allowed_listing_types": [
+        "LAND",
+    ],
+    "max_surplus_floor_area_sqm": 0,
+    "require_positive_land_area": True,
     "max_listings": 200,
 }
 

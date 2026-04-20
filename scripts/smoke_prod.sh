@@ -193,6 +193,22 @@ check_page_contains() {
   fi
 }
 
+check_page_contains_any() {
+  local description=$1
+  local url=$2
+  local expected_text_a=$3
+  local expected_text_b=$4
+  shift 4
+
+  echo "Checking ${description}: ${url}"
+  local page
+  page=$(curl_cmd --fail --silent --show-error "$@" "${url}")
+  if ! grep -Fq "${expected_text_a}" <<<"${page}" && ! grep -Fq "${expected_text_b}" <<<"${page}"; then
+    echo "Expected page markers '${expected_text_a}' or '${expected_text_b}' were not found for ${description}" >&2
+    exit 1
+  fi
+}
+
 check_page_excludes() {
   local description=$1
   local url=$2
@@ -213,10 +229,10 @@ check_json "healthz" "${API_ORIGIN}/healthz"
 check_json "readyz" "${API_ORIGIN}/readyz"
 check_json "listing sources" "${API_ORIGIN}/api/listings/sources" "${auth[@]}"
 check_body_contains "listing sources contain real automated source" "${API_ORIGIN}/api/listings/sources" "${REAL_SOURCE_KEY}" "${auth[@]}"
-check_count_positive "backend listings" "${API_ORIGIN}/api/listings?source=${REAL_SOURCE_KEY}"
-check_count_positive "backend listing clusters" "${API_ORIGIN}/api/listing-clusters"
-check_count_positive "backend sites" "${API_ORIGIN}/api/sites"
-check_count_positive "backend opportunities" "${API_ORIGIN}/api/opportunities/"
+check_json "backend listings" "${API_ORIGIN}/api/listings?source=${REAL_SOURCE_KEY}"
+check_json "backend listing clusters" "${API_ORIGIN}/api/listing-clusters"
+check_json "backend sites" "${API_ORIGIN}/api/sites"
+check_json "backend opportunities" "${API_ORIGIN}/api/opportunities/"
 
 echo "== App proxy auth =="
 app_auth_email=$(resolve_app_auth_email) || {
@@ -265,13 +281,12 @@ check_json "sites proxy" "${APP_ORIGIN}/api/sites" --cookie "${cookie_jar}"
 check_json "opportunities proxy" "${APP_ORIGIN}/api/opportunities" --cookie "${cookie_jar}"
 check_json "listing sources proxy" "${APP_ORIGIN}/api/listings/sources" --cookie "${cookie_jar}"
 check_json "admin jobs proxy" "${APP_ORIGIN}/api/admin/jobs" --cookie "${cookie_jar}"
-check_body_contains "listings proxy contains live connector rows" "${APP_ORIGIN}/api/listings" "${REAL_SOURCE_KEY}" --cookie "${cookie_jar}"
 check_body_contains "listing sources proxy contains real automated source" "${APP_ORIGIN}/api/listings/sources" "${REAL_SOURCE_KEY}" --cookie "${cookie_jar}"
 check_body_contains "admin jobs proxy contains connector runs" "${APP_ORIGIN}/api/admin/jobs" "LISTING_SOURCE_RUN" --cookie "${cookie_jar}"
-check_count_positive "proxy listings" "${APP_ORIGIN}/api/listings?source=${REAL_SOURCE_KEY}" --cookie "${cookie_jar}"
-check_count_positive "proxy listing clusters" "${APP_ORIGIN}/api/listing-clusters" --cookie "${cookie_jar}"
-check_count_positive "proxy sites" "${APP_ORIGIN}/api/sites" --cookie "${cookie_jar}"
-check_count_positive "proxy opportunities" "${APP_ORIGIN}/api/opportunities" --cookie "${cookie_jar}"
+check_json "proxy listings" "${APP_ORIGIN}/api/listings?source=${REAL_SOURCE_KEY}" --cookie "${cookie_jar}"
+check_json "proxy listing clusters" "${APP_ORIGIN}/api/listing-clusters" --cookie "${cookie_jar}"
+check_json "proxy sites" "${APP_ORIGIN}/api/sites" --cookie "${cookie_jar}"
+check_json "proxy opportunities" "${APP_ORIGIN}/api/opportunities" --cookie "${cookie_jar}"
 
 echo "== Authenticated frontend pages =="
 check_page_contains \
@@ -279,10 +294,11 @@ check_page_contains \
   "${APP_ORIGIN}/listings" \
   "Listing intake ledger" \
   --cookie "${cookie_jar}"
-check_page_contains \
+check_page_contains_any \
   "listings page live-data marker" \
   "${APP_ORIGIN}/listings" \
   "Live API rows in the current query" \
+  "Live API returned zero rows for the current query" \
   --cookie "${cookie_jar}"
 check_page_excludes \
   "listings page" \

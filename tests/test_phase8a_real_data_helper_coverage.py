@@ -56,6 +56,8 @@ def test_tabular_feed_helper_branches_cover_formats_and_type_inference() -> None
 
     with pytest.raises(ValueError, match="top-level row list"):
         tabular_feed._load_json_rows(b'{"results":"bad"}')
+    with pytest.raises(ValueError, match="top-level row list"):
+        tabular_feed._load_json_rows(b"42")
 
     assert tabular_feed._infer_feed_format("application/zip") == "xlsx"
     assert tabular_feed._infer_feed_format("text/plain") == "csv"
@@ -78,6 +80,10 @@ def test_tabular_feed_helper_branches_cover_formats_and_type_inference() -> None
 
 
 def test_tabular_feed_transform_branches_cover_listing_type_fallbacks() -> None:
+    assert (
+        tabular_feed._cabinet_office_listing_status("Under Offer")
+        == tabular_feed.ListingStatus.UNDER_OFFER
+    )
     assert (
         tabular_feed._cabinet_office_listing_type(
             {
@@ -102,9 +108,82 @@ def test_tabular_feed_transform_branches_cover_listing_type_fallbacks() -> None:
         )
         == tabular_feed.ListingType.LAND_WITH_BUILDING
     )
+    assert (
+        tabular_feed._is_london_row(
+            {"Local Authority": "County Council", "Region": "South East", "Town": "London"},
+            authority_patterns=["LONDON BOROUGH"],
+        )
+        is False
+    )
     assert tabular_feed._is_london_row(
         {"Local Authority": "County Council", "Region": "South East", "Town": "London"},
-        authority_patterns=["LONDON BOROUGH"],
+        authority_patterns=[],
+    )
+    assert tabular_feed._is_london_row(
+        {
+            "Local Authority": "Royal Borough of Kingston upon Thames",
+            "Region": "South East",
+            "Town": "Kingston",
+        },
+        authority_patterns=[],
+    )
+    assert (
+        tabular_feed._cabinet_office_row_allowed(
+            row={"Land Usage": "Surplus Land"},
+            listing_type=tabular_feed.ListingType.LAND,
+            refresh_policy={
+                "allowed_land_usage_contains_any": ["Surplus Land", "Development land"],
+                "allowed_listing_types": ["LAND"],
+            },
+        )
+        is True
+    )
+    assert (
+        tabular_feed._cabinet_office_row_allowed(
+            row={"Land Usage": "Operational"},
+            listing_type=tabular_feed.ListingType.LAND_WITH_BUILDING,
+            refresh_policy={
+                "allowed_land_usage_contains_any": ["Surplus Land", "Development land"],
+                "allowed_listing_types": ["LAND"],
+            },
+        )
+        is False
+    )
+    assert (
+        tabular_feed._cabinet_office_row_allowed(
+            row={"Land Usage": "Surplus Land"},
+            listing_type=tabular_feed.ListingType.LAND_WITH_BUILDING,
+            refresh_policy={"allowed_listing_types": ["", "NOT_A_TYPE", "LAND"]},
+        )
+        is False
+    )
+    assert (
+        tabular_feed._cabinet_office_row_allowed(
+            row={"Land Usage": "Surplus Land"},
+            listing_type=tabular_feed.ListingType.LAND,
+            refresh_policy={"allowed_listing_types": ["", "NOT_A_TYPE"]},
+        )
+        is True
+    )
+    assert (
+        tabular_feed._cabinet_office_row_allowed(
+            row={"Land Usage": "Operational", "Total Surplus Land Area": "0"},
+            listing_type=tabular_feed.ListingType.LAND,
+            refresh_policy={"require_positive_land_area": True},
+        )
+        is False
+    )
+    assert (
+        tabular_feed._cabinet_office_row_allowed(
+            row={
+                "Land Usage": "Surplus Land",
+                "Total Surplus Land Area": "10",
+                "Total Surplus Floor Area": "1",
+            },
+            listing_type=tabular_feed.ListingType.LAND,
+            refresh_policy={"max_surplus_floor_area_sqm": 0},
+        )
+        is False
     )
     with pytest.raises(ValueError, match="Unsupported row transform"):
         tabular_feed._transform_rows(
@@ -114,6 +193,46 @@ def test_tabular_feed_transform_branches_cover_listing_type_fallbacks() -> None:
             feed_url="https://example.test/feed.csv",
             observed_at=datetime.now(UTC),
         )
+
+
+def test_tabular_feed_transform_skips_rows_that_fail_live_source_fit_filters() -> None:
+    rows = [
+        {
+            "In Site Disposal Reference": "A1",
+            "Status of Sale": "On the Market",
+            "Local Authority": "London Borough of Camden",
+            "Region": "Greater London",
+            "Latitude": "51.501",
+            "Longitude": "-0.124",
+            "Property Name": "Operational building",
+            "Contract Name": "Exclude me",
+            "Land Usage": "Operational",
+            "Total Surplus Land Area": "0",
+            "Total Surplus Floor Area": "120",
+            "Property Number": "1",
+            "Street Name": "Example Road",
+            "Town": "London",
+            "Postcode": "NW1 1AA",
+        }
+    ]
+
+    assert (
+        tabular_feed._transform_rows(
+            rows=rows,
+            refresh_policy={
+                "status_of_sale_values": ["On the Market"],
+                "local_authority_contains_any": ["LONDON BOROUGH"],
+                "allowed_land_usage_contains_any": ["Surplus Land", "Development land"],
+                "allowed_listing_types": ["LAND"],
+                "max_surplus_floor_area_sqm": 0,
+                "require_positive_land_area": True,
+            },
+            row_transform="cabinet_office_surplus_property_v1",
+            feed_url="https://example.test/feed.csv",
+            observed_at=datetime.now(UTC),
+        )
+        == []
+    )
 
 
 def test_unassessed_opportunity_hold_reason_branches() -> None:

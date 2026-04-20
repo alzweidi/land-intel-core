@@ -148,26 +148,38 @@ if curl -sf "${API_URL}/api/listings/sources" | grep -q "\"name\":\"${REAL_SOURC
         -d '{"requested_by":"local-setup"}' >/dev/null
     ok "Approved automated source enqueued"
 
-    wait_for_nonzero_count \
+    if wait_for_nonzero_count \
         "real listing rows" \
         "${API_URL}/api/listings?source=${REAL_SOURCE_KEY}" \
-        "${AUTO_SOURCE_TIMEOUT_SECONDS}" \
-        || fail "No live listing rows were produced for ${REAL_SOURCE_KEY}"
-    wait_for_nonzero_count \
+        "${AUTO_SOURCE_TIMEOUT_SECONDS}"; then
+        :
+    else
+        warn "No qualifying live listing rows were produced for ${REAL_SOURCE_KEY}; the source may not contain parcel-grade land opportunities right now."
+    fi
+    if wait_for_nonzero_count \
         "listing clusters" \
         "${API_URL}/api/listing-clusters" \
-        "${AUTO_SOURCE_TIMEOUT_SECONDS}" \
-        || fail "No listing clusters were produced after automated refresh"
-    wait_for_nonzero_count \
+        "${AUTO_SOURCE_TIMEOUT_SECONDS}"; then
+        :
+    else
+        warn "No listing clusters were produced after automated refresh; the source may have yielded zero qualifying rows."
+    fi
+    if wait_for_nonzero_count \
         "site candidates" \
         "${API_URL}/api/sites" \
-        "${AUTO_SOURCE_TIMEOUT_SECONDS}" \
-        || fail "No site candidates were produced after automated refresh"
-    wait_for_nonzero_count \
+        "${AUTO_SOURCE_TIMEOUT_SECONDS}"; then
+        :
+    else
+        warn "No site candidates were auto-promoted for ${REAL_SOURCE_KEY}; live listings may still be too sparse or filtered."
+    fi
+    if wait_for_nonzero_count \
         "opportunities" \
         "${API_URL}/api/opportunities/" \
-        "${AUTO_SOURCE_TIMEOUT_SECONDS}" \
-        || fail "No opportunities were produced after automated refresh"
+        "${AUTO_SOURCE_TIMEOUT_SECONDS}"; then
+        :
+    else
+        warn "No opportunities were produced after the automated refresh; review the source fit and planning coverage before widening scope."
+    fi
 else
     warn "Approved automated source ${REAL_SOURCE_KEY} is not present in /api/listings/sources; skipping real-data trigger."
 fi

@@ -8,6 +8,8 @@ const LEGACY_SOURCE_KEY_ALIASES: Record<string, string> = {
   approved_public_page: 'example_public_page'
 };
 
+const DEFAULT_LIVE_AUTOMATED_SOURCE_KEY = 'cabinet_office_surplus_property';
+
 const LISTING_CONSOLE_JOB_TYPES = new Set([
   'MANUAL_URL_SNAPSHOT',
   'CSV_IMPORT_SNAPSHOT',
@@ -23,7 +25,8 @@ export function selectDefaultAutomatedSourceKey(sources: Phase1ASource[]): strin
   const automatedSource = sources.find(
     (source) => source.active && source.compliance_mode === 'COMPLIANT_AUTOMATED'
   );
-  const fallbackSource = automatedSource?.source_key ?? sources[0]?.source_key ?? 'example_public_page';
+  const fallbackSource =
+    automatedSource?.source_key ?? sources[0]?.source_key ?? DEFAULT_LIVE_AUTOMATED_SOURCE_KEY;
   return normalizeListingSourceKey(fallbackSource);
 }
 

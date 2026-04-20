@@ -491,6 +491,9 @@ def list_auto_site_build_cluster_ids(session: Session) -> list[uuid.UUID]:
         select(ListingCluster).options(
             selectinload(ListingCluster.members)
             .selectinload(ListingClusterMember.listing_item)
+            .selectinload(ListingItem.source),
+            selectinload(ListingCluster.members)
+            .selectinload(ListingClusterMember.listing_item)
             .selectinload(ListingItem.snapshots)
         )
     ).scalars().all()
@@ -499,7 +502,10 @@ def list_auto_site_build_cluster_ids(session: Session) -> list[uuid.UUID]:
         current_listing, current_snapshot = _cluster_current_listing(cluster)
         if current_listing is None or current_snapshot is None:
             continue
-        if current_listing.listing_type not in AUTO_SITE_BUILD_TYPES:
+        if not _listing_eligible_for_auto_site_build(
+            listing_item=current_listing,
+            listing_snapshot=current_snapshot,
+        ):
             continue
         if current_snapshot.status not in AUTO_SITE_BUILD_STATUSES:
             continue
@@ -538,6 +544,28 @@ def _safe_storage_source_name(source_name: str) -> str:
         return normalized
     digest = hashlib.sha256(source_name.encode("utf-8")).hexdigest()[:12]
     return f"{normalized[:48]}-{digest}"
+
+
+def _listing_eligible_for_auto_site_build(
+    *,
+    listing_item: ListingItem,
+    listing_snapshot: ListingSnapshot,
+) -> bool:
+    if listing_item.listing_type not in AUTO_SITE_BUILD_TYPES:
+        return False
+
+    source_name = getattr(getattr(listing_item, "source", None), "name", None)
+    if source_name != "cabinet_office_surplus_property":
+        return True
+
+    raw_record = dict(listing_snapshot.raw_record_json or {})
+    if listing_item.listing_type == ListingType.LAND_WITH_BUILDING:
+        return False
+    if isinstance(raw_record.get("geometry_4326"), dict):
+        return True
+
+    bounds = raw_record.get("bbox_4326")
+    return isinstance(bounds, list) and len(bounds) == 4
 
 
 def _store_bytes_idempotently(

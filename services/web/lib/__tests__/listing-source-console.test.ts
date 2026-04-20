@@ -40,7 +40,7 @@ describe('listing-source-console helpers', () => {
   });
 
   it('falls back to the canonical automated source key when no sources are available', () => {
-    expect(selectDefaultAutomatedSourceKey([])).toBe('example_public_page');
+    expect(selectDefaultAutomatedSourceKey([])).toBe('cabinet_office_surplus_property');
   });
 
   it('counts only listing console job types', () => {

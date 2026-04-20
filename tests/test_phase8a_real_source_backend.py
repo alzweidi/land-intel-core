@@ -101,9 +101,9 @@ def _build_cabinet_office_workbook_bytes() -> bytes:
             "London",
             51.5016,
             -0.0924,
-            "Under Offer",
+            "On the Market",
             "London Borough of Southwark",
-            "Redevelopment opportunity",
+            "Development land",
             0.09,
             12.0,
         ]
@@ -161,11 +161,16 @@ def test_tabular_feed_connector_parses_real_surplus_register_rows(test_settings)
                 "feed_format": "xlsx",
                 "sheet_name": "Register",
                 "row_transform": "cabinet_office_surplus_property_v1",
-                "status_of_sale_values": ["On the Market", "Under Offer"],
+                "status_of_sale_values": ["On the Market"],
                 "local_authority_contains_any": [
-                    "London Borough of Camden",
-                    "London Borough of Southwark",
+                    "London Borough",
+                    "Royal Borough",
+                    "City of London",
                 ],
+                "allowed_land_usage_contains_any": ["Surplus Land", "Development land"],
+                "allowed_listing_types": ["LAND"],
+                "max_surplus_floor_area_sqm": 0,
+                "require_positive_land_area": True,
                 "max_listings": 10,
             },
             requested_by="pytest",
@@ -174,15 +179,12 @@ def test_tabular_feed_connector_parses_real_surplus_register_rows(test_settings)
     )
 
     assert output.source_name == "cabinet_office_surplus_property"
-    assert output.manifest_json["listing_count"] == 2
-    assert len(output.listings) == 2
+    assert output.manifest_json["listing_count"] == 1
+    assert len(output.listings) == 1
     assert output.assets[0].asset_type == "XLSX"
     assert output.listings[0].source_listing_id == "CAMDEN-1"
     assert output.listings[0].listing_type == ListingType.LAND
     assert output.listings[0].status == ListingStatus.LIVE
-    assert output.listings[1].source_listing_id == "SOUTHWARK-1"
-    assert output.listings[1].listing_type == ListingType.REDEVELOPMENT_SITE
-    assert output.listings[1].status == ListingStatus.UNDER_OFFER
 
 
 def test_phase8a_real_source_migration_upserts_real_automated_source(tmp_path) -> None:
@@ -216,14 +218,23 @@ def test_phase8a_real_source_migration_upserts_real_automated_source(tmp_path) -
             assert source.active is True
             assert source.refresh_policy_json["interval_hours"] == 24
             assert source.refresh_policy_json["sheet_name"] == "Register"
+            assert source.refresh_policy_json["status_of_sale_values"] == ["On the Market"]
             assert (
                 source.refresh_policy_json["row_transform"]
                 == "cabinet_office_surplus_property_v1"
             )
             assert source.refresh_policy_json["local_authority_contains_any"] == [
-                "LONDON BOROUGH OF CAMDEN",
-                "LONDON BOROUGH OF SOUTHWARK",
+                "LONDON BOROUGH",
+                "ROYAL BOROUGH",
+                "CITY OF LONDON",
             ]
+            assert source.refresh_policy_json["allowed_land_usage_contains_any"] == [
+                "Surplus Land",
+                "Development land",
+            ]
+            assert source.refresh_policy_json["allowed_listing_types"] == ["LAND"]
+            assert source.refresh_policy_json["max_surplus_floor_area_sqm"] == 0
+            assert source.refresh_policy_json["require_positive_land_area"] is True
     finally:
         engine.dispose()
 

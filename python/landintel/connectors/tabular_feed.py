@@ -247,6 +247,12 @@ def _transform_cabinet_office_surplus_property(
         local_authority = _string_value(row.get("Local Authority"))
         address = _compose_address(row)
         listing_type = _cabinet_office_listing_type(row)
+        if not _cabinet_office_row_allowed(
+            row=row,
+            listing_type=listing_type,
+            refresh_policy=refresh_policy,
+        ):
+            continue
         description = normalize_space(
             " · ".join(
                 part
@@ -321,11 +327,51 @@ def _is_london_row(
     authority_patterns: list[str],
 ) -> bool:
     local_authority = (_string_value(row.get("Local Authority")) or "").upper()
+    if authority_patterns:
+        return any(pattern in local_authority for pattern in authority_patterns)
     region = (_string_value(row.get("Region")) or "").upper()
     town = (_string_value(row.get("Town")) or "").upper()
     if "LONDON" in region or "LONDON" in town:
         return True
-    return any(pattern in local_authority for pattern in authority_patterns)
+    return any(pattern in local_authority for pattern in DEFAULT_LONDON_AUTHORITY_PATTERNS)
+
+
+def _cabinet_office_row_allowed(
+    *,
+    row: dict[str, Any],
+    listing_type: ListingType,
+    refresh_policy: dict[str, Any],
+) -> bool:
+    floor_area = _float_value(row.get("Total Surplus Floor Area")) or 0.0
+    max_floor_area = refresh_policy.get("max_surplus_floor_area_sqm")
+    if max_floor_area is not None and floor_area > float(max_floor_area):
+        return False
+
+    land_area = _float_value(row.get("Total Surplus Land Area")) or 0.0
+    if bool(refresh_policy.get("require_positive_land_area")) and land_area <= 0:
+        return False
+
+    allowed_land_usage_patterns = [
+        str(value).strip().lower()
+        for value in list(refresh_policy.get("allowed_land_usage_contains_any") or [])
+        if str(value).strip()
+    ]
+    land_usage = (_string_value(row.get("Land Usage")) or "").lower()
+    if allowed_land_usage_patterns and not any(
+        pattern in land_usage for pattern in allowed_land_usage_patterns
+    ):
+        return False
+
+    allowed_listing_types: set[ListingType] = set()
+    for value in list(refresh_policy.get("allowed_listing_types") or []):
+        normalized = str(value).strip()
+        if not normalized:
+            continue
+        try:
+            allowed_listing_types.add(ListingType(normalized))
+        except ValueError:
+            continue
+    return not allowed_listing_types or listing_type in allowed_listing_types
 
 
 def _compose_address(row: dict[str, Any]) -> str | None:
