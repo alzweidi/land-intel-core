@@ -37,6 +37,7 @@ from landintel.geospatial.geometry import (
     load_wkt_geometry,
     normalize_geojson_geometry,
 )
+from landintel.geospatial.hmlr_inspire import maybe_import_title_union_for_listing_point
 from landintel.geospatial.title_linkage import (
     TitleCandidate,
     build_title_union_geometry,
@@ -86,7 +87,12 @@ def build_or_refresh_site_from_cluster(
         raise SiteBuildError(f"Listing cluster '{cluster_id}' was not found.")
 
     hints = _build_cluster_hints(cluster)
-    draft_geometry = _derive_cluster_geometry(session=session, cluster=cluster, hints=hints)
+    draft_geometry = _derive_cluster_geometry(
+        session=session,
+        cluster=cluster,
+        hints=hints,
+        requested_by=requested_by,
+    )
     site = session.execute(
         select(SiteCandidate)
         .where(SiteCandidate.listing_cluster_id == cluster.id)
@@ -452,6 +458,7 @@ def _derive_cluster_geometry(
     session: Session,
     cluster: ListingCluster,
     hints: ClusterSpatialHints,
+    requested_by: str | None,
 ) -> PreparedGeometry:
     del cluster
     if hints.current_snapshot is not None:
@@ -471,6 +478,16 @@ def _derive_cluster_geometry(
                 max_lon=max_lon,
                 max_lat=max_lat,
             )
+
+        official_title_union = maybe_import_title_union_for_listing_point(
+            session=session,
+            authority_name=_raw_local_authority(hints.current_snapshot),
+            lat=hints.current_snapshot.lat,
+            lon=hints.current_snapshot.lon,
+            requested_by=requested_by,
+        )
+        if official_title_union is not None:
+            return official_title_union
 
     title_candidates = _cluster_title_candidates(session=session, hints=hints)
     title_union = build_title_union_geometry(title_candidates)
@@ -620,6 +637,14 @@ def _raw_asset_id_from_listing(snapshot: ListingSnapshot | None) -> uuid.UUID | 
     if snapshot is None:
         return None
     return snapshot.map_asset_id or snapshot.brochure_asset_id
+
+
+def _raw_local_authority(snapshot: ListingSnapshot | None) -> str | None:
+    if snapshot is None:
+        return None
+    raw_record = snapshot.raw_record_json or {}
+    value = raw_record.get("Local Authority")
+    return value.strip() if isinstance(value, str) and value.strip() else None
 
 
 def _default_analyst_confidence(source_type: GeomSourceType) -> GeomConfidence:

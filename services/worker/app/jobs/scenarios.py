@@ -1,7 +1,10 @@
 from __future__ import annotations
 
+from datetime import date
 from uuid import UUID
 
+from landintel.assessments.service import create_or_refresh_assessment_run
+from landintel.domain.enums import ScenarioStatus
 from landintel.domain.models import SiteCandidate, SiteScenario
 from landintel.scenarios.normalize import (
     ScenarioNormalizeError,
@@ -13,19 +16,39 @@ from landintel.sites.service import SiteBuildError
 from sqlalchemy import select
 
 
-def run_site_scenario_suggest_refresh_job(*, session, job) -> None:
+def run_site_scenario_suggest_refresh_job(*, session, job, storage) -> None:
     template_keys = [
         str(item)
         for item in list(job.payload_json.get("template_keys") or [])
         if str(item)
     ]
-    suggest_scenarios_for_site(
+    response = suggest_scenarios_for_site(
         session=session,
         site_id=UUID(str(job.payload_json["site_id"])),
         requested_by=job.requested_by or "worker",
         template_keys=template_keys or None,
         manual_seed=bool(job.payload_json.get("manual_seed", False)),
     )
+    auto_confirmed = next(
+        (
+            item
+            for item in response.items
+            if item.id == response.headline_scenario_id
+            and item.status == ScenarioStatus.AUTO_CONFIRMED
+            and item.is_current
+            and item.stale_reason is None
+        ),
+        None,
+    )
+    if auto_confirmed is not None:
+        create_or_refresh_assessment_run(
+            session=session,
+            site_id=response.site_id,
+            scenario_id=auto_confirmed.id,
+            as_of_date=date.today(),
+            requested_by=job.requested_by or "worker",
+            storage=storage,
+        )
     session.flush()
 
 

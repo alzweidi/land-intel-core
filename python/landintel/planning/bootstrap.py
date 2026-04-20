@@ -7,15 +7,17 @@ from landintel.config import get_settings
 from landintel.db.session import get_session_factory
 from landintel.storage.factory import build_storage
 
-from .planning_register_normalize import import_borough_register_fixture
-from .pld_ingest import import_pld_fixture
-from .reference_layers import (
-    import_baseline_pack_fixture,
+from .official_sources import (
+    import_borough_register_fixture,
     import_brownfield_fixture,
     import_constraint_fixture,
     import_flood_fixture,
     import_heritage_article4_fixture,
+    import_pld_fixture,
     import_policy_area_fixture,
+)
+from .reference_layers import (
+    import_baseline_pack_fixture,
 )
 
 

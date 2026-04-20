@@ -13,11 +13,14 @@ from landintel.connectors.csv_import import CsvImportConnector
 from landintel.connectors.html_snapshot import HtmlSnapshotFetcher
 from landintel.connectors.manual_url import ManualUrlConnector
 from landintel.connectors.public_page import GenericPublicPageConnector
+from landintel.connectors.tabular_feed import GenericTabularFeedConnector
 from landintel.domain.enums import (
     ComplianceMode,
     ConnectorType,
     DocumentType,
     JobType,
+    ListingStatus,
+    ListingType,
     SourceFreshnessStatus,
 )
 from landintel.domain.models import (
@@ -39,6 +42,15 @@ from landintel.listings.documents import extract_pdf_text
 from landintel.storage.base import StorageAdapter
 
 UUID_NAMESPACE = uuid.UUID("ccf3ba74-c45d-4dd6-bfb4-db5747dca420")
+AUTO_SITE_BUILD_TYPES = {
+    ListingType.LAND,
+    ListingType.LAND_WITH_BUILDING,
+    ListingType.REDEVELOPMENT_SITE,
+}
+AUTO_SITE_BUILD_STATUSES = {
+    ListingStatus.LIVE,
+    ListingStatus.AUCTION,
+}
 
 
 @dataclass(slots=True)
@@ -118,6 +130,8 @@ def build_connector(connector_type: ConnectorType, *, settings: Settings):
         return CsvImportConnector(fetcher)
     if connector_type == ConnectorType.PUBLIC_PAGE:
         return GenericPublicPageConnector(fetcher)
+    if connector_type == ConnectorType.TABULAR_FEED:
+        return GenericTabularFeedConnector(settings)
     raise ValueError(f"Unsupported connector type: {connector_type}")
 
 
@@ -472,6 +486,27 @@ def rebuild_listing_clusters(session: Session) -> list[ListingCluster]:
     return cluster_models
 
 
+def list_auto_site_build_cluster_ids(session: Session) -> list[uuid.UUID]:
+    clusters = session.execute(
+        select(ListingCluster).options(
+            selectinload(ListingCluster.members)
+            .selectinload(ListingClusterMember.listing_item)
+            .selectinload(ListingItem.snapshots)
+        )
+    ).scalars().all()
+    eligible_cluster_ids: list[uuid.UUID] = []
+    for cluster in clusters:
+        current_listing, current_snapshot = _cluster_current_listing(cluster)
+        if current_listing is None or current_snapshot is None:
+            continue
+        if current_listing.listing_type not in AUTO_SITE_BUILD_TYPES:
+            continue
+        if current_snapshot.status not in AUTO_SITE_BUILD_STATUSES:
+            continue
+        eligible_cluster_ids.append(cluster.id)
+    return eligible_cluster_ids
+
+
 def list_listing_sources(session: Session) -> list[ListingSource]:
     stmt = select(ListingSource).order_by(ListingSource.name.asc())
     return list(session.execute(stmt).scalars().all())
@@ -533,3 +568,30 @@ def _site_cluster_audit_payload(site: SiteCandidate) -> dict[str, object]:
         ),
         "display_name": site.display_name,
     }
+
+
+def _cluster_current_listing(
+    cluster: ListingCluster,
+) -> tuple[ListingItem | None, ListingSnapshot | None]:
+    members = sorted(
+        cluster.members,
+        key=lambda member: (
+            member.listing_item.last_seen_at,
+            member.confidence,
+            str(member.listing_item_id),
+        ),
+        reverse=True,
+    )
+    if not members:
+        return None, None
+
+    listing_item = members[0].listing_item
+    current_snapshot = next(
+        (
+            snapshot
+            for snapshot in listing_item.snapshots
+            if snapshot.id == listing_item.current_snapshot_id
+        ),
+        None,
+    )
+    return listing_item, current_snapshot

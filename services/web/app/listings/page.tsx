@@ -2,7 +2,7 @@ import Link from 'next/link';
 
 import { Badge, DefinitionList, PageHeader, Panel, StatCard, TableShell } from '@/components/ui';
 import { getAuthContext } from '@/lib/auth/server';
-import { getListingSources, getListings } from '@/lib/landintel-api';
+import { getListingSources, getListings, getReadbackState } from '@/lib/landintel-api';
 import { getListingLabel, getSourceLabel } from '@/lib/presentation';
 
 export const dynamic = 'force-dynamic';
@@ -35,6 +35,7 @@ export default async function ListingsPage({ searchParams }: { searchParams?: Se
 
   const [listingResult, sourceResult] = await Promise.all([getListings(filters), getListingSources()]);
   const sourceItems = sourceResult.items;
+  const listingState = getReadbackState(listingResult.apiAvailable, listingResult.items.length);
 
   return (
     <div className="page-stack">
@@ -61,7 +62,13 @@ export default async function ListingsPage({ searchParams }: { searchParams?: Se
           tone="accent"
           label="Listings"
           value={displayCount(listingResult.items.length)}
-          detail={listingResult.apiAvailable ? 'Live API rows in the current query' : 'Local fallback rows in the current query'}
+          detail={
+            listingState === 'LIVE'
+              ? 'Live API rows in the current query'
+              : listingState === 'EMPTY'
+                ? 'Live API returned zero rows for the current query'
+                : 'Local fallback rows in the current query'
+          }
         />
         <StatCard tone="success" label="Sources" value={displayCount(sourceItems.length)} detail={sourceResult.apiAvailable ? 'Live source metadata for listing filters' : 'Source filters unavailable until /api/listings/sources responds'} />
         <StatCard tone="warning" label="Query" value={filters.q ? 'Filtered' : 'All rows'} detail="GET form filters the visible list" />
@@ -133,7 +140,11 @@ export default async function ListingsPage({ searchParams }: { searchParams?: Se
               }))}
             />
           ) : (
-            <p className="empty-note">No live source metadata was returned. Listing rows can still render, but source filters and posture are unavailable.</p>
+            <p className="empty-note">
+              {sourceResult.apiAvailable
+                ? 'The live source catalog returned zero rows. Seed approved sources before using automated filters.'
+                : 'No live source metadata was returned. Listing rows can still render, but source filters and posture are unavailable.'}
+            </p>
           )}
         </Panel>
       </div>
@@ -154,40 +165,52 @@ export default async function ListingsPage({ searchParams }: { searchParams?: Se
               </tr>
             </thead>
             <tbody>
-              {listingResult.items.map((item) => (
-                <tr key={item.id}>
-                  <td data-label="Listing">
-                    <div className="table-primary">
-                      <Link href={`/listings/${item.id}`}>{getListingLabel(item)}</Link>
-                    </div>
-                    <div className="table-secondary">{item.canonical_url}</div>
+              {listingResult.items.length > 0 ? (
+                listingResult.items.map((item) => (
+                  <tr key={item.id}>
+                    <td data-label="Listing">
+                      <div className="table-primary">
+                        <Link href={`/listings/${item.id}`}>{getListingLabel(item)}</Link>
+                      </div>
+                      <div className="table-secondary">{item.canonical_url}</div>
+                    </td>
+                    <td data-label="Source">
+                      <div className="table-primary">{getSourceLabel(item.source_name, item.source_key)}</div>
+                      <div className="table-secondary">
+                        {item.source_key
+                          ? `${item.source_key} · ${item.borough || 'Unknown borough'}`
+                          : item.borough || 'Unknown borough'}
+                      </div>
+                    </td>
+                    <td data-label="Status">
+                      <Badge tone={item.latest_status === 'LIVE' ? 'success' : item.latest_status === 'UNDER OFFER' ? 'warning' : 'neutral'}>
+                        {item.latest_status}
+                      </Badge>
+                      <div className="table-secondary">{item.parse_status}</div>
+                    </td>
+                    <td data-label="Cluster">
+                      {item.cluster_id ? (
+                        <Link className="inline-link" href={`/listing-clusters/${item.cluster_id}`}>
+                          {item.cluster_key ?? item.cluster_id}
+                        </Link>
+                      ) : (
+                        <span className="table-secondary">Unclustered</span>
+                      )}
+                    </td>
+                    <td data-label="Coverage">{item.coverage_note}</td>
+                  </tr>
+                ))
+              ) : (
+                <tr>
+                  <td colSpan={5}>
+                    <p className="empty-note">
+                      {listingState === 'EMPTY'
+                        ? 'Live API returned zero listings for this query. Trigger an approved automated source or clear the filters.'
+                        : 'No live listings were returned, so the page is showing no rows rather than inventing fixture results.'}
+                    </p>
                   </td>
-                  <td data-label="Source">
-                    <div className="table-primary">{getSourceLabel(item.source_name, item.source_key)}</div>
-                    <div className="table-secondary">
-                      {item.source_key
-                        ? `${item.source_key} · ${item.borough || 'Unknown borough'}`
-                        : item.borough || 'Unknown borough'}
-                    </div>
-                  </td>
-                  <td data-label="Status">
-                    <Badge tone={item.latest_status === 'LIVE' ? 'success' : item.latest_status === 'UNDER OFFER' ? 'warning' : 'neutral'}>
-                      {item.latest_status}
-                    </Badge>
-                    <div className="table-secondary">{item.parse_status}</div>
-                  </td>
-                  <td data-label="Cluster">
-                    {item.cluster_id ? (
-                      <Link className="inline-link" href={`/listing-clusters/${item.cluster_id}`}>
-                        {item.cluster_key ?? item.cluster_id}
-                      </Link>
-                    ) : (
-                      <span className="table-secondary">Unclustered</span>
-                    )}
-                  </td>
-                  <td data-label="Coverage">{item.coverage_note}</td>
                 </tr>
-              ))}
+              )}
             </tbody>
           </table>
         </div>
@@ -203,7 +226,11 @@ export default async function ListingsPage({ searchParams }: { searchParams?: Se
               }))}
             />
           ) : (
-            <p className="empty-note">No live listing-source metadata was returned for this environment.</p>
+            <p className="empty-note">
+              {sourceResult.apiAvailable
+                ? 'The live source catalog returned zero rows for this environment.'
+                : 'No live listing-source metadata was returned for this environment.'}
+            </p>
           )}
         </Panel>
         <Panel eyebrow="Notes" title="Analyst reminders">

@@ -18,7 +18,10 @@ export default defineConfig({
       include: [
         'app/assessments/page.tsx',
         'app/admin/source-runs/page.tsx',
+        'app/listing-clusters/page.tsx',
         'app/listings/page.tsx',
+        'app/opportunities/page.tsx',
+        'app/sites/page.tsx',
         'components/assessment-run-builder.tsx',
         'components/listing-run-panel.tsx',
         'components/site-scenario-editor.tsx',

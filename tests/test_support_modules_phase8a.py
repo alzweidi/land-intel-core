@@ -15,7 +15,7 @@ import landintel.connectors.manual_url as manual_url_mod
 import landintel.connectors.public_page as public_page_mod
 import landintel.db.session as db_session_mod
 import landintel.geospatial.bootstrap as geo_bootstrap
-import landintel.geospatial.reference_data as reference_data_mod
+import landintel.geospatial.official_sources as official_sources_mod
 import landintel.logging as logging_mod
 import landintel.monitoring.metrics as metrics_mod
 import landintel.planning.bootstrap as planning_bootstrap
@@ -1023,13 +1023,13 @@ def test_valuation_bootstrap_main_covers_all_datasets(
             lambda monkeypatch: (
                 _patch_bootstrap_common_for_run_module(monkeypatch),
                 monkeypatch.setattr(
-                    reference_data_mod,
-                    "import_lpa_boundaries",
+                    official_sources_mod,
+                    "import_lpa_boundaries_fixture",
                     lambda **kwargs: SimpleNamespace(source_snapshot_id=1, imported_count=2),
                 ),
                 monkeypatch.setattr(
-                    reference_data_mod,
-                    "import_hmlr_title_polygons",
+                    official_sources_mod,
+                    "import_hmlr_title_polygons_fixture",
                     lambda **kwargs: SimpleNamespace(source_snapshot_id=2, imported_count=3),
                 ),
             ),

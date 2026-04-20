@@ -53,6 +53,7 @@ class ConnectorType(StrEnum):
     MANUAL_URL = "MANUAL_URL"
     CSV_IMPORT = "CSV_IMPORT"
     PUBLIC_PAGE = "PUBLIC_PAGE"
+    TABULAR_FEED = "TABULAR_FEED"
 
 
 class ComplianceMode(StrEnum):

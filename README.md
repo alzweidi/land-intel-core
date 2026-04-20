@@ -96,7 +96,7 @@ cp .env.example .env
 docker compose up --build -d
 ```
 
-3. Load fixture data and rebuild the hidden release set:
+3. Load bootstrap data, build the hidden release set, trigger the approved real automated source, and wait for live listings/clusters/sites/opportunities:
 
 ```bash
 bash scripts/setup_local.sh
@@ -201,10 +201,10 @@ curl -X POST http://localhost:8000/api/listings/import/csv \
   -F file=@/absolute/path/to/listings.csv
 ```
 
-Run an approved automated source:
+Run the approved real automated source:
 
 ```bash
-curl -X POST http://localhost:8000/api/listings/connectors/example_public_page/run \
+curl -X POST http://localhost:8000/api/listings/connectors/cabinet_office_surplus_property/run \
   -H 'Content-Type: application/json' \
   -d '{"requested_by":"local-smoke"}'
 ```
@@ -305,11 +305,25 @@ curl -b /tmp/landintel-reviewer.cookies \
 
 - `manual_url` uses connector type `MANUAL_URL` and is allowed for manual analyst-triggered intake.
 - `csv_import` uses connector type `CSV_IMPORT` and is allowed for analyst-uploaded broker drops.
+- `cabinet_office_surplus_property` uses connector type `TABULAR_FEED` and is the first repo-seeded real `COMPLIANT_AUTOMATED` source, pulling the Cabinet Office surplus register workbook over HTTPS.
 - automated public-page runs are blocked unless the `listing_source` row exists, is `active = true`, and has `compliance_mode = COMPLIANT_AUTOMATED`
 - no domain-specific portal scraper is shipped here; the public-page connector is generic and config-driven from `listing_source.refresh_policy_json`
 - scheduler-driven refresh only happens when an approved automated source also has `refresh_policy_json.interval_hours`
 
-Minimal `refresh_policy_json` for an automated source:
+Minimal `refresh_policy_json` for an automated tabular-feed source:
+
+```json
+{
+  "feed_url": "https://data.insite.cabinetoffice.gov.uk/insite/Register.xlsx",
+  "feed_format": "xlsx",
+  "sheet_name": "Register",
+  "row_transform": "cabinet_office_surplus_property_v1",
+  "status_of_sale_values": ["On the Market", "Under Offer"],
+  "interval_hours": 24
+}
+```
+
+Minimal `refresh_policy_json` for a generic public-page source:
 
 ```json
 {

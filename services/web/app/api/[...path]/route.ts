@@ -73,6 +73,10 @@ function buildUpstreamUrl(request: NextRequest, segments: string[]): URL {
   return upstream;
 }
 
+function getAppOrigin(request: NextRequest): string {
+  return request.nextUrl.origin;
+}
+
 function buildUpstreamHeaders(request: NextRequest): Headers {
   const headers = new Headers();
   request.headers.forEach((value, key) => {
@@ -94,15 +98,50 @@ function buildUpstreamHeaders(request: NextRequest): Headers {
   return headers;
 }
 
-function sanitizeResponseHeaders(headers: Headers): Headers {
+function rewriteLocationHeader(location: string, request: NextRequest): string {
+  try {
+    const backendOrigin = getBackendOrigin();
+    const resolved = new URL(location, backendOrigin);
+    if (resolved.origin !== backendOrigin) {
+      return location;
+    }
+    return new URL(
+      `${resolved.pathname}${resolved.search}${resolved.hash}`,
+      getAppOrigin(request)
+    ).toString();
+  } catch {
+    return location;
+  }
+}
+
+function sanitizeResponseHeaders(headers: Headers, request: NextRequest): Headers {
   const sanitized = new Headers();
   headers.forEach((value, key) => {
     if (!HOP_BY_HOP_HEADERS.has(key.toLowerCase())) {
-      sanitized.set(key, value);
+      if (key.toLowerCase() === 'location') {
+        sanitized.set(key, rewriteLocationHeader(value, request));
+      } else {
+        sanitized.set(key, value);
+      }
     }
   });
   sanitized.set('cache-control', 'no-store');
   return sanitized;
+}
+
+function resolveSameOriginRedirect(response: Response, upstream: URL): URL | null {
+  if (![301, 302, 303, 307, 308].includes(response.status)) {
+    return null;
+  }
+  const location = response.headers.get('location');
+  if (!location) {
+    return null;
+  }
+  const resolved = new URL(location, upstream);
+  if (resolved.origin !== upstream.origin) {
+    return null;
+  }
+  return resolved;
 }
 
 async function proxyRequest(request: NextRequest, context: RouteContext): Promise<Response> {
@@ -115,16 +154,27 @@ async function proxyRequest(request: NextRequest, context: RouteContext): Promis
         ? undefined
         : await request.arrayBuffer();
 
-    const response = await fetch(upstream, {
+    let response = await fetch(upstream, {
       method: request.method,
       headers,
       body,
       redirect: 'manual'
     });
 
+    const redirectTarget = resolveSameOriginRedirect(response, upstream);
+    if (redirectTarget) {
+      const redirectMethod = response.status === 303 ? 'GET' : request.method;
+      response = await fetch(redirectTarget, {
+        method: redirectMethod,
+        headers,
+        body: redirectMethod === 'GET' || redirectMethod === 'HEAD' ? undefined : body,
+        redirect: 'manual'
+      });
+    }
+
     return new Response(response.body, {
       status: response.status,
-      headers: sanitizeResponseHeaders(response.headers)
+      headers: sanitizeResponseHeaders(response.headers, request)
     });
   } catch (error) {
     const detail =

@@ -35,11 +35,35 @@ type ListingsQuery = {
   cluster?: string;
 };
 
+export type ReadbackState = 'LIVE' | 'EMPTY' | 'FALLBACK';
+
+export function getReadbackState(apiAvailable: boolean, itemCount: number): ReadbackState {
+  if (apiAvailable) {
+    return itemCount > 0 ? 'LIVE' : 'EMPTY';
+  }
+
+  return 'FALLBACK';
+}
+
 export type AdminJobRecord = {
   id: string;
   job_type: string;
   status: string;
   requested_by: string | null;
+  created_at: string | null;
+  updated_at: string | null;
+  payload_json: Record<string, unknown>;
+};
+
+export type ListingSourceSnapshotRecord = {
+  id: string;
+  source_name: string;
+  source_family: string;
+  parse_status: string;
+  acquired_at: string | null;
+  coverage_note: string;
+  content_hash: string;
+  manifest_json: Record<string, unknown>;
 };
 
 export type GeometrySourceType =
@@ -1281,6 +1305,9 @@ function mapConnectorType(value: unknown): Phase1ASource['connector_type'] {
   if (connectorType === 'CSV_IMPORT') {
     return 'csv_import';
   }
+  if (connectorType === 'TABULAR_FEED') {
+    return 'tabular_feed';
+  }
   return 'public_page';
 }
 
@@ -1343,7 +1370,36 @@ function mapAdminJob(value: unknown): AdminJobRecord {
     requested_by:
       value.requested_by === null || value.requested_by === undefined
         ? null
-        : toStringValue(value.requested_by)
+        : toStringValue(value.requested_by),
+    created_at:
+      value.created_at === null || value.created_at === undefined
+        ? null
+        : toStringValue(value.created_at),
+    updated_at:
+      value.updated_at === null || value.updated_at === undefined
+        ? null
+        : toStringValue(value.updated_at),
+    payload_json: isRecord(value.payload_json) ? value.payload_json : {}
+  };
+}
+
+function mapSourceSnapshot(value: unknown): ListingSourceSnapshotRecord {
+  if (!isRecord(value)) {
+    throw new Error('Invalid source snapshot');
+  }
+
+  return {
+    id: toStringValue(value.id),
+    source_name: toStringValue(value.source_name ?? value.sourceName),
+    source_family: toStringValue(value.source_family ?? value.sourceFamily),
+    parse_status: toStringValue(value.parse_status ?? value.parseStatus, 'UNKNOWN'),
+    acquired_at:
+      value.acquired_at === null || value.acquired_at === undefined
+        ? null
+        : toStringValue(value.acquired_at),
+    coverage_note: toStringValue(value.coverage_note ?? value.coverageNote, ''),
+    content_hash: toStringValue(value.content_hash ?? value.contentHash, ''),
+    manifest_json: isRecord(value.manifest_json) ? value.manifest_json : {}
   };
 }
 
@@ -1460,7 +1516,7 @@ export async function getListing(listingId: string): Promise<{ item: Phase1AList
 export async function getClusters(): Promise<{ items: Phase1AClusterSummary[]; apiAvailable: boolean }> {
   const result = await queryApiCollection('/api/listing-clusters', mapClusterSummary);
   return {
-    items: result.items.length > 0 ? result.items : phase1AClusters.map((cluster) => stripClusterMembers(cluster)),
+    items: result.apiAvailable ? result.items : phase1AClusters.map((cluster) => stripClusterMembers(cluster)),
     apiAvailable: result.apiAvailable
   };
 }
@@ -1535,6 +1591,12 @@ export async function getAdminJobs(
   options: { sessionToken?: string } = {}
 ): Promise<{ items: AdminJobRecord[]; apiAvailable: boolean }> {
   return queryApiCollection('/api/admin/jobs', mapAdminJob, options);
+}
+
+export async function getSourceSnapshots(
+  options: { sessionToken?: string } = {}
+): Promise<{ items: ListingSourceSnapshotRecord[]; apiAvailable: boolean }> {
+  return queryApiCollection('/api/admin/source-snapshots', mapSourceSnapshot, options);
 }
 
 export async function runManualUrlIntake(input: { url: string; coverage_note?: string }): Promise<unknown | null> {
@@ -3617,7 +3679,7 @@ function filterSites(items: SiteSummary[], query: SitesQuery): SiteSummary[] {
 
 export async function getSites(query: SitesQuery = {}): Promise<{ items: SiteSummary[]; apiAvailable: boolean }> {
   const result = await queryApiCollection(`/api/sites${buildQueryString(query)}`, mapSiteSummary);
-  const base = result.items.length > 0 ? result.items : phase2SiteSummaries;
+  const base = result.apiAvailable ? result.items : phase2SiteSummaries;
   return {
     items: filterSites(base, query),
     apiAvailable: result.apiAvailable

@@ -5,9 +5,9 @@ from uuid import UUID
 
 from landintel.assessments.service import build_assessment_artifacts_for_run
 from landintel.valuation.assumptions import ensure_default_assumption_set
-from landintel.valuation.market import (
+from landintel.valuation.market import import_land_comp_fixture
+from landintel.valuation.official_sources import (
     import_hmlr_price_paid_fixture,
-    import_land_comp_fixture,
     import_ukhpi_fixture,
 )
 

@@ -5,6 +5,7 @@ from uuid import UUID
 
 import pytest
 from landintel.domain.enums import JobStatus
+from landintel.domain.schemas import SiteScenarioSuggestResponse
 
 import services.worker.app.jobs.assessment as worker_assessment
 import services.worker.app.jobs.planning_enrich as worker_planning
@@ -442,7 +443,15 @@ def test_scenario_workers_cover_success_paths_and_missing_records(monkeypatch):
     monkeypatch.setattr(
         worker_scenarios,
         "suggest_scenarios_for_site",
-        lambda **kwargs: suggest_calls.append(kwargs),
+        lambda **kwargs: (
+            suggest_calls.append(kwargs)
+            or SiteScenarioSuggestResponse(
+                site_id=UUID("11111111-1111-1111-1111-111111111111"),
+                headline_scenario_id=None,
+                items=[],
+                excluded_templates=[],
+            )
+        ),
     )
     monkeypatch.setattr(
         worker_scenarios,
@@ -471,6 +480,7 @@ def test_scenario_workers_cover_success_paths_and_missing_records(monkeypatch):
             },
             requested_by="",
         ),
+        storage=object(),
     )
     assert suggest_calls == [
         {
@@ -536,11 +546,16 @@ def test_site_build_refresh_jobs_cover_success_and_missing_site(monkeypatch):
     monkeypatch.setattr(
         worker_site_build,
         "build_or_refresh_site_from_cluster",
-        lambda **kwargs: calls.append(kwargs),
+        lambda **kwargs: (calls.append(kwargs) or site),
     )
     monkeypatch.setattr(
         worker_site_build,
         "refresh_site_links_and_status",
+        lambda **kwargs: calls.append(kwargs),
+    )
+    monkeypatch.setattr(
+        worker_site_build,
+        "enqueue_site_scenario_suggest_refresh_job",
         lambda **kwargs: calls.append(kwargs),
     )
 
@@ -557,13 +572,18 @@ def test_site_build_refresh_jobs_cover_success_and_missing_site(monkeypatch):
         "cluster_id": UUID("33333333-3333-3333-3333-333333333333"),
         "requested_by": "worker",
     }
+    assert calls[1] == {
+        "session": build_session,
+        "site_id": "site-1",
+        "requested_by": "worker",
+    }
 
     lpa_session = _Session(execute_result=_ExecuteResult(site=site))
     worker_site_build.run_site_lpa_refresh_job(
         session=lpa_session,
         job=_job(payload={"site_id": "11111111-1111-1111-1111-111111111111"}, requested_by=""),
     )
-    assert calls[1] == {
+    assert calls[2] == {
         "session": lpa_session,
         "site": site,
     }
@@ -576,7 +596,7 @@ def test_site_build_refresh_jobs_cover_success_and_missing_site(monkeypatch):
             payload={"site_id": "11111111-1111-1111-1111-111111111111"}, requested_by="pytest"
         ),
     )
-    assert calls[2] == {
+    assert calls[3] == {
         "session": title_session,
         "site": site,
     }
