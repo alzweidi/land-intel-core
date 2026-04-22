@@ -176,6 +176,13 @@ export default async function SitesPage({ searchParams }: { searchParams?: Searc
                       <td data-label="Listing">
                         <div className="table-primary">{item.current_listing_headline}</div>
                         <div className="table-secondary">{item.current_price_gbp === null ? 'Price pending' : `£${item.current_price_gbp.toLocaleString('en-GB')}`}</div>
+                        {item.current_listing_canonical_url ? (
+                          <div className="table-secondary">
+                            <a className="inline-link" href={item.current_listing_canonical_url} rel="noreferrer" target="_blank">
+                              Open live source
+                            </a>
+                          </div>
+                        ) : null}
                       </td>
                       <td data-label="Warnings">
                         <div className="table-secondary">{item.review_flags.join(', ') || 'No manual flags'}</div>
@@ -203,6 +210,19 @@ export default async function SitesPage({ searchParams }: { searchParams?: Searc
               items={[
                 { label: 'Display name', value: selectedSite.display_name },
                 { label: 'Listing', value: selectedSite.current_listing_headline },
+                {
+                  label: 'Listing URL',
+                  value: selectedSite.current_listing_canonical_url ? (
+                    <a
+                      className="inline-link"
+                      href={selectedSite.current_listing_canonical_url}
+                      rel="noreferrer"
+                      target="_blank"
+                    >
+                      Open live source
+                    </a>
+                  ) : 'Unavailable'
+                },
                 { label: 'Source', value: selectedSite.geometry_source_type },
                 { label: 'Confidence', value: selectedSite.geometry_confidence },
                 { label: 'Borough / LPA', value: `${selectedSite.borough_name} / ${selectedSite.controlling_lpa_name}` },

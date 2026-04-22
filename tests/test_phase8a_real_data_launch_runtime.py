@@ -345,7 +345,7 @@ def test_setup_and_smoke_scripts_cover_phase8a_launch_flow() -> None:
     assert "python -m landintel.valuation.bootstrap" in setup_script
     assert "build_hidden_model_releases" in setup_script
     assert "--requested-by local-setup" in setup_script
-    assert "cabinet_office_surplus_property" in setup_script
+    assert "bidwells_land_development" in setup_script
     assert "/api/opportunities/" in setup_script
 
     assert '/api/health/data' in smoke_script
@@ -355,5 +355,5 @@ def test_setup_and_smoke_scripts_cover_phase8a_launch_flow() -> None:
     assert '/api/sites' in smoke_script
     assert '/api/opportunities' in smoke_script
     assert '/api/admin/jobs' in smoke_script
-    assert 'cabinet_office_surplus_property' in smoke_script
+    assert 'bidwells_land_development' in smoke_script
     assert 'LISTING_SOURCE_RUN' in smoke_script

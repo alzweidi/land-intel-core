@@ -55,6 +55,7 @@ describe('SitesPage', () => {
           site_area_sqm: 100,
           current_listing_id: 'listing-1',
           current_listing_headline: 'Fallback listing',
+          current_listing_canonical_url: 'https://example.com/fallback-site',
           current_price_gbp: null,
           current_price_basis_type: null,
           warnings: ['Coverage gap'],
@@ -77,6 +78,11 @@ describe('SitesPage', () => {
 
     expect(screen.getByText('Hold/manual review')).toBeInTheDocument();
     expect(screen.getByRole('link', { name: 'Fallback site' })).toBeInTheDocument();
+    expect(
+      screen
+        .getAllByRole('link', { name: 'Open live source' })
+        .every((link) => link.getAttribute('href') === 'https://example.com/fallback-site')
+    ).toBe(true);
     expect(screen.getByTestId('site-map')).toHaveTextContent('site-1');
   });
 
@@ -97,6 +103,7 @@ describe('SitesPage', () => {
           site_area_sqm: 250,
           current_listing_id: 'listing-live',
           current_listing_headline: 'Live listing',
+          current_listing_canonical_url: 'https://idealland.co.uk/properties/fishponds-road-tooting-sw17',
           current_price_gbp: 250000,
           current_price_basis_type: 'GUIDE_PRICE',
           warnings: [],
@@ -124,6 +131,7 @@ describe('SitesPage', () => {
           site_area_sqm: null,
           current_listing_id: 'listing-held',
           current_listing_headline: 'Held listing',
+          current_listing_canonical_url: null,
           current_price_gbp: null,
           current_price_basis_type: null,
           warnings: [],
@@ -151,6 +159,7 @@ describe('SitesPage', () => {
           site_area_sqm: 180,
           current_listing_id: 'listing-medium',
           current_listing_headline: 'Medium listing',
+          current_listing_canonical_url: null,
           current_price_gbp: 300000,
           current_price_basis_type: 'GUIDE_PRICE',
           warnings: [],
@@ -174,7 +183,8 @@ describe('SitesPage', () => {
         searchParams: {
           q: ['site'],
           borough: ['Hackney'],
-          confidence: ['HIGH']
+          confidence: ['HIGH'],
+          selected: ['site-held']
         }
       })
     );
@@ -183,6 +193,16 @@ describe('SitesPage', () => {
     expect(screen.getByText('Loaded from the API')).toBeInTheDocument();
     expect(screen.getByRole('link', { name: 'Live site' })).toBeInTheDocument();
     expect(screen.getByDisplayValue('site')).toBeInTheDocument();
+    expect(
+      screen
+        .getAllByRole('link', { name: 'Open live source' })
+        .every(
+          (link) =>
+            link.getAttribute('href') ===
+            'https://idealland.co.uk/properties/fishponds-road-tooting-sw17'
+        )
+    ).toBe(true);
+    expect(screen.getAllByText('Unavailable').length).toBeGreaterThan(0);
   });
 
   it('holds the registry in fallback mode when no site rows are available', async () => {

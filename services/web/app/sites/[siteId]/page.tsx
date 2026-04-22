@@ -89,6 +89,18 @@ export default async function SiteDetailPage({
   const sourceCoverage = site.source_coverage ?? [];
   const evidence = site.evidence ?? { for: [], against: [], unknown: [] };
   const rawSourceLinks = [
+    ...(site.current_listing.canonical_url
+      ? [
+          {
+            label: 'Current listing',
+            value: (
+              <a className="inline-link" href={site.current_listing.canonical_url} rel="noreferrer" target="_blank">
+                Open live source
+              </a>
+            )
+          }
+        ]
+      : []),
     ...site.documents.map((document) => ({
       label: document.label,
       value: (
@@ -318,7 +330,19 @@ export default async function SiteDetailPage({
               compact
               items={[
                 { label: 'Listing', value: site.current_listing.headline },
-                { label: 'URL', value: site.current_listing.canonical_url },
+                {
+                  label: 'URL',
+                  value: (
+                    <a
+                      className="inline-link"
+                      href={site.current_listing.canonical_url}
+                      rel="noreferrer"
+                      target="_blank"
+                    >
+                      {site.current_listing.canonical_url}
+                    </a>
+                  )
+                },
                 { label: 'Status', value: site.current_listing.latest_status },
                 { label: 'Observed', value: site.current_listing.observed_at },
                 { label: 'Price', value: currency(site.current_price_gbp) },

@@ -168,6 +168,7 @@ export type SiteSummary = {
   site_area_sqm: number | null;
   current_listing_id: string;
   current_listing_headline: string;
+  current_listing_canonical_url?: string | null;
   current_price_gbp: number | null;
   current_price_basis_type: string | null;
   warnings: string[];
@@ -3345,6 +3346,10 @@ function mapSiteSummary(value: unknown): SiteSummary {
         currentListing?.headline,
       ''
     ),
+    current_listing_canonical_url:
+      currentListing?.canonical_url === null || currentListing?.canonical_url === undefined
+        ? null
+        : toStringValue(currentListing.canonical_url),
     current_price_gbp:
       value.current_price_gbp === null || value.current_price_gbp === undefined
         ? toNumberValue(currentListing?.guide_price_gbp)

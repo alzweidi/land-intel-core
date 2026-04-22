@@ -90,6 +90,10 @@ describe('ListingsPage', () => {
     expect(screen.getByText('Run connector')).toBeInTheDocument();
     expect(screen.getAllByText(/COMPLIANT_AUTOMATED · Every 24h/)).toHaveLength(2);
     expect(screen.getByText('Example listing')).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Open live source' })).toHaveAttribute(
+      'href',
+      'https://example.com/listing-1'
+    );
   });
 
   it('renders explicit source metadata empty states without fixture fallback', async () => {

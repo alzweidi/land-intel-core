@@ -134,6 +134,56 @@ describe('landintel-api', () => {
     expect(result.items).toEqual([]);
   });
 
+  it('maps current listing canonical urls into live site summaries', async () => {
+    fetchMock.mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({
+          items: [
+            {
+              id: 'site-1',
+              display_name: 'Mapped site',
+              borough_name: 'Wandsworth',
+              controlling_lpa_name: 'Wandsworth',
+              current_geometry: {
+                geom_4326: { type: 'Feature', geometry: { type: 'Point', coordinates: [-0.1, 51.5] }, properties: {} },
+                geom_source_type: 'POINT_ONLY',
+                geom_confidence: 'LOW',
+                site_area_sqm: null
+              },
+              current_listing: {
+                id: 'listing-1',
+                headline: 'Fishponds Road, Tooting, SW17',
+                canonical_url: 'https://idealland.co.uk/properties/fishponds-road-tooting-sw17',
+                guide_price_gbp: null,
+                price_basis_type: 'PRICE_ON_APPLICATION'
+              },
+              listing_cluster: {
+                id: 'cluster-1',
+                cluster_key: 'fishponds-road',
+                cluster_status: 'ACTIVE',
+                member_count: 1
+              },
+              warnings: [],
+              manual_review_required: true,
+              site_status: 'MANUAL_REVIEW'
+            }
+          ]
+        }),
+        {
+          status: 200,
+          headers: { 'content-type': 'application/json' }
+        }
+      )
+    );
+
+    const result = await getSites();
+
+    expect(result.apiAvailable).toBe(true);
+    expect(result.items[0]?.current_listing_canonical_url).toBe(
+      'https://idealland.co.uk/properties/fishponds-road-tooting-sw17'
+    );
+  });
+
   it('falls back to fixture rows when the listings payload is invalid', async () => {
     fetchMock.mockResolvedValueOnce(
       new Response(JSON.stringify({ unexpected: true }), {

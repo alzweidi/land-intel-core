@@ -17,6 +17,13 @@ depends_on = None
 
 
 def upgrade() -> None:
+    bind = op.get_bind()
+    if bind.dialect.name == "postgresql":
+        op.execute(
+            sa.text("ALTER TABLE alembic_version ALTER COLUMN version_num TYPE VARCHAR(255)")
+        )
+        return
+
     with op.batch_alter_table("alembic_version") as batch_op:
         batch_op.alter_column(
             "version_num",

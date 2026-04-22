@@ -32,12 +32,31 @@ DATE_PATTERN = re.compile(
     re.I,
 )
 LAT_LON_PATTERN = re.compile(
-    r"(?P<lat>51\.\d{3,})[^0-9-]+(?P<lon>-0\.\d{3,})",
+    r"(?P<lat>5[0-9]\.\d{3,})[^0-9+-]+(?P<lon>[+-]?0\.\d{3,})",
+    re.I,
+)
+UK_POSTCODE_PATTERN = re.compile(
+    r"\b[A-Z]{1,2}\d[A-Z\d]?\s*\d[A-Z]{2}\b",
     re.I,
 )
 LONG_LAT_JSON_PATTERN = re.compile(
     r'long_lat"\s*:\s*"\{\\?"lat\\?":(?P<lat>-?\d+\.\d+),\\?"lng\\?":(?P<lon>-?\d+\.\d+)\}',
     re.I,
+)
+HTML_ATTRIBUTE_LAT_LON_PATTERNS = (
+    re.compile(
+        r'data-lat="\s*(?P<lat>-?\d+\.\d+)\s*"[^>]+data-l(?:ng|on)="\s*(?P<lon>-?\d+\.\d+)\s*"',
+        re.I,
+    ),
+    re.compile(
+        r"data-lat='\s*(?P<lat>-?\d+\.\d+)\s*'[^>]+data-l(?:ng|on)='\s*(?P<lon>-?\d+\.\d+)\s*'",
+        re.I,
+    ),
+    re.compile(
+        r"loadMap\([^)]*'(?P<lat>-?\d+\.\d+)'[^)]*'(?P<lon>-?\d+\.\d+)'",
+        re.I,
+    ),
+    re.compile(r"[?&]q=(?P<lat>-?\d+\.\d+),(?P<lon>-?\d+\.\d+)", re.I),
 )
 
 GENERIC_HEADLINES = {
@@ -151,9 +170,17 @@ def _extract_address_from_title(headline: str | None) -> str | None:
     text = _clean_title(headline)
     if not text:
         return None
-    if " london " not in f" {text.lower()} ":
-        return None
-    return text
+    normalized = f" {text.lower()} "
+    if " london " in normalized:
+        return text
+    if UK_POSTCODE_PATTERN.search(text):
+        return text
+    if text.count(",") >= 2 and any(
+        token in normalized
+        for token in (" road", " street", " lane", " avenue", " close", " way", " court")
+    ):
+        return text
+    return None
 
 
 def build_search_text(*parts: str | None) -> str:
@@ -262,6 +289,10 @@ def extract_coordinates_from_html(html: str) -> tuple[float | None, float | None
     match = LONG_LAT_JSON_PATTERN.search(html)
     if match is not None:
         return float(match.group("lat")), float(match.group("lon"))
+    for pattern in HTML_ATTRIBUTE_LAT_LON_PATTERNS:
+        match = pattern.search(html)
+        if match is not None:
+            return float(match.group("lat")), float(match.group("lon"))
     return extract_coordinates_from_text(html)
 
 
@@ -284,28 +315,36 @@ def _load_json_ld(soup: BeautifulSoup) -> list[dict[str, Any]]:
 def discover_document_links(html: str, *, base_url: str) -> list[DiscoveredDocumentLink]:
     soup = BeautifulSoup(html, "html.parser")
     documents: list[DiscoveredDocumentLink] = []
-    seen: set[str] = set()
+    seen_indexes: dict[str, int] = {}
 
     for anchor in soup.find_all("a", href=True):
         href = anchor.get("href", "").strip()
         label = normalize_space(anchor.get_text(" ", strip=True)) or ""
         absolute_url = normalize_url(urljoin(base_url, href))
-        if absolute_url in seen:
-            continue
 
         lowered = f"{absolute_url} {label}".lower()
-        if ".pdf" not in lowered:
+        if ".pdf" not in lowered and "pdf.php" not in lowered:
             continue
         if any(marker in lowered for marker in GENERIC_DOCUMENT_MARKERS):
             continue
 
         doc_type = DocumentType.BROCHURE
-        if "map" in lowered:
+        if any(marker in lowered for marker in ("map", "site plan", "floor plan", "floorplan")):
             doc_type = DocumentType.MAP
-        seen.add(absolute_url)
-        documents.append(
-            DiscoveredDocumentLink(url=absolute_url, doc_type=doc_type, label=label)
-        )
+
+        existing_index = seen_indexes.get(absolute_url)
+        if existing_index is not None:
+            existing = documents[existing_index]
+            if doc_type == DocumentType.MAP and existing.doc_type != DocumentType.MAP:
+                existing.doc_type = DocumentType.MAP
+                if label:
+                    existing.label = label
+            elif not existing.label and label:
+                existing.label = label
+            continue
+
+        seen_indexes[absolute_url] = len(documents)
+        documents.append(DiscoveredDocumentLink(url=absolute_url, doc_type=doc_type, label=label))
 
     return documents
 

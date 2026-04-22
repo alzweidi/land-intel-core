@@ -277,6 +277,18 @@ def test_parsing_helpers_cover_document_deduplication_and_listing_fallbacks() ->
 
     assert parsing_service._extract_address_from_title("Warehouse only") is None
     assert parsing_service._extract_address_from_title(None) is None
+    assert (
+        parsing_service._extract_address_from_title(
+            "Land South Of Thames Road, Crayford, Dartford, DA1 5FH"
+        )
+        == "Land South Of Thames Road, Crayford, Dartford, DA1 5FH"
+    )
+    assert (
+        parsing_service._extract_address_from_title(
+            "12 Example Road, Salford, Greater Manchester"
+        )
+        == "12 Example Road, Salford, Greater Manchester"
+    )
 
     documents = parsing_service.discover_document_links(
         html,

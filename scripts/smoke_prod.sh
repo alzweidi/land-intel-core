@@ -34,7 +34,7 @@ fi
 
 APP_ORIGIN=${1%/}
 API_ORIGIN=${2%/}
-REAL_SOURCE_KEY=${REAL_SOURCE_KEY:-cabinet_office_surplus_property}
+REAL_SOURCE_KEY=${REAL_SOURCE_KEY:-bidwells_land_development}
 : "${BACKEND_BASIC_AUTH_USER:?BACKEND_BASIC_AUTH_USER is required}"
 : "${BACKEND_BASIC_AUTH_PASSWORD:?BACKEND_BASIC_AUTH_PASSWORD is required}"
 

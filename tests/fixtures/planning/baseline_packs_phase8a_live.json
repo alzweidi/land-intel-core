@@ -1,0 +1,536 @@
+{
+  "meta": {
+    "coverage_note": "Fixture-scale borough baseline packs and cited scenario rulepacks for Phase 4A local/dev.",
+    "freshness_status": "FRESH",
+    "coverage": [
+      {
+        "borough_id": "camden",
+        "source_family": "baseline_pack",
+        "coverage_status": "COMPLETE",
+        "freshness_status": "FRESH",
+        "coverage_note": "Pilot Camden baseline pack and scenario rulepacks."
+      },
+      {
+        "borough_id": "southwark",
+        "source_family": "baseline_pack",
+        "coverage_status": "COMPLETE",
+        "freshness_status": "FRESH",
+        "coverage_note": "Pilot Southwark baseline pack and scenario rulepacks."
+      },
+      {
+        "borough_id": "islington",
+        "source_family": "baseline_pack",
+        "coverage_status": "COMPLETE",
+        "freshness_status": "FRESH",
+        "coverage_note": "Pilot Islington baseline pack and scenario rulepacks."
+      }
+    ]
+  },
+  "baseline_packs": [
+    {
+      "borough_id": "camden",
+      "version": "phase4a-fixture-v1",
+      "status": "SIGNED_OFF",
+      "freshness_status": "FRESH",
+      "signed_off_by": "fixture-planning-lead",
+      "signed_off_at": "2026-04-15T09:00:00Z",
+      "pack_json": {
+        "borough_name": "London Borough of Camden",
+        "scenario_phase": "Phase 4A",
+        "coverage_expectations": [
+          "borough_register",
+          "prior_approval",
+          "brownfield",
+          "policy",
+          "constraint",
+          "flood",
+          "heritage_article4"
+        ],
+        "notes": [
+          "Operational summary only. Not legal advice or the borough's sole planning position.",
+          "Every rule below cites the fixture source it was normalized from."
+        ]
+      },
+      "rulepacks": [
+        {
+          "template_key": "resi_1_4_full",
+          "status": "SIGNED_OFF",
+          "freshness_status": "FRESH",
+          "effective_from": "2026-04-15",
+          "effective_to": null,
+          "rule_json": {
+            "summary": "Small Camden residential hypothesis using a full route only.",
+            "scenario_rules": {
+              "enabled": true,
+              "min_units": 1,
+              "max_units": 4,
+              "preferred_route": "FULL",
+              "allowed_routes": [
+                "FULL"
+              ],
+              "allowed_proposal_forms": [
+                "INFILL",
+                "REDEVELOPMENT",
+                "BACKLAND"
+              ],
+              "site_area_sqm_range": {
+                "min": 140,
+                "max": 900
+              },
+              "default_height_band": "LOW_RISE",
+              "default_net_developable_area_pct": 0.66,
+              "parking_assumption": "Camden pilot fixture assumes car-lite delivery subject to PTAL and frontage review.",
+              "affordable_housing_assumption": "Usually below the major-site threshold; analyst still checks borough small-site policy.",
+              "access_assumption": "Existing street frontage or clearly evidenced legal access is required.",
+              "auto_confirm_requires_strong_historical_support": true
+            },
+            "citations": [
+              {
+                "label": "Camden borough-register fixture",
+                "source_family": "BOROUGH_REGISTER",
+                "effective_date": "2026-04-01",
+                "url": "https://camden.example/planning/CAM-2025-1100-P"
+              },
+              {
+                "label": "Camden policy-area fixture",
+                "source_family": "POLICY_LAYER",
+                "effective_date": "2026-04-01",
+                "url": "https://camden.example/policy/small-sites"
+              }
+            ]
+          }
+        },
+        {
+          "template_key": "resi_5_9_full",
+          "status": "SIGNED_OFF",
+          "freshness_status": "FRESH",
+          "effective_from": "2026-04-15",
+          "effective_to": null,
+          "rule_json": {
+            "summary": "Camden mid-size full-route residential hypothesis for compact redevelopment sites.",
+            "scenario_rules": {
+              "enabled": true,
+              "min_units": 5,
+              "max_units": 9,
+              "preferred_route": "FULL",
+              "allowed_routes": [
+                "FULL"
+              ],
+              "allowed_proposal_forms": [
+                "REDEVELOPMENT",
+                "BROWNFIELD_REUSE"
+              ],
+              "site_area_sqm_range": {
+                "min": 700,
+                "max": 2200
+              },
+              "default_height_band": "MID_RISE",
+              "default_net_developable_area_pct": 0.72,
+              "parking_assumption": "Camden pilot fixture assumes car-lite delivery with disabled-bay review only.",
+              "affordable_housing_assumption": "Below the major threshold in most fixture cases but still subject to borough negotiation.",
+              "access_assumption": "Two-way frontage or clearly operable servicing access is expected.",
+              "auto_confirm_requires_strong_historical_support": true
+            },
+            "citations": [
+              {
+                "label": "Camden borough-register fixture",
+                "source_family": "BOROUGH_REGISTER",
+                "effective_date": "2026-04-01",
+                "url": "https://camden.example/planning/CAM-2025-1100-P"
+              },
+              {
+                "label": "Camden heritage/article 4 fixture",
+                "source_family": "HERITAGE_ARTICLE4",
+                "effective_date": "2026-04-01",
+                "url": "https://camden.example/policy/heritage-controls"
+              }
+            ]
+          }
+        },
+        {
+          "template_key": "resi_10_49_outline",
+          "status": "SIGNED_OFF",
+          "freshness_status": "FRESH",
+          "effective_from": "2026-04-15",
+          "effective_to": null,
+          "rule_json": {
+            "summary": "Camden larger residential hypothesis defaults to outline routing and explicit analyst review.",
+            "scenario_rules": {
+              "enabled": true,
+              "min_units": 10,
+              "max_units": 49,
+              "preferred_route": "OUTLINE",
+              "allowed_routes": [
+                "OUTLINE"
+              ],
+              "allowed_proposal_forms": [
+                "REDEVELOPMENT",
+                "BROWNFIELD_REUSE"
+              ],
+              "site_area_sqm_range": {
+                "min": 1800,
+                "max": 8000
+              },
+              "default_height_band": "MID_BLOCK",
+              "default_net_developable_area_pct": 0.78,
+              "parking_assumption": "Camden pilot fixture assumes car-lite delivery with servicing review.",
+              "affordable_housing_assumption": "Major residential affordable-housing triggers are assumed to apply.",
+              "access_assumption": "Multiple access and servicing fronts require analyst confirmation.",
+              "auto_confirm_requires_strong_historical_support": true
+            },
+            "citations": [
+              {
+                "label": "Camden policy-area fixture",
+                "source_family": "POLICY_LAYER",
+                "effective_date": "2026-04-01",
+                "url": "https://camden.example/policy/growth-areas"
+              },
+              {
+                "label": "Camden flood fixture",
+                "source_family": "FLOOD",
+                "effective_date": "2026-04-01",
+                "url": "https://camden.example/environment/flood-zones"
+              }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "borough_id": "southwark",
+      "version": "phase4a-fixture-v1",
+      "status": "DRAFT",
+      "freshness_status": "FRESH",
+      "signed_off_by": null,
+      "signed_off_at": null,
+      "pack_json": {
+        "borough_name": "London Borough of Southwark",
+        "scenario_phase": "Phase 4A",
+        "coverage_expectations": [
+          "pld",
+          "brownfield",
+          "policy",
+          "constraint",
+          "flood",
+          "heritage_article4"
+        ],
+        "notes": [
+          "Operational summary only. Borough register coverage is not yet loaded for Southwark in local/dev.",
+          "Scenario suggestions remain conservative and should usually land in analyst review."
+        ]
+      },
+      "rulepacks": [
+        {
+          "template_key": "resi_1_4_full",
+          "status": "DRAFT",
+          "freshness_status": "FRESH",
+          "effective_from": "2026-04-15",
+          "effective_to": null,
+          "rule_json": {
+            "summary": "Southwark small-site placeholder rulepack with mandatory coverage caveats.",
+            "scenario_rules": {
+              "enabled": true,
+              "min_units": 1,
+              "max_units": 4,
+              "preferred_route": "FULL",
+              "allowed_routes": [
+                "FULL"
+              ],
+              "allowed_proposal_forms": [
+                "INFILL",
+                "REDEVELOPMENT"
+              ],
+              "site_area_sqm_range": {
+                "min": 140,
+                "max": 900
+              },
+              "default_height_band": "LOW_RISE",
+              "default_net_developable_area_pct": 0.68,
+              "parking_assumption": "Assume car-lite and analyst review because borough register coverage is missing.",
+              "affordable_housing_assumption": "Small-site thresholds require analyst review.",
+              "access_assumption": "Frontage must be evidenced manually where structured coverage is incomplete.",
+              "auto_confirm_requires_strong_historical_support": true
+            },
+            "citations": [
+              {
+                "label": "Southwark supplemental PLD fixture",
+                "source_family": "PLD",
+                "effective_date": "2026-04-01",
+                "url": "https://planning.data.gov.uk/applications/PLD-2025-0001"
+              },
+              {
+                "label": "Southwark brownfield fixture",
+                "source_family": "BROWNFIELD",
+                "effective_date": "2026-04-01",
+                "url": "https://southwark.example/brownfield/part2"
+              }
+            ]
+          }
+        },
+        {
+          "template_key": "resi_5_9_full",
+          "status": "DRAFT",
+          "freshness_status": "FRESH",
+          "effective_from": "2026-04-15",
+          "effective_to": null,
+          "rule_json": {
+            "summary": "Southwark mid-size full-route placeholder with explicit coverage warnings.",
+            "scenario_rules": {
+              "enabled": true,
+              "min_units": 5,
+              "max_units": 9,
+              "preferred_route": "FULL",
+              "allowed_routes": [
+                "FULL"
+              ],
+              "allowed_proposal_forms": [
+                "REDEVELOPMENT",
+                "BROWNFIELD_REUSE"
+              ],
+              "site_area_sqm_range": {
+                "min": 700,
+                "max": 2400
+              },
+              "default_height_band": "MID_RISE",
+              "default_net_developable_area_pct": 0.72,
+              "parking_assumption": "Car-lite assumption only; analyst confirms PTAL and frontage.",
+              "affordable_housing_assumption": "Treat thresholds as sensitive because borough register coverage is missing.",
+              "access_assumption": "Servicing assumptions require analyst confirmation.",
+              "auto_confirm_requires_strong_historical_support": true
+            },
+            "citations": [
+              {
+                "label": "Southwark supplemental PLD fixture",
+                "source_family": "PLD",
+                "effective_date": "2026-04-01",
+                "url": "https://planning.data.gov.uk/applications/PLD-2025-0001"
+              },
+              {
+                "label": "Southwark policy-area fixture",
+                "source_family": "POLICY_LAYER",
+                "effective_date": "2026-04-01",
+                "url": "https://southwark.example/policy/intensification"
+              }
+            ]
+          }
+        },
+        {
+          "template_key": "resi_10_49_outline",
+          "status": "DRAFT",
+          "freshness_status": "FRESH",
+          "effective_from": "2026-04-15",
+          "effective_to": null,
+          "rule_json": {
+            "summary": "Southwark larger residential placeholder routed to outline only.",
+            "scenario_rules": {
+              "enabled": true,
+              "min_units": 10,
+              "max_units": 49,
+              "preferred_route": "OUTLINE",
+              "allowed_routes": [
+                "OUTLINE"
+              ],
+              "allowed_proposal_forms": [
+                "REDEVELOPMENT",
+                "BROWNFIELD_REUSE"
+              ],
+              "site_area_sqm_range": {
+                "min": 1800,
+                "max": 9000
+              },
+              "default_height_band": "MID_BLOCK",
+              "default_net_developable_area_pct": 0.8,
+              "parking_assumption": "Large-site parking assumptions remain analyst-reviewed in the pilot fixture.",
+              "affordable_housing_assumption": "Major-site affordable housing likely applies.",
+              "access_assumption": "Multiple frontages and servicing assumptions require analyst confirmation.",
+              "auto_confirm_requires_strong_historical_support": true
+            },
+            "citations": [
+              {
+                "label": "Southwark policy-area fixture",
+                "source_family": "POLICY_LAYER",
+                "effective_date": "2026-04-01",
+                "url": "https://southwark.example/policy/opportunity-areas"
+              },
+              {
+                "label": "Southwark flood fixture",
+                "source_family": "FLOOD",
+                "effective_date": "2026-04-01",
+                "url": "https://southwark.example/environment/flood-zones"
+              }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "borough_id": "islington",
+      "version": "phase4a-fixture-v1",
+      "status": "SIGNED_OFF",
+      "freshness_status": "FRESH",
+      "signed_off_by": "fixture-planning-lead",
+      "signed_off_at": "2026-04-22T14:30:00Z",
+      "pack_json": {
+        "borough_name": "London Borough of Islington",
+        "scenario_phase": "Phase 4A",
+        "coverage_expectations": [
+          "borough_register",
+          "prior_approval",
+          "brownfield",
+          "policy",
+          "constraint",
+          "flood",
+          "heritage_article4"
+        ],
+        "notes": [
+          "Operational summary only. Not legal advice or the borough's sole planning position.",
+          "Every rule below cites the fixture source it was normalized from."
+        ]
+      },
+      "rulepacks": [
+        {
+          "template_key": "resi_1_4_full",
+          "status": "SIGNED_OFF",
+          "freshness_status": "FRESH",
+          "effective_from": "2026-04-15",
+          "effective_to": null,
+          "rule_json": {
+            "summary": "Small Islington residential hypothesis using a full route only.",
+            "scenario_rules": {
+              "enabled": true,
+              "min_units": 1,
+              "max_units": 4,
+              "preferred_route": "FULL",
+              "allowed_routes": [
+                "FULL"
+              ],
+              "allowed_proposal_forms": [
+                "INFILL",
+                "REDEVELOPMENT",
+                "BACKLAND"
+              ],
+              "site_area_sqm_range": {
+                "min": 140,
+                "max": 900
+              },
+              "default_height_band": "LOW_RISE",
+              "default_net_developable_area_pct": 0.66,
+              "parking_assumption": "Islington pilot fixture assumes car-lite delivery subject to PTAL and frontage review.",
+              "affordable_housing_assumption": "Usually below the major-site threshold; analyst still checks borough small-site policy.",
+              "access_assumption": "Existing street frontage or clearly evidenced legal access is required.",
+              "auto_confirm_requires_strong_historical_support": true
+            },
+            "citations": [
+              {
+                "label": "Islington borough-register fixture",
+                "source_family": "BOROUGH_REGISTER",
+                "effective_date": "2026-04-01",
+                "url": "https://islington.example/planning/ISL-2025-1100-P"
+              },
+              {
+                "label": "Islington policy-area fixture",
+                "source_family": "POLICY_LAYER",
+                "effective_date": "2026-04-01",
+                "url": "https://islington.example/policy/small-sites"
+              }
+            ]
+          }
+        },
+        {
+          "template_key": "resi_5_9_full",
+          "status": "SIGNED_OFF",
+          "freshness_status": "FRESH",
+          "effective_from": "2026-04-15",
+          "effective_to": null,
+          "rule_json": {
+            "summary": "Islington mid-size full-route residential hypothesis for compact redevelopment sites.",
+            "scenario_rules": {
+              "enabled": true,
+              "min_units": 5,
+              "max_units": 9,
+              "preferred_route": "FULL",
+              "allowed_routes": [
+                "FULL"
+              ],
+              "allowed_proposal_forms": [
+                "REDEVELOPMENT",
+                "BROWNFIELD_REUSE"
+              ],
+              "site_area_sqm_range": {
+                "min": 700,
+                "max": 2200
+              },
+              "default_height_band": "MID_RISE",
+              "default_net_developable_area_pct": 0.72,
+              "parking_assumption": "Islington pilot fixture assumes car-lite delivery with disabled-bay review only.",
+              "affordable_housing_assumption": "Below the major threshold in most fixture cases but still subject to borough negotiation.",
+              "access_assumption": "Two-way frontage or clearly operable servicing access is expected.",
+              "auto_confirm_requires_strong_historical_support": true
+            },
+            "citations": [
+              {
+                "label": "Islington borough-register fixture",
+                "source_family": "BOROUGH_REGISTER",
+                "effective_date": "2026-04-01",
+                "url": "https://islington.example/planning/ISL-2025-1100-P"
+              },
+              {
+                "label": "Islington heritage/article 4 fixture",
+                "source_family": "HERITAGE_ARTICLE4",
+                "effective_date": "2026-04-01",
+                "url": "https://islington.example/policy/heritage-controls"
+              }
+            ]
+          }
+        },
+        {
+          "template_key": "resi_10_49_outline",
+          "status": "SIGNED_OFF",
+          "freshness_status": "FRESH",
+          "effective_from": "2026-04-15",
+          "effective_to": null,
+          "rule_json": {
+            "summary": "Islington larger residential hypothesis defaults to outline routing and explicit analyst review.",
+            "scenario_rules": {
+              "enabled": true,
+              "min_units": 10,
+              "max_units": 49,
+              "preferred_route": "OUTLINE",
+              "allowed_routes": [
+                "OUTLINE"
+              ],
+              "allowed_proposal_forms": [
+                "REDEVELOPMENT",
+                "BROWNFIELD_REUSE"
+              ],
+              "site_area_sqm_range": {
+                "min": 1800,
+                "max": 8000
+              },
+              "default_height_band": "MID_BLOCK",
+              "default_net_developable_area_pct": 0.78,
+              "parking_assumption": "Islington pilot fixture assumes car-lite delivery with servicing review.",
+              "affordable_housing_assumption": "Major residential affordable-housing triggers are assumed to apply.",
+              "access_assumption": "Multiple access and servicing fronts require analyst confirmation.",
+              "auto_confirm_requires_strong_historical_support": true
+            },
+            "citations": [
+              {
+                "label": "Islington policy-area fixture",
+                "source_family": "POLICY_LAYER",
+                "effective_date": "2026-04-01",
+                "url": "https://islington.example/policy/growth-areas"
+              },
+              {
+                "label": "Islington flood fixture",
+                "source_family": "FLOOD",
+                "effective_date": "2026-04-01",
+                "url": "https://islington.example/environment/flood-zones"
+              }
+            ]
+          }
+        }
+      ]
+    }
+  ]
+}

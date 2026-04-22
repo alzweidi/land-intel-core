@@ -1,7 +1,9 @@
 from datetime import UTC, datetime
+from types import SimpleNamespace
 
 import pytest
 from landintel.domain.enums import DocumentType, ListingStatus, ListingType, PriceBasisType
+from landintel.listings import parsing as parsing_service
 from landintel.listings.parsing import (
     discover_document_links,
     parse_csv_rows,
@@ -118,7 +120,12 @@ def test_discover_document_links_and_parse_csv_rows_cover_filters_and_float_fall
       <body>
         <a href="/downloads/brochure.pdf">Brochure</a>
         <a href="/downloads/brochure.pdf">Brochure duplicate</a>
+        <a href="/downloads/brochure.pdf">Site plan</a>
         <a href="/downloads/map.pdf">Map</a>
+        <a href="/downloads/labeled-later.pdf"></a>
+        <a href="/downloads/labeled-later.pdf">Brochure labelled later</a>
+        <a href="https://assets.example.test/live/pdf.php?p=ABC123&amp;t=S">Brochure endpoint</a>
+        <a href="/downloads/site-plan.pdf">Site plan</a>
         <a href="/downloads/common_conditions.pdf">Common auction conditions</a>
         <a href="/downloads/not-a-pdf.txt">Text</a>
       </body>
@@ -129,8 +136,11 @@ def test_discover_document_links_and_parse_csv_rows_cover_filters_and_float_fall
         base_url="https://example.test/listings/lot-1",
     )
     assert [(doc.doc_type, doc.label) for doc in documents] == [
-        (DocumentType.BROCHURE, "Brochure"),
+        (DocumentType.MAP, "Site plan"),
         (DocumentType.MAP, "Map"),
+        (DocumentType.BROCHURE, "Brochure labelled later"),
+        (DocumentType.BROCHURE, "Brochure endpoint"),
+        (DocumentType.MAP, "Site plan"),
     ]
 
     csv_text = (
@@ -161,3 +171,33 @@ def test_discover_document_links_and_parse_csv_rows_cover_filters_and_float_fall
     assert rich_row.auction_date == datetime(2026, 4, 17, tzinfo=UTC).date()
     assert rich_row.lat is None
     assert rich_row.lon is None
+
+
+def test_discover_document_links_covers_duplicate_map_upgrade_without_label(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    created_links: list[SimpleNamespace] = []
+
+    def _fake_document_link(*, url: str, doc_type: DocumentType, label: str) -> SimpleNamespace:
+        stored_type = DocumentType.BROCHURE if not created_links else doc_type
+        link = SimpleNamespace(url=url, doc_type=stored_type, label=label)
+        created_links.append(link)
+        return link
+
+    monkeypatch.setattr(parsing_service, "DiscoveredDocumentLink", _fake_document_link)
+
+    documents = parsing_service.discover_document_links(
+        """
+        <html>
+          <body>
+            <a href="/downloads/map.pdf"></a>
+            <a href="/downloads/map.pdf"></a>
+          </body>
+        </html>
+        """,
+        base_url="https://example.test/listings/lot-1",
+    )
+
+    assert len(documents) == 1
+    assert documents[0].doc_type == DocumentType.MAP
+    assert documents[0].label == ""

@@ -277,6 +277,13 @@ def test_valuation_helpers_cover_empty_latest_and_fallback_inputs() -> None:
 
 
 def test_opportunity_list_filters_and_detail_ranking_branches(monkeypatch) -> None:
+    class _FixedDate(date):
+        @classmethod
+        def today(cls) -> date:
+            return cls(2026, 4, 18)
+
+    monkeypatch.setattr(opportunities_readback, "date", _FixedDate)
+
     base_site_ids = [uuid4() for _ in range(8)]
     summaries = [
         _make_opportunity_summary(

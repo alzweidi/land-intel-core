@@ -76,7 +76,14 @@ export default async function ListingDetailPage({ params }: ListingPageProps) {
           <DefinitionList
             items={[
               { label: 'Source listing ID', value: listing.source_listing_id },
-              { label: 'Canonical URL', value: listing.canonical_url },
+              {
+                label: 'Canonical URL',
+                value: (
+                  <a className="inline-link" href={listing.canonical_url} rel="noreferrer" target="_blank">
+                    {listing.canonical_url}
+                  </a>
+                )
+              },
               { label: 'Listing type', value: listing.listing_type },
               { label: 'Borough', value: listing.borough },
               { label: 'Address', value: listing.normalized_fields.address_text || 'Not recorded' },

@@ -1,0 +1,405 @@
+{
+  "meta": {
+    "coverage_note": "Pilot Camden planning-register fixture for Phase 3A local/dev. Borough register is the authority of record where available.",
+    "freshness_status": "FRESH",
+    "coverage": [
+      {
+        "borough_id": "camden",
+        "source_family": "borough_register",
+        "coverage_status": "COMPLETE",
+        "freshness_status": "FRESH",
+        "coverage_note": "Pilot Camden planning-register fixture."
+      },
+      {
+        "borough_id": "camden",
+        "source_family": "prior_approval",
+        "coverage_status": "COMPLETE",
+        "freshness_status": "FRESH",
+        "coverage_note": "Pilot Camden prior-approval coverage fixture."
+      },
+      {
+        "borough_id": "southwark",
+        "source_family": "borough_register",
+        "coverage_status": "MISSING",
+        "gap_reason": "Pilot borough coverage has not been onboarded for Southwark in Phase 3A.",
+        "freshness_status": "UNKNOWN",
+        "coverage_note": "No pilot borough-register fixture loaded."
+      },
+      {
+        "borough_id": "southwark",
+        "source_family": "prior_approval",
+        "coverage_status": "MISSING",
+        "gap_reason": "Pilot prior-approval coverage has not been onboarded for Southwark in Phase 3A.",
+        "freshness_status": "UNKNOWN",
+        "coverage_note": "No pilot prior-approval fixture loaded."
+      },
+      {
+        "borough_id": "islington",
+        "source_family": "borough_register",
+        "coverage_status": "COMPLETE",
+        "freshness_status": "FRESH",
+        "coverage_note": "Pilot Islington planning-register fixture."
+      },
+      {
+        "borough_id": "islington",
+        "source_family": "prior_approval",
+        "coverage_status": "COMPLETE",
+        "freshness_status": "FRESH",
+        "coverage_note": "Pilot Islington prior-approval coverage fixture."
+      }
+    ]
+  },
+  "applications": [
+    {
+      "borough_id": "camden",
+      "external_ref": "CAM/2024/0505/P",
+      "application_type": "FULL",
+      "proposal_description": "Redevelopment of a corner plot to provide 6 residential units with landscaping.",
+      "valid_date": "2024-01-15",
+      "decision_date": "2024-04-22",
+      "decision": "Approved",
+      "decision_type": "FULL_RESIDENTIAL",
+      "status": "LAPSED",
+      "route_normalized": "FULL",
+      "units_proposed": 6,
+      "point_4326": {
+        "type": "Point",
+        "coordinates": [
+          -0.1496,
+          51.5393
+        ]
+      },
+      "source_url": "https://camden.example/planning/CAM-2024-0505-P",
+      "documents": [
+        {
+          "doc_type": "decision_notice",
+          "doc_url": "https://camden.example/planning/CAM-2024-0505-P/decision-notice",
+          "mime_type": "text/plain",
+          "content_text": "Decision notice: six-unit residential redevelopment approved in 2024 and later lapsed in the fixture."
+        }
+      ],
+      "raw_record_json": {
+        "dwelling_use": "C3",
+        "active_extant": false,
+        "lapsed": true
+      }
+    },
+    {
+      "borough_id": "camden",
+      "external_ref": "CAM/2025/1100/P",
+      "application_type": "FULL",
+      "proposal_description": "Redevelopment of the yard site to provide 8 residential units with associated landscaping.",
+      "valid_date": "2025-01-09",
+      "decision_date": "2025-05-28",
+      "decision": "Approved",
+      "decision_type": "FULL_RESIDENTIAL",
+      "status": "LAPSED",
+      "route_normalized": "FULL",
+      "units_proposed": 8,
+      "geometry_4326": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [
+              -0.14258,
+              51.53599
+            ],
+            [
+              -0.14156,
+              51.53599
+            ],
+            [
+              -0.14156,
+              51.53635
+            ],
+            [
+              -0.14258,
+              51.53635
+            ],
+            [
+              -0.14258,
+              51.53599
+            ]
+          ]
+        ]
+      },
+      "source_url": "https://camden.example/planning/CAM-2025-1100-P",
+      "documents": [
+        {
+          "doc_type": "decision_notice",
+          "doc_url": "https://camden.example/planning/CAM-2025-1100-P/decision-notice",
+          "mime_type": "text/plain",
+          "content_text": "Decision notice: full residential permission granted in 2025. Sample fixture marks the permission as lapsed."
+        }
+      ],
+      "raw_record_json": {
+        "dwelling_use": "C3",
+        "active_extant": false,
+        "lapsed": true,
+        "status_reason": "Permission implementation window expired."
+      }
+    },
+    {
+      "borough_id": "camden",
+      "external_ref": "CAM/2026/2450/F",
+      "application_type": "FULL",
+      "proposal_description": "Construction of 12 flats with active frontage at 16 Example Road.",
+      "valid_date": "2026-01-18",
+      "decision_date": "2026-03-20",
+      "decision": "Refused",
+      "decision_type": "FULL_RESIDENTIAL",
+      "status": "REFUSED",
+      "route_normalized": "FULL",
+      "units_proposed": 12,
+      "point_4326": {
+        "type": "Point",
+        "coordinates": [
+          -0.14192,
+          51.53626
+        ]
+      },
+      "source_url": "https://camden.example/planning/CAM-2026-2450-F",
+      "documents": [
+        {
+          "doc_type": "committee_report",
+          "doc_url": "https://camden.example/planning/CAM-2026-2450-F/report",
+          "mime_type": "text/plain",
+          "content_text": "Committee report: refusal for massing and heritage impact."
+        }
+      ],
+      "raw_record_json": {
+        "dwelling_use": "C3",
+        "active_extant": false,
+        "refusal_reasons": [
+          "heritage",
+          "massing"
+        ]
+      }
+    },
+    {
+      "borough_id": "camden",
+      "external_ref": "CAM/2023/0901/P",
+      "application_type": "FULL",
+      "proposal_description": "Redevelopment of a light-industrial plot to provide 5 residential units with cycle storage.",
+      "valid_date": "2023-03-14",
+      "decision_date": "2023-07-06",
+      "decision": "Approved",
+      "decision_type": "FULL_RESIDENTIAL",
+      "status": "LAPSED",
+      "route_normalized": "FULL",
+      "units_proposed": 5,
+      "point_4326": {
+        "type": "Point",
+        "coordinates": [
+          -0.1553,
+          51.5449
+        ]
+      },
+      "source_url": "https://camden.example/planning/CAM-2023-0901-P",
+      "documents": [
+        {
+          "doc_type": "decision_notice",
+          "doc_url": "https://camden.example/planning/CAM-2023-0901-P/decision-notice",
+          "mime_type": "text/plain",
+          "content_text": "Decision notice: five-unit residential redevelopment approved on a secondary Camden frontage."
+        }
+      ],
+      "raw_record_json": {
+        "dwelling_use": "C3",
+        "active_extant": false,
+        "lapsed": true
+      }
+    },
+    {
+      "borough_id": "camden",
+      "external_ref": "CAM/2023/1022/P",
+      "application_type": "FULL",
+      "proposal_description": "Redevelopment of builder's stores to provide 9 residential units with communal landscaping.",
+      "valid_date": "2023-05-02",
+      "decision_date": "2023-09-18",
+      "decision": "Conditional Approve",
+      "decision_type": "FULL_RESIDENTIAL",
+      "status": "LAPSED",
+      "route_normalized": "FULL",
+      "units_proposed": 9,
+      "geometry_4326": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [
+              -0.1604,
+              51.5472
+            ],
+            [
+              -0.15955,
+              51.5472
+            ],
+            [
+              -0.15955,
+              51.54754
+            ],
+            [
+              -0.1604,
+              51.54754
+            ],
+            [
+              -0.1604,
+              51.5472
+            ]
+          ]
+        ]
+      },
+      "source_url": "https://camden.example/planning/CAM-2023-1022-P",
+      "documents": [
+        {
+          "doc_type": "decision_notice",
+          "doc_url": "https://camden.example/planning/CAM-2023-1022-P/decision-notice",
+          "mime_type": "text/plain",
+          "content_text": "Decision notice: conditional approval for nine flats on a former builder's stores site."
+        }
+      ],
+      "raw_record_json": {
+        "dwelling_use": "C3",
+        "active_extant": false,
+        "lapsed": true
+      }
+    },
+    {
+      "borough_id": "camden",
+      "external_ref": "CAM/2024/0707/F",
+      "application_type": "FULL",
+      "proposal_description": "Redevelopment of a service yard to provide 7 residential units with cycle parking.",
+      "valid_date": "2024-02-02",
+      "decision_date": "2024-05-16",
+      "decision": "Refused",
+      "decision_type": "FULL_RESIDENTIAL",
+      "status": "REFUSED",
+      "route_normalized": "FULL",
+      "units_proposed": 7,
+      "point_4326": {
+        "type": "Point",
+        "coordinates": [
+          -0.1504,
+          51.5401
+        ]
+      },
+      "source_url": "https://camden.example/planning/CAM-2024-0707-F",
+      "documents": [
+        {
+          "doc_type": "decision_notice",
+          "doc_url": "https://camden.example/planning/CAM-2024-0707-F/decision-notice",
+          "mime_type": "text/plain",
+          "content_text": "Decision notice: refusal for seven-unit residential scheme due to design and access concerns."
+        }
+      ],
+      "raw_record_json": {
+        "dwelling_use": "C3",
+        "active_extant": false,
+        "refusal_reasons": [
+          "design",
+          "access"
+        ]
+      }
+    },
+    {
+      "borough_id": "camden",
+      "external_ref": "CAM/2024/1111/F",
+      "application_type": "FULL",
+      "proposal_description": "Redevelopment of a depot yard to provide 8 residential units with refuse storage.",
+      "valid_date": "2024-06-03",
+      "decision_date": "2024-10-01",
+      "decision": "Refused",
+      "decision_type": "FULL_RESIDENTIAL",
+      "status": "REFUSED",
+      "route_normalized": "FULL",
+      "units_proposed": 8,
+      "point_4326": {
+        "type": "Point",
+        "coordinates": [
+          -0.1581,
+          51.5434
+        ]
+      },
+      "source_url": "https://camden.example/planning/CAM-2024-1111-F",
+      "documents": [
+        {
+          "doc_type": "decision_notice",
+          "doc_url": "https://camden.example/planning/CAM-2024-1111-F/decision-notice",
+          "mime_type": "text/plain",
+          "content_text": "Decision notice: refusal for eight-unit scheme citing design and servicing conflict."
+        }
+      ],
+      "raw_record_json": {
+        "dwelling_use": "C3",
+        "active_extant": false,
+        "refusal_reasons": [
+          "design",
+          "servicing"
+        ]
+      }
+    },
+    {
+      "borough_id": "camden",
+      "external_ref": "CAM/2025/1444/F",
+      "application_type": "FULL",
+      "proposal_description": "Redevelopment of lock-up garages to provide 5 residential units behind retained frontage.",
+      "valid_date": "2025-04-08",
+      "decision_date": "2025-08-19",
+      "decision": "Refused",
+      "decision_type": "FULL_RESIDENTIAL",
+      "status": "REFUSED",
+      "route_normalized": "FULL",
+      "units_proposed": 5,
+      "point_4326": {
+        "type": "Point",
+        "coordinates": [
+          -0.1536,
+          51.5458
+        ]
+      },
+      "source_url": "https://camden.example/planning/CAM-2025-1444-F",
+      "documents": [
+        {
+          "doc_type": "decision_notice",
+          "doc_url": "https://camden.example/planning/CAM-2025-1444-F/decision-notice",
+          "mime_type": "text/plain",
+          "content_text": "Decision notice: refusal for five flats due to constrained access and poor outlook."
+        }
+      ],
+      "raw_record_json": {
+        "dwelling_use": "C3",
+        "active_extant": false,
+        "refusal_reasons": [
+          "access",
+          "outlook"
+        ]
+      }
+    },
+    {
+      "borough_id": "camden",
+      "external_ref": "CAM/2026/3001/PA",
+      "application_type": "PRIOR_APPROVAL",
+      "proposal_description": "Prior approval for upward extension to provide two dwellings at 12 Example Road.",
+      "valid_date": "2026-02-14",
+      "decision_date": "2026-03-11",
+      "decision": "Withdrawn",
+      "decision_type": "PRIOR_APPROVAL",
+      "status": "WITHDRAWN",
+      "route_normalized": "PRIOR_APPROVAL",
+      "units_proposed": 2,
+      "point_4326": {
+        "type": "Point",
+        "coordinates": [
+          -0.14208,
+          51.53619
+        ]
+      },
+      "source_url": "https://camden.example/planning/CAM-2026-3001-PA",
+      "raw_record_json": {
+        "dwelling_use": "C3",
+        "active_extant": false,
+        "withdrawn": true
+      }
+    }
+  ]
+}

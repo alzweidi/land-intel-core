@@ -9,6 +9,7 @@ import landintel.geospatial.bootstrap as geo_bootstrap
 import pytest
 from landintel.connectors import tabular_feed
 from landintel.domain.enums import (
+    DocumentType,
     GeomSourceType,
     ListingStatus,
     ListingType,
@@ -256,3 +257,98 @@ def test_site_geometry_helpers_cover_official_title_union_and_missing_authority(
         is prepared
     )
     assert site_service._raw_local_authority(None) is None
+    assert (
+        site_service._raw_local_authority(
+            SimpleNamespace(raw_record_json={"lpa_name": " London Borough of Camden "})
+        )
+        == "London Borough of Camden"
+    )
+
+
+def test_site_authority_resolution_uses_boundary_and_brochure_fallbacks() -> None:
+    boundary_geometry = normalize_geojson_geometry(
+        geometry_payload={
+            "type": "Polygon",
+            "coordinates": [[
+                [0.18, 51.44],
+                [0.22, 51.44],
+                [0.22, 51.47],
+                [0.18, 51.47],
+                [0.18, 51.44],
+            ]],
+        },
+        source_epsg=4326,
+        source_type=GeomSourceType.SOURCE_POLYGON,
+    )
+    boundary = SimpleNamespace(
+        name="London Borough of Bexley",
+        geom_27700=boundary_geometry.geom_27700_wkt,
+    )
+    session_with_boundary = SimpleNamespace(
+        execute=lambda _stmt: SimpleNamespace(
+            scalars=lambda: SimpleNamespace(all=lambda: [boundary])
+        )
+    )
+    hints = site_service.ClusterSpatialHints(
+        normalized_addresses=[],
+        point_geometries_27700=[],
+        current_listing=SimpleNamespace(documents=[]),
+        current_snapshot=SimpleNamespace(
+            raw_record_json={},
+            lat=51.453134,
+            lon=0.197525,
+        ),
+    )
+
+    assert (
+        site_service._resolve_hmlr_authority_name(
+            session=session_with_boundary,
+            hints=hints,
+        )
+        == "London Borough of Bexley"
+    )
+
+    hints_without_boundary = site_service.ClusterSpatialHints(
+        normalized_addresses=[],
+        point_geometries_27700=[],
+        current_listing=SimpleNamespace(
+            documents=[
+                SimpleNamespace(
+                    doc_type=DocumentType.BROCHURE,
+                    extracted_text=(
+                        "Local Planning Authority: London Borough of Bexley. "
+                        "Approximate site area 17.68 hectares."
+                    ),
+                )
+            ]
+        ),
+        current_snapshot=SimpleNamespace(
+            raw_record_json={},
+            lat=51.453134,
+            lon=0.197525,
+        ),
+    )
+
+    assert (
+        site_service._resolve_hmlr_authority_name(
+            session=SimpleNamespace(),
+            hints=hints_without_boundary,
+        )
+        == "London Borough of Bexley"
+    )
+    assert site_service._authority_name_from_listing_point(
+        session=SimpleNamespace(execute=lambda _stmt: (_ for _ in ()).throw(RuntimeError("boom"))),
+        snapshot=SimpleNamespace(lat=51.453134, lon=0.197525),
+    ) is None
+    assert site_service._authority_name_from_brochure(None) is None
+    assert (
+        site_service._authority_name_from_brochure(
+            SimpleNamespace(
+                documents=[
+                    SimpleNamespace(doc_type=DocumentType.MAP, extracted_text="Ignored"),
+                    SimpleNamespace(doc_type=DocumentType.BROCHURE, extracted_text=None),
+                ]
+            )
+        )
+        is None
+    )

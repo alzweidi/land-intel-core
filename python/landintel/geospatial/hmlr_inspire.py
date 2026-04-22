@@ -8,6 +8,7 @@ import zipfile
 from functools import lru_cache
 from typing import Final
 
+import certifi
 import cloudscraper
 from shapely.geometry import Polygon
 from shapely.geometry.base import BaseGeometry
@@ -237,6 +238,7 @@ def _download_hmlr_zip(download_url: str) -> bytes:
     scraper = cloudscraper.create_scraper(
         browser={"browser": "chrome", "platform": "windows", "mobile": False}
     )
+    scraper.verify = certifi.where()
     response = scraper.get(download_url, allow_redirects=True, timeout=60)
     response.raise_for_status()
     return response.content

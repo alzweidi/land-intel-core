@@ -22,6 +22,7 @@ from landintel.domain.enums import (
     ListingStatus,
     ListingType,
     SourceFreshnessStatus,
+    SourceParseStatus,
 )
 from landintel.domain.models import (
     AuditEvent,
@@ -32,10 +33,12 @@ from landintel.domain.models import (
     ListingItem,
     ListingSnapshot,
     ListingSource,
+    LpaBoundary,
     RawAsset,
     SiteCandidate,
     SourceSnapshot,
 )
+from landintel.geospatial.geometry import build_point_geometry, load_wkt_geometry
 from landintel.jobs.service import enqueue_cluster_rebuild_job
 from landintel.listings.clustering import ClusterListingInput, build_clusters
 from landintel.listings.documents import extract_pdf_text
@@ -76,6 +79,11 @@ def execute_listing_job(
     )
     enforce_compliance(source=source, job=job)
     output = connector.run(context=context, payload=job.payload_json)
+    output = _apply_runtime_listing_filters(
+        session=session,
+        source=source,
+        output=output,
+    )
     result = persist_connector_output(
         session=session,
         job=job,
@@ -85,6 +93,117 @@ def execute_listing_job(
     )
     enqueue_cluster_rebuild_job(session=session, requested_by=job.requested_by)
     return result
+
+
+def _apply_runtime_listing_filters(
+    *,
+    session: Session,
+    source: ListingSource,
+    output: ConnectorRunOutput,
+) -> ConnectorRunOutput:
+    fit_policy = dict((source.refresh_policy_json or {}).get("source_fit_policy") or {})
+    required_lpa_ids = [
+        str(value).strip()
+        for value in fit_policy.get("required_lpa_ids", [])
+        if isinstance(value, str) and value.strip()
+    ]
+    if not required_lpa_ids:
+        return output
+
+    boundaries = session.execute(
+        select(LpaBoundary).where(LpaBoundary.id.in_(required_lpa_ids))
+    ).scalars().all()
+    boundary_geometries = []
+    loaded_lpa_ids: list[str] = []
+    for boundary in boundaries:
+        boundary_id = str(boundary.id)
+        if not boundary.geom_27700:
+            continue
+        boundary_geometries.append((boundary_id, load_wkt_geometry(boundary.geom_27700)))
+        loaded_lpa_ids.append(boundary_id)
+
+    missing_lpa_ids = [lpa_id for lpa_id in required_lpa_ids if lpa_id not in loaded_lpa_ids]
+    manifest_json = dict(output.manifest_json)
+    manifest_json["boundary_filter_required_lpa_ids"] = required_lpa_ids
+    manifest_json["boundary_loaded_lpa_ids"] = loaded_lpa_ids
+    if missing_lpa_ids:
+        filtered_out = [
+            {
+                "url": listing.canonical_url,
+                "reason": "REQUIRED_LPA_BOUNDARY_MISSING",
+            }
+            for listing in output.listings
+        ]
+        manifest_json["boundary_filter_missing_lpa_ids"] = missing_lpa_ids
+        manifest_json["boundary_allowed_listing_urls"] = []
+        manifest_json["boundary_filtered_out_listing_urls"] = filtered_out
+        manifest_json["listing_count"] = 0
+        manifest_json["filtered_out_count"] = int(manifest_json.get("filtered_out_count", 0)) + len(
+            filtered_out
+        )
+        return ConnectorRunOutput(
+            source_name=output.source_name,
+            source_family=output.source_family,
+            source_uri=output.source_uri,
+            observed_at=output.observed_at,
+            coverage_note=(
+                f"{output.coverage_note} Runtime LPA filter failed closed because required "
+                f"borough boundaries were missing: {', '.join(missing_lpa_ids)}."
+            ),
+            parse_status=SourceParseStatus.FAILED,
+            manifest_json=manifest_json,
+            assets=output.assets,
+            listings=[],
+        )
+
+    allowed_listings = []
+    filtered_out: list[dict[str, str]] = []
+    for listing in output.listings:
+        if listing.lat is None or listing.lon is None:
+            filtered_out.append(
+                {
+                    "url": listing.canonical_url,
+                    "reason": "BOUNDARY_COORDINATES_MISSING",
+                }
+            )
+            continue
+
+        point_geometry = build_point_geometry(lat=listing.lat, lon=listing.lon).geom_27700
+        if any(point_geometry.intersects(geom) for _, geom in boundary_geometries):
+            allowed_listings.append(listing)
+            continue
+
+        filtered_out.append(
+            {
+                "url": listing.canonical_url,
+                "reason": "OUTSIDE_REQUIRED_LPA",
+            }
+        )
+
+    manifest_json["boundary_filter_missing_lpa_ids"] = []
+    manifest_json["boundary_allowed_listing_urls"] = [
+        listing.canonical_url for listing in allowed_listings
+    ]
+    manifest_json["boundary_filtered_out_listing_urls"] = filtered_out
+    manifest_json["listing_count"] = len(allowed_listings)
+    manifest_json["filtered_out_count"] = int(manifest_json.get("filtered_out_count", 0)) + len(
+        filtered_out
+    )
+
+    return ConnectorRunOutput(
+        source_name=output.source_name,
+        source_family=output.source_family,
+        source_uri=output.source_uri,
+        observed_at=output.observed_at,
+        coverage_note=(
+            f"{output.coverage_note} Runtime LPA filter kept {len(allowed_listings)} "
+            f"of {len(output.listings)} listing(s) inside the required borough set."
+        ),
+        parse_status=output.parse_status if allowed_listings else SourceParseStatus.FAILED,
+        manifest_json=manifest_json,
+        assets=output.assets,
+        listings=allowed_listings,
+    )
 
 
 def resolve_listing_source(*, session: Session, job: JobRun) -> ListingSource:
@@ -555,6 +674,13 @@ def _listing_eligible_for_auto_site_build(
         return False
 
     source_name = getattr(getattr(listing_item, "source", None), "name", None)
+    if source_name == "ideal_land_current_sites":
+        raw_record = dict(listing_snapshot.raw_record_json or {})
+        if isinstance(raw_record.get("geometry_4326"), dict):
+            return True
+        bounds = raw_record.get("bbox_4326")
+        return isinstance(bounds, list) and len(bounds) == 4
+
     if source_name != "cabinet_office_surplus_property":
         return True
 

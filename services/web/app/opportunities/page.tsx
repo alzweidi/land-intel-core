@@ -288,6 +288,18 @@ export default async function OpportunitiesPage({
                           </Link>
                         </div>
                       ) : null}
+                      {item.site_summary?.current_listing_canonical_url ? (
+                        <div className="table-secondary">
+                          <a
+                            className="inline-link"
+                            href={item.site_summary.current_listing_canonical_url}
+                            rel="noreferrer"
+                            target="_blank"
+                          >
+                            Open live source
+                          </a>
+                        </div>
+                      ) : null}
                     </td>
                   </tr>
                 ))}

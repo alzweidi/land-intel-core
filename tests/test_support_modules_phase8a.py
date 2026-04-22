@@ -3,11 +3,13 @@ from __future__ import annotations
 import base64
 import json
 import logging
+import re
 import runpy
 import sys
 from datetime import UTC, datetime, timedelta
 from types import SimpleNamespace
 
+import httpx
 import landintel.config as config_mod
 import landintel.connectors.csv_import as csv_import_mod
 import landintel.connectors.html_snapshot as html_snapshot_mod
@@ -43,12 +45,17 @@ from landintel.connectors.csv_import import CsvImportConnector
 from landintel.connectors.html_snapshot import HtmlSnapshotFetcher
 from landintel.connectors.manual_url import ManualUrlConnector
 from landintel.connectors.page_capture import capture_listing_page
-from landintel.connectors.public_page import GenericPublicPageConnector, _discover_listing_links
+from landintel.connectors.public_page import (
+    GenericPublicPageConnector,
+    _discover_listing_links,
+    _discover_sitemap_listing_links,
+)
 from landintel.domain.enums import (
     AppRoleName,
     ConnectorType,
     DocumentType,
     ListingStatus,
+    ListingType,
     PriceBasisType,
     SourceParseStatus,
     StorageBackend,
@@ -254,7 +261,6 @@ def test_auth_session_resolution_and_helpers_cover_all_branches() -> None:
         )
         == "fallback"
     )
-
     assert auth_session.role_at_least(AppRoleName.REVIEWER, AppRoleName.ANALYST) is True
     assert auth_session.role_at_least(AppRoleName.ANALYST, AppRoleName.ADMIN) is False
     assert auth_session._split_token("missing") == (None, None)
@@ -322,6 +328,97 @@ def test_auth_session_resolution_and_helpers_cover_all_branches() -> None:
     assert auth_session._normalize_optional_text("   ") is None
     assert auth_session._normalize_optional_text("  hello  ") == "hello"
 
+
+def test_generic_public_page_connector_applies_max_listings_after_fit_filters(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    now = datetime.now(UTC)
+    fetch_assets = {
+        "https://example.com/seed": FetchedAsset(
+            requested_url="https://example.com/seed",
+            final_url="https://example.com/seed",
+            content=(
+                b"<html><body>"
+                b'<a href="/listing/filtered">Filtered</a>'
+                b'<a href="/listing/accepted">Accepted</a>'
+                b"</body></html>"
+            ),
+            content_type="text/html",
+            status_code=200,
+            fetched_at=now,
+            headers={"content-type": "text/html"},
+            page_title="Seed",
+        )
+    }
+    fetcher = SimpleNamespace(fetch_asset=lambda url: fetch_assets[url])
+    connector = GenericPublicPageConnector(fetcher)
+
+    captured_calls: list[str] = []
+
+    def _capture_listing_page(*, fetcher, url, asset_prefix):
+        del fetcher
+        captured_calls.append(url)
+        listing = ParsedListing(
+            source_listing_id=asset_prefix,
+            canonical_url=url,
+            observed_at=now,
+            status=ListingStatus.UNDER_OFFER
+            if url.endswith("/filtered")
+            else ListingStatus.LIVE,
+        )
+        return SimpleNamespace(
+            assets=[
+                ConnectorAsset(
+                    asset_key=f"{asset_prefix}_html",
+                    asset_type="HTML",
+                    role="LISTING_PAGE",
+                    original_url=url,
+                    content=b"<html></html>",
+                    content_type="text/html",
+                    fetched_at=now,
+                    metadata={},
+                )
+            ],
+            listing=listing,
+        )
+
+    monkeypatch.setattr(public_page_mod, "capture_listing_page", _capture_listing_page)
+
+    parsed = connector.run(
+        context=_make_context(
+            refresh_policy_json={
+                "seed_urls": ["https://example.com/seed"],
+                "listing_link_selector": "a",
+                "max_listings": 1,
+                "source_fit_policy": {"required_listing_statuses": ["LIVE"]},
+            }
+        ),
+        payload={},
+    )
+
+    assert captured_calls == [
+        "https://example.com/listing/filtered",
+        "https://example.com/listing/accepted",
+    ]
+    assert [listing.canonical_url for listing in parsed.listings] == [
+        "https://example.com/listing/accepted"
+    ]
+    assert parsed.manifest_json["listing_urls"] == [
+        "https://example.com/listing/filtered",
+        "https://example.com/listing/accepted",
+    ]
+    assert parsed.manifest_json["discovered_listing_urls"] == [
+        "https://example.com/listing/filtered",
+        "https://example.com/listing/accepted",
+    ]
+    assert parsed.manifest_json["accepted_listing_urls"] == [
+        "https://example.com/listing/accepted"
+    ]
+    assert parsed.manifest_json["filtered_out_listing_urls"] == [
+        "https://example.com/listing/filtered"
+    ]
+    assert parsed.manifest_json["processed_listing_count"] == 2
+    assert parsed.manifest_json["discovered_listing_count"] == 2
 
 def test_config_validation_and_local_database_detection(monkeypatch: pytest.MonkeyPatch) -> None:
     assert config_mod._is_local_database_url("sqlite:///tmp/test.db") is True
@@ -732,6 +829,23 @@ def test_public_page_connector_covers_discovery_dedup_and_failure(
             headers={"content-type": "text/html"},
             page_title="Seed",
         ),
+        "https://example.com/sitemap.xml": FetchedAsset(
+            requested_url="https://example.com/sitemap.xml",
+            final_url="https://example.com/sitemap.xml",
+            content=(
+                b'<?xml version="1.0" encoding="UTF-8"?>'
+                b"<urlset>"
+                b"<url><loc>https://example.com/listing/1</loc></url>"
+                b"<url><loc>https://example.com/listing/2</loc></url>"
+                b"<url><loc>https://example.com/skip/3</loc></url>"
+                b"</urlset>"
+            ),
+            content_type="application/xml",
+            status_code=200,
+            fetched_at=now,
+            headers={"content-type": "application/xml"},
+            page_title=None,
+        ),
         "https://example.com/empty": FetchedAsset(
             requested_url="https://example.com/empty",
             final_url="https://example.com/empty",
@@ -779,6 +893,7 @@ def test_public_page_connector_covers_discovery_dedup_and_failure(
         context=_make_context(
             refresh_policy_json={
                 "seed_urls": ["https://example.com/seed"],
+                "sitemap_urls": ["https://example.com/sitemap.xml"],
                 "listing_link_selector": "a",
                 "listing_url_patterns": [r"/listing/"],
                 "max_listings": 1,
@@ -789,6 +904,7 @@ def test_public_page_connector_covers_discovery_dedup_and_failure(
     assert parsed.parse_status is SourceParseStatus.PARSED
     assert captured_calls == ["https://example.com/listing/1"]
     assert parsed.manifest_json["listing_urls"] == ["https://example.com/listing/1"]
+    assert parsed.manifest_json["sitemap_urls"] == ["https://example.com/sitemap.xml"]
 
     no_selector = connector.run(
         context=_make_context(refresh_policy_json={"seed_urls": ["https://example.com/seed"]}),
@@ -815,6 +931,31 @@ def test_public_page_connector_covers_discovery_dedup_and_failure(
         patterns=[],
     )
     assert discovered == ["https://example.com/listing/2", "https://example.com/other/3"]
+    sitemap_discovered = _discover_sitemap_listing_links(
+        xml_payload=(
+            '<?xml version="1.0" encoding="UTF-8"?>'
+            "<urlset>"
+            "<url><loc>https://example.com/listing/4</loc></url>"
+            "<url><loc>https://example.com/other/5</loc></url>"
+            "</urlset>"
+        ),
+        patterns=[re.compile(r"/listing/")],
+    )
+    assert sitemap_discovered == ["https://example.com/listing/4"]
+    assert _discover_sitemap_listing_links(
+        xml_payload="<urlset><url><loc>https://example.com/listing/6</loc></url>",
+        patterns=[],
+    ) == []
+    assert _discover_sitemap_listing_links(
+        xml_payload=(
+            '<?xml version="1.0" encoding="UTF-8"?>'
+            "<urlset>"
+            "<url><loc /></url>"
+            "<url><loc>https://example.com/listing/7</loc></url>"
+            "</urlset>"
+        ),
+        patterns=[],
+    ) == ["https://example.com/listing/7"]
 
 
 def test_listing_connector_base_run_raises_not_implemented() -> None:
@@ -828,6 +969,435 @@ def test_listing_connector_base_run_raises_not_implemented() -> None:
 
     with pytest.raises(NotImplementedError):
         IncompleteConnector().run(context=_make_context(), payload={})
+
+
+def test_public_page_connector_applies_ideal_land_extract_and_source_fit(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    now = datetime.now(UTC)
+    fetch_assets = {
+        "https://example.com/seed": FetchedAsset(
+            requested_url="https://example.com/seed",
+            final_url="https://example.com/seed",
+            content=(
+                b'<a href="/listing/1">One</a>'
+                b'<a href="/listing/2">Two</a>'
+            ),
+            content_type="text/html",
+            status_code=200,
+            fetched_at=now,
+            headers={"content-type": "text/html"},
+            page_title="Seed",
+        ),
+        "https://example.com/sitemap.xml": FetchedAsset(
+            requested_url="https://example.com/sitemap.xml",
+            final_url="https://example.com/sitemap.xml",
+            content=(
+                b'<?xml version="1.0" encoding="UTF-8"?>'
+                b"<urlset>"
+                b"<url><loc>https://example.com/listing/1</loc></url>"
+                b"<url><loc>https://example.com/listing/2</loc></url>"
+                b"</urlset>"
+            ),
+            content_type="application/xml",
+            status_code=200,
+            fetched_at=now,
+            headers={"content-type": "application/xml"},
+            page_title=None,
+        ),
+    }
+    fetcher = SimpleNamespace(fetch_asset=lambda url: fetch_assets[url])
+    connector = GenericPublicPageConnector(fetcher)
+
+    def _capture_listing_page(*, fetcher, url, asset_prefix):
+        del fetcher
+        if url.endswith("/listing/1"):
+            html = """
+            <html>
+              <div class="mt-8 mb-8"><span>Available</span><span>Backland</span></div>
+              <h1>Fishponds Road, Tooting, SW17</h1>
+              <div><span>Fishponds Road , Tooting , SW17</span></div>
+              <div class="mb-8"><p class="text-2xl">Price on Application</p></div>
+              <section>
+                <h2>Description</h2>
+                <div class="prose">Available subject to planning for 3 houses in Tooting.</div>
+              </section>
+              <section><h2>Key Features</h2><div>Subject to planning for 3 houses</div></section>
+              <section>
+                <h2>Specifications</h2>
+                <div class="flex justify-between"><span>Units</span><span>3</span></div>
+                <div class="flex justify-between"><span>Tenure</span><span>Freehold</span></div>
+                <div class="flex justify-between">
+                  <span>Planning Status</span>
+                  <span>Subject to Planning</span>
+                </div>
+              </section>
+            </html>
+            """
+        else:
+            html = """
+            <html>
+              <div class="mt-8 mb-8"><span>Available</span><span>Backland</span></div>
+              <h1>Sandhurst Road, Lewisham, SE6</h1>
+              <div><span>Sandhurst Road , Lewisham , SE6</span></div>
+              <section>
+                <h2>Description</h2>
+                <div class="prose">PP for 2 houses in Lewisham.</div>
+              </section>
+              <section>
+                <h2>Specifications</h2>
+                <div class="flex justify-between">
+                  <span>Planning Status</span>
+                  <span>Subject to Planning</span>
+                </div>
+              </section>
+            </html>
+            """
+        return SimpleNamespace(
+            assets=[
+                ConnectorAsset(
+                    asset_key=f"{asset_prefix}_html",
+                    asset_type="HTML",
+                    role="LISTING_PAGE",
+                    original_url=url,
+                    content=html.encode("utf-8"),
+                    content_type="text/html",
+                    fetched_at=now,
+                    metadata={},
+                )
+            ],
+            listing=ParsedListing(
+                source_listing_id=url,
+                canonical_url=url,
+                observed_at=now,
+            ),
+        )
+
+    monkeypatch.setattr(public_page_mod, "capture_listing_page", _capture_listing_page)
+
+    parsed = connector.run(
+        context=_make_context(
+            refresh_policy_json={
+                "seed_urls": ["https://example.com/seed"],
+                "sitemap_urls": ["https://example.com/sitemap.xml"],
+                "listing_link_selector": "a",
+                "listing_url_patterns": [r"/listing/"],
+                "page_extract_mode": "ideal_land_v1",
+                "source_fit_policy": {
+                    "required_statuses": ["Available"],
+                    "allowed_property_types": ["Backland", "Development Site"],
+                    "required_planning_statuses": ["Subject to Planning"],
+                    "required_listing_types": ["LAND", "REDEVELOPMENT_SITE"],
+                    "require_address_text": True,
+                    "excluded_text_contains_any": ["pp for"],
+                },
+            }
+        ),
+        payload={},
+    )
+
+    assert parsed.parse_status is SourceParseStatus.PARSED
+    assert parsed.manifest_json["accepted_listing_urls"] == ["https://example.com/listing/1"]
+    assert parsed.manifest_json["filtered_out_listing_urls"] == ["https://example.com/listing/2"]
+    assert parsed.manifest_json["filtered_out_count"] == 1
+    assert "accepted 1 qualifying listing" in parsed.coverage_note
+    assert len(parsed.listings) == 1
+    listing = parsed.listings[0]
+    assert listing.headline == "Fishponds Road, Tooting, SW17"
+    assert listing.address_text == "Fishponds Road , Tooting , SW17"
+    assert listing.status is ListingStatus.LIVE
+    assert listing.listing_type is ListingType.LAND
+    assert listing.price_basis_type is PriceBasisType.PRICE_ON_APPLICATION
+    assert listing.raw_record_json["source_property_type_label"] == "Backland"
+    assert listing.raw_record_json["source_planning_status"] == "Subject to Planning"
+    assert "Subject to planning" in listing.search_text
+
+
+def test_public_page_connector_skips_stale_listing_pages_without_failing_run(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    now = datetime.now(UTC)
+    fetch_assets = {
+        "https://example.com/seed": FetchedAsset(
+            requested_url="https://example.com/seed",
+            final_url="https://example.com/seed",
+            content=b'<a href="/listing/1">One</a><a href="/listing/2">Two</a>',
+            content_type="text/html",
+            status_code=200,
+            fetched_at=now,
+            headers={"content-type": "text/html"},
+            page_title="Seed",
+        ),
+    }
+    fetcher = SimpleNamespace(fetch_asset=lambda url: fetch_assets[url])
+    connector = GenericPublicPageConnector(fetcher)
+
+    def _capture_listing_page(*, fetcher, url, asset_prefix):
+        del fetcher, asset_prefix
+        if url.endswith("/listing/2"):
+            request = httpx.Request("GET", url)
+            response = httpx.Response(404, request=request)
+            raise httpx.HTTPStatusError("missing", request=request, response=response)
+        return SimpleNamespace(
+            assets=[
+                ConnectorAsset(
+                    asset_key="listing_html",
+                    asset_type="HTML",
+                    role="LISTING_PAGE",
+                    original_url=url,
+                    content=b"<html></html>",
+                    content_type="text/html",
+                    fetched_at=now,
+                    metadata={},
+                )
+            ],
+            listing=ParsedListing(
+                source_listing_id=url,
+                canonical_url=url,
+                observed_at=now,
+            ),
+        )
+
+    monkeypatch.setattr(public_page_mod, "capture_listing_page", _capture_listing_page)
+
+    parsed = connector.run(
+        context=_make_context(
+            refresh_policy_json={
+                "seed_urls": ["https://example.com/seed"],
+                "listing_link_selector": "a",
+                "listing_url_patterns": [r"/listing/"],
+            }
+        ),
+        payload={},
+    )
+
+    assert parsed.parse_status is SourceParseStatus.PARSED
+    assert parsed.manifest_json["listing_urls"] == [
+        "https://example.com/listing/1",
+        "https://example.com/listing/2",
+    ]
+    assert parsed.manifest_json["accepted_listing_urls"] == ["https://example.com/listing/1"]
+    assert parsed.manifest_json["skipped_count"] == 1
+    assert parsed.manifest_json["skipped_listing_urls"] == [
+        {
+            "url": "https://example.com/listing/2",
+            "reason": "HTTPStatusError",
+        }
+    ]
+    assert "skipped 1 stale or unreachable page" in parsed.coverage_note
+
+
+def test_public_page_helper_branches_cover_ideal_land_status_fit_and_extract_helpers() -> None:
+    listing = ParsedListing(
+        source_listing_id="listing-1",
+        canonical_url="https://example.com/listing/1",
+        observed_at=datetime.now(UTC),
+        headline="Fixture listing",
+        description_text="Development land fixture",
+        address_text="1 Fixture Road",
+        listing_type=ListingType.LAND,
+        status=ListingStatus.LIVE,
+        price_basis_type=PriceBasisType.UNKNOWN,
+        raw_record_json={
+            "source_status_label": "Available",
+            "source_property_type_label": "Backland",
+            "source_planning_status": "Subject to Planning",
+        },
+    )
+
+    assert (
+        public_page_mod._apply_page_extract_mode(
+            listing=listing,
+            html="<html></html>",
+            refresh_policy={"page_extract_mode": "unknown"},
+        )
+        is listing
+    )
+    assert public_page_mod._listing_passes_source_fit(
+        listing=listing,
+        refresh_policy={"source_fit_policy": {"required_statuses": ["Under Offer"]}},
+    ) is False
+    assert public_page_mod._listing_passes_source_fit(
+        listing=listing,
+        refresh_policy={"source_fit_policy": {"allowed_property_types": ["Development Site"]}},
+    ) is False
+    assert public_page_mod._listing_passes_source_fit(
+        listing=listing,
+        refresh_policy={"source_fit_policy": {"required_planning_statuses": ["Full Planning"]}},
+    ) is False
+    assert public_page_mod._listing_passes_source_fit(
+        listing=listing,
+        refresh_policy={"source_fit_policy": {"required_listing_types": ["GARAGE_COURT"]}},
+    ) is False
+    assert public_page_mod._listing_passes_source_fit(
+        listing=listing,
+        refresh_policy={"source_fit_policy": {"required_listing_statuses": ["LIVE"]}},
+    ) is True
+    assert public_page_mod._listing_passes_source_fit(
+        listing=listing,
+        refresh_policy={"source_fit_policy": {"required_listing_statuses": ["AUCTION"]}},
+    ) is False
+    assert public_page_mod._listing_passes_source_fit(
+        listing=ParsedListing(
+            source_listing_id=listing.source_listing_id,
+            canonical_url=listing.canonical_url,
+            observed_at=listing.observed_at,
+            headline=listing.headline,
+            description_text=listing.description_text,
+            address_text=None,
+            listing_type=listing.listing_type,
+            price_basis_type=listing.price_basis_type,
+            raw_record_json=dict(listing.raw_record_json),
+        ),
+        refresh_policy={"source_fit_policy": {"require_address_text": True}},
+    ) is False
+    assert public_page_mod._listing_passes_source_fit(
+        listing=listing,
+        refresh_policy={
+            "source_fit_policy": {"required_text_contains_any": ["subject to planning"]}
+        },
+    ) is False
+    assert public_page_mod._listing_passes_source_fit(
+        listing=listing,
+        refresh_policy={
+            "source_fit_policy": {"required_text_contains_all": ["development", "land"]}
+        },
+    ) is True
+    assert public_page_mod._listing_passes_source_fit(
+        listing=listing,
+        refresh_policy={
+            "source_fit_policy": {"required_text_contains_all": ["development", "missing"]}
+        },
+    ) is False
+    assert public_page_mod._listing_passes_source_fit(
+        listing=listing,
+        refresh_policy={"source_fit_policy": {"require_point_coordinates": True}},
+    ) is False
+    assert public_page_mod._listing_passes_source_fit(
+        listing=listing,
+        refresh_policy={"source_fit_policy": {"require_brochure_asset": True}},
+    ) is False
+    assert public_page_mod._listing_passes_source_fit(
+        listing=listing,
+        refresh_policy={"source_fit_policy": {"require_map_asset": True}},
+    ) is False
+    listing_with_point = ParsedListing(
+        source_listing_id=listing.source_listing_id,
+        canonical_url=listing.canonical_url,
+        observed_at=listing.observed_at,
+        headline=listing.headline,
+        description_text=listing.description_text,
+        address_text=listing.address_text,
+        listing_type=listing.listing_type,
+        status=listing.status,
+        price_basis_type=listing.price_basis_type,
+        lat=51.5,
+        lon=-0.1,
+        brochure_asset_key="brochure-1",
+        map_asset_key="map-1",
+        raw_record_json=dict(listing.raw_record_json),
+    )
+    assert public_page_mod._listing_passes_source_fit(
+        listing=listing_with_point,
+        refresh_policy={
+            "source_fit_policy": {
+                "required_listing_statuses": ["LIVE"],
+                "require_point_coordinates": True,
+                "require_brochure_asset": True,
+                "require_map_asset": True,
+                "required_coordinate_bbox_4326": [-0.2, 51.4, 0.2, 51.6],
+            }
+        },
+    ) is True
+    assert public_page_mod._listing_passes_source_fit(
+        listing=listing_with_point,
+        refresh_policy={
+            "source_fit_policy": {"required_coordinate_bbox_4326": [0.0, 51.4, 0.2, 51.6]}
+        },
+    ) is False
+    assert public_page_mod._listing_passes_source_fit(
+        listing=listing,
+        refresh_policy={
+            "source_fit_policy": {"required_coordinate_bbox_4326": [-0.2, 51.4, 0.2, 51.6]}
+        },
+    ) is False
+
+    assert public_page_mod._ideal_land_status("Under Offer") is ListingStatus.UNDER_OFFER
+    assert public_page_mod._ideal_land_status("Sold STC") is ListingStatus.SOLD_STC
+    assert public_page_mod._ideal_land_status("Withdrawn") is ListingStatus.WITHDRAWN
+    assert public_page_mod._ideal_land_status("Auction") is ListingStatus.AUCTION
+    assert public_page_mod._ideal_land_status("Unknown") is None
+
+    assert (
+        public_page_mod._ideal_land_listing_type(
+            property_type_label="Mixed Use",
+            headline="Fixture mixed use plot",
+            description="Mixed use site",
+            planning_status="Full Planning",
+        )
+        is ListingType.LAND_WITH_BUILDING
+    )
+    assert (
+        public_page_mod._ideal_land_listing_type(
+            property_type_label="Garage Court",
+            headline="Garage court",
+            description="Garage court opportunity",
+            planning_status="Subject to Planning",
+        )
+        is ListingType.GARAGE_COURT
+    )
+    assert (
+        public_page_mod._ideal_land_listing_type(
+            property_type_label="Unknown",
+            headline="Development land",
+            description="Subject to planning for 5 houses",
+            planning_status="Subject to Planning",
+        )
+        is ListingType.LAND
+    )
+
+    malformed_specs = public_page_mod.BeautifulSoup(
+        """
+        <section>
+          <h2>Specifications</h2>
+          <div class="flex justify-between"><span>Units</span></div>
+          <div class="flex justify-between"><span>Tenure</span><span>Freehold</span></div>
+        </section>
+        """,
+        "html.parser",
+    )
+    assert public_page_mod._extract_specifications(malformed_specs) == {"Tenure": "Freehold"}
+    no_specs = public_page_mod.BeautifulSoup(
+        "<section><h2>Description</h2><div class='prose'>Only prose</div></section>",
+        "html.parser",
+    )
+    assert public_page_mod._extract_specifications(no_specs) == {}
+
+    assert public_page_mod._normalized_values("not-a-list") == set()
+    assert public_page_mod._lower_or_none(None) is None
+
+
+def test_public_page_connector_raises_when_listing_lacks_assets_and_timestamp(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    connector = GenericPublicPageConnector(fetcher=SimpleNamespace())
+
+    monkeypatch.setattr(
+        public_page_mod,
+        "capture_listing_page",
+        lambda *, fetcher, url, asset_prefix: SimpleNamespace(
+            assets=[],
+            listing=SimpleNamespace(observed_at=None),
+        ),
+    )
+
+    with pytest.raises(ValueError, match="did not fetch any assets"):
+        connector.run(
+            context=_make_context(
+                refresh_policy_json={"seed_urls": ["https://example.com/listing/1"]}
+            ),
+            payload={},
+        )
 
 
 @pytest.mark.parametrize(
@@ -1199,6 +1769,58 @@ def test_capture_listing_page_collects_html_and_document_assets() -> None:
     assert [asset.role for asset in captured.assets] == [
         "LISTING_PAGE",
         DocumentType.BROCHURE.value,
+        DocumentType.MAP.value,
+    ]
+
+
+def test_capture_listing_page_skips_broken_optional_document_assets() -> None:
+    now = datetime.now(UTC)
+    fetch_assets = {
+        "https://example.com/listing": FetchedAsset(
+            requested_url="https://example.com/listing",
+            final_url="https://example.com/listing",
+            content=(
+                b"<html><head><title>Listing</title></head><body>"
+                b'<a href="/brochure.pdf">Brochure</a>'
+                b'<a href="/map.pdf">Map</a>'
+                b"</body></html>"
+            ),
+            content_type="text/html",
+            status_code=200,
+            fetched_at=now,
+            headers={"content-type": "text/html"},
+            page_title="Listing",
+        ),
+        "https://example.com/map.pdf": FetchedAsset(
+            requested_url="https://example.com/map.pdf",
+            final_url="https://example.com/map.pdf",
+            content=b"%PDF-1.7 map",
+            content_type="application/pdf",
+            status_code=200,
+            fetched_at=now,
+            headers={"content-type": "application/pdf"},
+            page_title=None,
+        ),
+    }
+
+    def _fetch_asset(url: str):
+        if url == "https://example.com/brochure.pdf":
+            raise RuntimeError("broken optional document")
+        return fetch_assets[url]
+
+    fetcher = SimpleNamespace(fetch_asset=_fetch_asset)
+
+    captured = capture_listing_page(
+        fetcher=fetcher,
+        url="https://example.com/listing",
+        asset_prefix="manual",
+    )
+
+    assert captured.listing.canonical_url == "https://example.com/listing"
+    assert captured.listing.brochure_asset_key is None
+    assert captured.listing.map_asset_key == "manual_document_2"
+    assert [asset.role for asset in captured.assets] == [
+        "LISTING_PAGE",
         DocumentType.MAP.value,
     ]
 

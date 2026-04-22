@@ -9,17 +9,20 @@ from types import SimpleNamespace
 from uuid import UUID
 
 import pytest
+from landintel.connectors.base import ConnectorRunOutput, ParsedListing
 from landintel.domain.enums import (
     ComplianceMode,
     ConnectorType,
     DocumentExtractionStatus,
     DocumentType,
+    GeomSourceType,
     JobStatus,
     JobType,
     ListingClusterStatus,
     ListingStatus,
     ListingType,
     PriceBasisType,
+    SourceParseStatus,
 )
 from landintel.domain.models import (
     JobRun,
@@ -28,6 +31,7 @@ from landintel.domain.models import (
     ListingSnapshot,
     ListingSource,
 )
+from landintel.geospatial.geometry import normalize_geojson_geometry
 from landintel.jobs import service as job_service
 from landintel.listings import clustering as clustering_service
 from landintel.listings import documents as document_service
@@ -632,6 +636,18 @@ def test_listing_parser_helpers_cover_edge_cases():
     assert parsing_service.extract_coordinates_from_html(
         '<script>window.__LOT__={"long_lat":"{\\"lat\\":51.5,\\"lng\\":-0.1}"}</script>'
     ) == (51.5, -0.1)
+    assert (
+        parsing_service.extract_coordinates_from_html(
+            '<div id="map_canvas" data-lat="51.6050293" data-lng="-0.1461130"></div>'
+        )
+        == (51.6050293, -0.146113)
+    )
+    assert (
+        parsing_service.extract_coordinates_from_html(
+            '<a href="https://maps.google.com/?q=51.4122128,-0.0277321">Map</a>'
+        )
+        == (51.4122128, -0.0277321)
+    )
 
     soup_html = """
     <html>
@@ -945,3 +961,289 @@ def test_listing_service_helpers_cover_connectors_compliance_storage_and_rebuild
         len(db_session.query(ListingCluster).filter(ListingCluster.cluster_key == "obsolete").all())
         == 0
     )
+
+
+def test_runtime_listing_filters_keep_only_required_lpa_rows() -> None:
+    boundary_geometry = normalize_geojson_geometry(
+        geometry_payload={
+            "type": "Polygon",
+            "coordinates": [[
+                [-0.12, 51.545],
+                [-0.08, 51.545],
+                [-0.08, 51.57],
+                [-0.12, 51.57],
+                [-0.12, 51.545],
+            ]],
+        },
+        source_epsg=4326,
+        source_type=GeomSourceType.SOURCE_POLYGON,
+    )
+    session = _QueueSession(
+        results=[
+            _Result(
+                items=[
+                    SimpleNamespace(
+                        id="islington",
+                        geom_27700=boundary_geometry.geom_27700_wkt,
+                    )
+                ]
+            )
+        ]
+    )
+    source = SimpleNamespace(
+        refresh_policy_json={"source_fit_policy": {"required_lpa_ids": ["islington"]}}
+    )
+    output = ConnectorRunOutput(
+        source_name="savills_development_land",
+        source_family="public_page",
+        source_uri="https://search.savills.com",
+        observed_at=datetime.now(UTC),
+        coverage_note="fixture",
+        parse_status=SourceParseStatus.PARSED,
+        manifest_json={"filtered_out_count": 0},
+        assets=[],
+        listings=[
+            ParsedListing(
+                source_listing_id="hamilton",
+                canonical_url="https://search.savills.com/com/en/property-detail/9d0e1d60",
+                observed_at=datetime.now(UTC),
+                headline="2 Hamilton Lane",
+                listing_type=ListingType.REDEVELOPMENT_SITE,
+                status=ListingStatus.LIVE,
+                address_text="2 Hamilton Lane, Highbury, N5 1SH",
+                lat=51.5538983970221,
+                lon=-0.0989907835926118,
+            ),
+            ParsedListing(
+                source_listing_id="larkhall",
+                canonical_url="https://search.savills.com/com/en/property-detail/fc13d0e0",
+                observed_at=datetime.now(UTC),
+                headline="94 A & B Larkhall Lane",
+                listing_type=ListingType.REDEVELOPMENT_SITE,
+                status=ListingStatus.LIVE,
+                address_text="94 A & B Larkhall Lane, Clapham, London, SW4 6SP",
+                lat=51.473477,
+                lon=-0.128152,
+            ),
+            ParsedListing(
+                source_listing_id="missing-coords",
+                canonical_url="https://search.savills.com/com/en/property-detail/missing",
+                observed_at=datetime.now(UTC),
+                headline="Missing coords",
+                listing_type=ListingType.REDEVELOPMENT_SITE,
+                status=ListingStatus.LIVE,
+                address_text="Unknown",
+            ),
+        ],
+    )
+
+    filtered = listings_service._apply_runtime_listing_filters(
+        session=session,
+        source=source,
+        output=output,
+    )
+
+    assert [listing.source_listing_id for listing in filtered.listings] == ["hamilton"]
+    assert filtered.parse_status == SourceParseStatus.PARSED
+    assert filtered.manifest_json["boundary_filter_required_lpa_ids"] == ["islington"]
+    assert filtered.manifest_json["boundary_loaded_lpa_ids"] == ["islington"]
+    assert filtered.manifest_json["boundary_filter_missing_lpa_ids"] == []
+    assert filtered.manifest_json["boundary_allowed_listing_urls"] == [
+        "https://search.savills.com/com/en/property-detail/9d0e1d60"
+    ]
+    assert filtered.manifest_json["filtered_out_count"] == 2
+    assert filtered.manifest_json["boundary_filtered_out_listing_urls"] == [
+        {
+            "url": "https://search.savills.com/com/en/property-detail/fc13d0e0",
+            "reason": "OUTSIDE_REQUIRED_LPA",
+        },
+        {
+            "url": "https://search.savills.com/com/en/property-detail/missing",
+            "reason": "BOUNDARY_COORDINATES_MISSING",
+        },
+    ]
+    assert "Runtime LPA filter kept 1 of 3 listing(s)" in filtered.coverage_note
+
+
+def test_runtime_listing_filters_fail_closed_when_required_boundaries_are_missing() -> None:
+    session = _QueueSession(results=[_Result(items=[])])
+    source = SimpleNamespace(
+        refresh_policy_json={"source_fit_policy": {"required_lpa_ids": ["islington"]}}
+    )
+    output = ConnectorRunOutput(
+        source_name="savills_development_land",
+        source_family="public_page",
+        source_uri="https://search.savills.com",
+        observed_at=datetime.now(UTC),
+        coverage_note="fixture",
+        parse_status=SourceParseStatus.PARSED,
+        manifest_json={},
+        assets=[],
+        listings=[
+            ParsedListing(
+                source_listing_id="hamilton",
+                canonical_url="https://search.savills.com/com/en/property-detail/9d0e1d60",
+                observed_at=datetime.now(UTC),
+                headline="2 Hamilton Lane",
+                listing_type=ListingType.REDEVELOPMENT_SITE,
+                status=ListingStatus.LIVE,
+                address_text="2 Hamilton Lane, Highbury, N5 1SH",
+                lat=51.5538983970221,
+                lon=-0.0989907835926118,
+            )
+        ],
+    )
+
+    filtered = listings_service._apply_runtime_listing_filters(
+        session=session,
+        source=source,
+        output=output,
+    )
+
+    assert filtered.listings == []
+    assert filtered.parse_status == SourceParseStatus.FAILED
+    assert filtered.manifest_json["boundary_loaded_lpa_ids"] == []
+    assert filtered.manifest_json["boundary_filter_missing_lpa_ids"] == ["islington"]
+    assert filtered.manifest_json["boundary_filtered_out_listing_urls"] == [
+        {
+            "url": "https://search.savills.com/com/en/property-detail/9d0e1d60",
+            "reason": "REQUIRED_LPA_BOUNDARY_MISSING",
+        }
+    ]
+    assert "failed closed because required borough boundaries were missing: islington." in (
+        filtered.coverage_note
+    )
+
+
+def test_runtime_listing_filters_fail_closed_when_only_some_required_boundaries_exist() -> None:
+    boundary_geometry = normalize_geojson_geometry(
+        geometry_payload={
+            "type": "Polygon",
+            "coordinates": [
+                [
+                    [-0.115, 51.548],
+                    [-0.078, 51.548],
+                    [-0.078, 51.564],
+                    [-0.115, 51.564],
+                    [-0.115, 51.548],
+                ]
+            ],
+        },
+        source_epsg=4326,
+        source_type=GeomSourceType.TITLE_UNION,
+    )
+    session = _QueueSession(
+        results=[
+            _Result(
+                items=[
+                    SimpleNamespace(
+                        id="islington",
+                        geom_27700=boundary_geometry.geom_27700_wkt,
+                    )
+                ]
+            )
+        ]
+    )
+    source = SimpleNamespace(
+        refresh_policy_json={
+            "source_fit_policy": {"required_lpa_ids": ["islington", "southwark"]}
+        }
+    )
+    output = ConnectorRunOutput(
+        source_name="savills_development_land",
+        source_family="public_page",
+        source_uri="https://search.savills.com",
+        observed_at=datetime.now(UTC),
+        coverage_note="fixture",
+        parse_status=SourceParseStatus.PARSED,
+        manifest_json={},
+        assets=[],
+        listings=[
+            ParsedListing(
+                source_listing_id="hamilton",
+                canonical_url="https://search.savills.com/com/en/property-detail/9d0e1d60",
+                observed_at=datetime.now(UTC),
+                headline="2 Hamilton Lane",
+                listing_type=ListingType.REDEVELOPMENT_SITE,
+                status=ListingStatus.LIVE,
+                address_text="2 Hamilton Lane, Highbury, N5 1SH",
+                lat=51.5538983970221,
+                lon=-0.0989907835926118,
+            ),
+            ParsedListing(
+                source_listing_id="southwark-site",
+                canonical_url="https://search.savills.com/com/en/property-detail/southwark",
+                observed_at=datetime.now(UTC),
+                headline="Southwark site",
+                listing_type=ListingType.REDEVELOPMENT_SITE,
+                status=ListingStatus.LIVE,
+                address_text="Southwark site",
+                lat=51.5007,
+                lon=-0.0917,
+            ),
+        ],
+    )
+
+    filtered = listings_service._apply_runtime_listing_filters(
+        session=session,
+        source=source,
+        output=output,
+    )
+
+    assert filtered.listings == []
+    assert filtered.parse_status == SourceParseStatus.FAILED
+    assert filtered.manifest_json["boundary_loaded_lpa_ids"] == ["islington"]
+    assert filtered.manifest_json["boundary_filter_missing_lpa_ids"] == ["southwark"]
+    assert filtered.manifest_json["boundary_filtered_out_listing_urls"] == [
+        {
+            "url": "https://search.savills.com/com/en/property-detail/9d0e1d60",
+            "reason": "REQUIRED_LPA_BOUNDARY_MISSING",
+        },
+        {
+            "url": "https://search.savills.com/com/en/property-detail/southwark",
+            "reason": "REQUIRED_LPA_BOUNDARY_MISSING",
+        },
+    ]
+
+
+def test_runtime_listing_filters_fail_closed_when_boundary_geometry_is_blank() -> None:
+    session = _QueueSession(
+        results=[_Result(items=[SimpleNamespace(id="islington", geom_27700=None)])]
+    )
+    source = SimpleNamespace(
+        refresh_policy_json={"source_fit_policy": {"required_lpa_ids": ["islington"]}}
+    )
+    output = ConnectorRunOutput(
+        source_name="savills_development_land",
+        source_family="public_page",
+        source_uri="https://search.savills.com",
+        observed_at=datetime.now(UTC),
+        coverage_note="fixture",
+        parse_status=SourceParseStatus.PARSED,
+        manifest_json={},
+        assets=[],
+        listings=[
+            ParsedListing(
+                source_listing_id="hamilton",
+                canonical_url="https://search.savills.com/com/en/property-detail/9d0e1d60",
+                observed_at=datetime.now(UTC),
+                headline="2 Hamilton Lane",
+                listing_type=ListingType.REDEVELOPMENT_SITE,
+                status=ListingStatus.LIVE,
+                address_text="2 Hamilton Lane, Highbury, N5 1SH",
+                lat=51.5538983970221,
+                lon=-0.0989907835926118,
+            )
+        ],
+    )
+
+    filtered = listings_service._apply_runtime_listing_filters(
+        session=session,
+        source=source,
+        output=output,
+    )
+
+    assert filtered.listings == []
+    assert filtered.parse_status == SourceParseStatus.FAILED
+    assert filtered.manifest_json["boundary_loaded_lpa_ids"] == []
+    assert filtered.manifest_json["boundary_filter_missing_lpa_ids"] == ["islington"]

@@ -24,13 +24,24 @@ CYAN='\033[0;36m'
 NC='\033[0m'
 
 API_URL="${API_URL:-http://localhost:8000}"
-REAL_SOURCE_KEY="${REAL_SOURCE_KEY:-cabinet_office_surplus_property}"
+REAL_SOURCE_KEY="${REAL_SOURCE_KEY:-}"
+REAL_SOURCE_KEYS="${REAL_SOURCE_KEYS:-savills_development_land,bidwells_land_development,ideal_land_current_sites}"
 AUTO_SOURCE_TIMEOUT_SECONDS="${AUTO_SOURCE_TIMEOUT_SECONDS:-180}"
+PLANNING_BOROUGH_REGISTER_PATH="${PLANNING_BOROUGH_REGISTER_PATH:-tests/fixtures/planning/borough_register_phase8a_live.json}"
+PLANNING_BROWNFIELD_PATH="${PLANNING_BROWNFIELD_PATH:-tests/fixtures/planning/brownfield_sites_phase8a_live.geojson}"
+PLANNING_BASELINE_PACK_PATH="${PLANNING_BASELINE_PACK_PATH:-tests/fixtures/planning/baseline_packs_phase8a_live.json}"
 
 log()  { echo -e "${CYAN}[setup]${NC} $*"; }
 ok()   { echo -e "${GREEN}  ✓${NC} $*"; }
 warn() { echo -e "${YELLOW}  ⚠${NC} $*"; }
 fail() { echo -e "${RED}  ✗${NC} $*"; exit 1; }
+
+if [ -n "${REAL_SOURCE_KEY}" ]; then
+    SOURCE_KEYS_CSV="${REAL_SOURCE_KEY}"
+else
+    SOURCE_KEYS_CSV="${REAL_SOURCE_KEYS}"
+fi
+IFS=',' read -r -a SOURCE_KEYS <<< "${SOURCE_KEYS_CSV}"
 
 count_collection_items() {
     local url=$1
@@ -97,7 +108,11 @@ ok "Borough boundaries and title polygons loaded"
 # ------------------------------------------------------------------
 log "Step 2/4 — Loading planning, policy, brownfield, flood, heritage, and rulepack data ..."
 docker compose exec -T api python -m landintel.planning.bootstrap \
-    --dataset all --requested-by local-setup
+    --dataset all \
+    --borough-register-path "${PLANNING_BOROUGH_REGISTER_PATH}" \
+    --brownfield-path "${PLANNING_BROWNFIELD_PATH}" \
+    --baseline-pack-path "${PLANNING_BASELINE_PACK_PATH}" \
+    --requested-by local-setup
 ok "Planning and policy data loaded"
 
 # ------------------------------------------------------------------
@@ -139,30 +154,44 @@ PY
 ok "Hidden model release built and activated (${RELEASE_OUTPUT})"
 
 # ------------------------------------------------------------------
-# Step 5: Trigger the real automated source and wait for the pipeline
+# Step 5: Trigger the approved automated sources and wait for the pipeline
 # ------------------------------------------------------------------
-if curl -sf "${API_URL}/api/listings/sources" | grep -q "\"name\":\"${REAL_SOURCE_KEY}\""; then
-    log "Step 5/5 — Triggering approved automated source (${REAL_SOURCE_KEY}) ..."
-    curl -sf -X POST "${API_URL}/api/listings/connectors/${REAL_SOURCE_KEY}/run" \
+AVAILABLE_SOURCES=$(curl -sf "${API_URL}/api/listings/sources")
+TRIGGERED_SOURCES=0
+for SOURCE_KEY in "${SOURCE_KEYS[@]}"; do
+    if [ -z "${SOURCE_KEY}" ]; then
+        continue
+    fi
+    if ! printf '%s' "${AVAILABLE_SOURCES}" | grep -q "\"name\":\"${SOURCE_KEY}\""; then
+        warn "Approved automated source ${SOURCE_KEY} is not present in /api/listings/sources; skipping."
+        continue
+    fi
+
+    log "Step 5/5 — Triggering approved automated source (${SOURCE_KEY}) ..."
+    curl -sf -X POST "${API_URL}/api/listings/connectors/${SOURCE_KEY}/run" \
         -H 'Content-Type: application/json' \
         -d '{"requested_by":"local-setup"}' >/dev/null
-    ok "Approved automated source enqueued"
+    ok "Approved automated source enqueued (${SOURCE_KEY})"
+    TRIGGERED_SOURCES=$((TRIGGERED_SOURCES + 1))
 
     if wait_for_nonzero_count \
-        "real listing rows" \
-        "${API_URL}/api/listings?source=${REAL_SOURCE_KEY}" \
+        "real listing rows for ${SOURCE_KEY}" \
+        "${API_URL}/api/listings?source=${SOURCE_KEY}" \
         "${AUTO_SOURCE_TIMEOUT_SECONDS}"; then
         :
     else
-        warn "No qualifying live listing rows were produced for ${REAL_SOURCE_KEY}; the source may not contain parcel-grade land opportunities right now."
+        warn "No qualifying live listing rows were produced for ${SOURCE_KEY}; the source may not contain parcel-grade land opportunities right now."
     fi
+done
+
+if [ "${TRIGGERED_SOURCES}" -gt 0 ]; then
     if wait_for_nonzero_count \
         "listing clusters" \
         "${API_URL}/api/listing-clusters" \
         "${AUTO_SOURCE_TIMEOUT_SECONDS}"; then
         :
     else
-        warn "No listing clusters were produced after automated refresh; the source may have yielded zero qualifying rows."
+        warn "No listing clusters were produced after automated refresh; the sources may have yielded zero qualifying rows."
     fi
     if wait_for_nonzero_count \
         "site candidates" \
@@ -170,7 +199,7 @@ if curl -sf "${API_URL}/api/listings/sources" | grep -q "\"name\":\"${REAL_SOURC
         "${AUTO_SOURCE_TIMEOUT_SECONDS}"; then
         :
     else
-        warn "No site candidates were auto-promoted for ${REAL_SOURCE_KEY}; live listings may still be too sparse or filtered."
+        warn "No site candidates were auto-promoted; live listings may still be too sparse or filtered."
     fi
     if wait_for_nonzero_count \
         "opportunities" \
@@ -181,7 +210,7 @@ if curl -sf "${API_URL}/api/listings/sources" | grep -q "\"name\":\"${REAL_SOURC
         warn "No opportunities were produced after the automated refresh; review the source fit and planning coverage before widening scope."
     fi
 else
-    warn "Approved automated source ${REAL_SOURCE_KEY} is not present in /api/listings/sources; skipping real-data trigger."
+    warn "No approved automated sources were triggered; skipping the live-data refresh checks."
 fi
 
 # ------------------------------------------------------------------

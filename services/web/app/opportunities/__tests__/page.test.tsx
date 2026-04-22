@@ -209,7 +209,11 @@ describe('OpportunitiesPage', () => {
           uplift_mid: null,
           expected_uplift_mid: null,
           same_borough_support_count: 0,
-          site_summary: { display_name: 'Fallback summary site' },
+          site_summary: {
+            display_name: 'Fallback summary site',
+            current_listing_canonical_url:
+              'https://idealland.co.uk/properties/fishponds-road-tooting-sw17'
+          },
           scenario_summary: null
         }
       ]
@@ -224,6 +228,10 @@ describe('OpportunitiesPage', () => {
     expect(screen.getByText('Basis unavailable')).toBeInTheDocument();
     expect(screen.getByText('Unavailable')).toBeInTheDocument();
     expect(screen.queryByRole('link', { name: 'Open assessment' })).toBeNull();
+    expect(screen.getByRole('link', { name: 'Open live source' })).toHaveAttribute(
+      'href',
+      'https://idealland.co.uk/properties/fishponds-road-tooting-sw17'
+    );
   });
 
   it('passes manual_review_required=false and renders neutral queue values when requested', async () => {

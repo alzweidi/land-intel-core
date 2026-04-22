@@ -46,7 +46,10 @@ def capture_listing_page(
         document_links,
         start=1,
     ):
-        fetched_document = fetcher.fetch_asset(document.url)
+        try:
+            fetched_document = fetcher.fetch_asset(document.url)
+        except Exception:
+            continue
         asset_key = f"{asset_prefix}_document_{index}"
         assets.append(
             ConnectorAsset(

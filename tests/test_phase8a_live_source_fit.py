@@ -99,9 +99,25 @@ def test_listing_eligible_for_auto_site_build_blocks_building_heavy_cabinet_rows
         listing_type=ListingType.LAND,
         source=SimpleNamespace(name="cabinet_office_surplus_property"),
     )
+    ideal_land_listing = SimpleNamespace(
+        listing_type=ListingType.LAND,
+        source=SimpleNamespace(name="ideal_land_current_sites"),
+    )
     building_snapshot = SimpleNamespace(raw_record_json={})
     generic_snapshot = SimpleNamespace(raw_record_json={})
     land_snapshot = SimpleNamespace(raw_record_json={"bbox_4326": [-0.1, 51.4, -0.09, 51.41]})
+    ideal_land_snapshot = SimpleNamespace(raw_record_json={})
+    ideal_land_geometry_snapshot = SimpleNamespace(
+        raw_record_json={"bbox_4326": [-0.2, 51.42, -0.19, 51.43]}
+    )
+    ideal_land_polygon_snapshot = SimpleNamespace(
+        raw_record_json={
+            "geometry_4326": {
+                "type": "Polygon",
+                "coordinates": [[[-0.2, 51.42], [-0.19, 51.42], [-0.19, 51.43], [-0.2, 51.42]]],
+            }
+        }
+    )
     geometry_snapshot = SimpleNamespace(
         raw_record_json={
             "geometry_4326": {
@@ -137,6 +153,27 @@ def test_listing_eligible_for_auto_site_build_blocks_building_heavy_cabinet_rows
         listings_service._listing_eligible_for_auto_site_build(
             listing_item=land_listing,
             listing_snapshot=geometry_snapshot,
+        )
+        is True
+    )
+    assert (
+        listings_service._listing_eligible_for_auto_site_build(
+            listing_item=ideal_land_listing,
+            listing_snapshot=ideal_land_snapshot,
+        )
+        is False
+    )
+    assert (
+        listings_service._listing_eligible_for_auto_site_build(
+            listing_item=ideal_land_listing,
+            listing_snapshot=ideal_land_polygon_snapshot,
+        )
+        is True
+    )
+    assert (
+        listings_service._listing_eligible_for_auto_site_build(
+            listing_item=ideal_land_listing,
+            listing_snapshot=ideal_land_geometry_snapshot,
         )
         is True
     )

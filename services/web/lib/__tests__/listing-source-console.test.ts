@@ -12,7 +12,7 @@ describe('listing-source-console helpers', () => {
     expect(normalizeListingSourceKey('example_public_page')).toBe('example_public_page');
   });
 
-  it('selects the first active compliant automated source as the default', () => {
+  it('prefers the configured live acquisition source when it is active', () => {
     expect(
       selectDefaultAutomatedSourceKey([
         {
@@ -27,8 +27,28 @@ describe('listing-source-console helpers', () => {
         },
         {
           id: 'auto',
-          source_key: 'approved_public_page',
-          name: 'example_public_page',
+          source_key: 'cabinet_office_surplus_property',
+          name: 'cabinet_office_surplus_property',
+          connector_type: 'public_page',
+          compliance_mode: 'COMPLIANT_AUTOMATED',
+          active: true,
+          refresh_policy: 'Every 24h',
+          coverage_note: 'Every 24h'
+        },
+        {
+          id: 'preferred',
+          source_key: 'bidwells_land_development',
+          name: 'bidwells_land_development',
+          connector_type: 'public_page',
+          compliance_mode: 'COMPLIANT_AUTOMATED',
+          active: true,
+          refresh_policy: 'Every 24h',
+          coverage_note: 'Every 24h'
+        },
+        {
+          id: 'secondary',
+          source_key: 'ideal_land_current_sites',
+          name: 'ideal_land_current_sites',
           connector_type: 'public_page',
           compliance_mode: 'COMPLIANT_AUTOMATED',
           active: true,
@@ -36,11 +56,11 @@ describe('listing-source-console helpers', () => {
           coverage_note: 'Every 24h'
         }
       ])
-    ).toBe('example_public_page');
+    ).toBe('bidwells_land_development');
   });
 
   it('falls back to the canonical automated source key when no sources are available', () => {
-    expect(selectDefaultAutomatedSourceKey([])).toBe('cabinet_office_surplus_property');
+    expect(selectDefaultAutomatedSourceKey([])).toBe('bidwells_land_development');
   });
 
   it('counts only listing console job types', () => {

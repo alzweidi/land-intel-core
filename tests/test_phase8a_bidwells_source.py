@@ -1,0 +1,70 @@
+from __future__ import annotations
+
+import importlib.util
+from pathlib import Path
+
+from landintel.db.base import Base
+from landintel.db.session import create_sqlalchemy_engine
+from landintel.domain.enums import ComplianceMode, ConnectorType
+from landintel.domain.models import ListingSource
+from sqlalchemy.orm import Session
+
+
+def _load_migration_module(filename: str):
+    repo_root = Path(__file__).resolve().parents[1]
+    module_path = repo_root / "db" / "migrations" / "versions" / filename
+    spec = importlib.util.spec_from_file_location(filename.replace(".py", ""), module_path)
+    assert spec is not None and spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def test_phase8a_bidwells_source_migration_upserts_live_public_page_source(tmp_path) -> None:
+    previous = _load_migration_module("20260421_000014_phase8a_ideal_land_source.py")
+    migration = _load_migration_module("20260421_000015_phase8a_bidwells_source.py")
+    assert migration.down_revision == previous.revision
+
+    database_url = f"sqlite:///{tmp_path / 'bidwells-source.db'}"
+    engine = create_sqlalchemy_engine(database_url)
+    Base.metadata.create_all(engine)
+    try:
+        with Session(engine) as session:
+            session.add(
+                ListingSource(
+                    name="bidwells_land_development",
+                    connector_type=ConnectorType.PUBLIC_PAGE,
+                    compliance_mode=ComplianceMode.MANUAL_ONLY,
+                    refresh_policy_json={"interval_hours": 72},
+                    active=False,
+                )
+            )
+            session.commit()
+
+        with engine.begin() as connection:
+            migration._upsert_bidwells_source(connection)
+
+        with Session(engine) as session:
+            source = session.query(ListingSource).filter_by(name="bidwells_land_development").one()
+            assert source.connector_type == ConnectorType.PUBLIC_PAGE
+            assert source.compliance_mode == ComplianceMode.COMPLIANT_AUTOMATED
+            assert source.active is True
+            assert source.refresh_policy_json["interval_hours"] == 24
+            assert source.refresh_policy_json["seed_urls"] == [
+                "https://www.bidwells.co.uk/land-development/"
+            ]
+            assert source.refresh_policy_json["sitemap_urls"] == [
+                "https://www.bidwells.co.uk/land-development-sitemap.xml"
+            ]
+            assert source.refresh_policy_json["source_fit_policy"]["required_listing_types"] == [
+                "LAND",
+                "REDEVELOPMENT_SITE",
+            ]
+            assert (
+                source.refresh_policy_json["source_fit_policy"]["require_point_coordinates"]
+                is True
+            )
+            assert source.refresh_policy_json["source_fit_policy"]["require_brochure_asset"] is True
+            assert source.refresh_policy_json["compliance_basis"]["reviewed_at"] == "2026-04-21"
+    finally:
+        engine.dispose()

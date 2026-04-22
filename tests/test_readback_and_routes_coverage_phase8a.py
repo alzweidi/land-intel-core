@@ -1378,6 +1378,12 @@ def test_assessment_and_opportunity_readback_branch_paths(monkeypatch, fake_valu
             else fake_opportunity_summary_two
         ),
     )
+    class _FrozenOpportunityDate(date):
+        @classmethod
+        def today(cls) -> _FrozenOpportunityDate:
+            return cls(2026, 4, 15)
+
+    monkeypatch.setattr(opportunities_readback, "date", _FrozenOpportunityDate)
     opportunity_list = opportunities_readback.list_opportunities(
         SimpleNamespace(),
         borough="camden",

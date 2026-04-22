@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 import uuid
 from dataclasses import dataclass
 from typing import Any
@@ -8,6 +9,7 @@ from sqlalchemy import delete, select
 from sqlalchemy.orm import Session, selectinload
 
 from landintel.domain.enums import (
+    DocumentType,
     GeomConfidence,
     GeomSourceType,
     SiteMarketEventType,
@@ -47,6 +49,9 @@ from landintel.geospatial.title_linkage import (
 from landintel.planning.enrich import refresh_site_planning_context
 
 SITE_NAMESPACE = uuid.UUID("f87417d2-b904-4724-94a3-7f5f18c41540")
+BROCHURE_LOCAL_AUTHORITY_PATTERN = re.compile(
+    r"\b((?:London|Royal)\s+Borough\s+of\s+[A-Z][A-Za-z'& -]+|City of London)\b"
+)
 
 
 class SiteBuildError(ValueError):
@@ -481,7 +486,10 @@ def _derive_cluster_geometry(
 
         official_title_union = maybe_import_title_union_for_listing_point(
             session=session,
-            authority_name=_raw_local_authority(hints.current_snapshot),
+            authority_name=_resolve_hmlr_authority_name(
+                session=session,
+                hints=hints,
+            ),
             lat=hints.current_snapshot.lat,
             lon=hints.current_snapshot.lon,
             requested_by=requested_by,
@@ -643,8 +651,67 @@ def _raw_local_authority(snapshot: ListingSnapshot | None) -> str | None:
     if snapshot is None:
         return None
     raw_record = snapshot.raw_record_json or {}
-    value = raw_record.get("Local Authority")
-    return value.strip() if isinstance(value, str) and value.strip() else None
+    for key in ("Local Authority", "local_authority", "borough_name", "lpa_name"):
+        value = raw_record.get(key)
+        if isinstance(value, str) and value.strip():
+            return value.strip()
+    return None
+
+
+def _resolve_hmlr_authority_name(
+    *,
+    session: Session,
+    hints: ClusterSpatialHints,
+) -> str | None:
+    return (
+        _raw_local_authority(hints.current_snapshot)
+        or _authority_name_from_listing_point(session=session, snapshot=hints.current_snapshot)
+        or _authority_name_from_brochure(hints.current_listing)
+    )
+
+
+def _authority_name_from_listing_point(
+    *,
+    session: Session,
+    snapshot: ListingSnapshot | None,
+) -> str | None:
+    if (
+        snapshot is None
+        or snapshot.lat is None
+        or snapshot.lon is None
+        or not hasattr(session, "execute")
+    ):
+        return None
+
+    point_geometry = build_point_geometry(lat=snapshot.lat, lon=snapshot.lon).geom_27700
+    try:
+        boundaries = session.execute(select(LpaBoundary)).scalars().all()
+    except Exception:
+        return None
+
+    matches: list[str] = []
+    for boundary in boundaries:
+        boundary_geometry = load_wkt_geometry(boundary.geom_27700)
+        if point_geometry.intersects(boundary_geometry):
+            matches.append(boundary.name)
+    if len(matches) != 1:
+        return None
+    return matches[0]
+
+
+def _authority_name_from_brochure(listing_item: ListingItem | None) -> str | None:
+    if listing_item is None:
+        return None
+    for document in getattr(listing_item, "documents", []) or []:
+        if document.doc_type != DocumentType.BROCHURE:
+            continue
+        extracted_text = getattr(document, "extracted_text", None)
+        if not extracted_text:
+            continue
+        match = BROCHURE_LOCAL_AUTHORITY_PATTERN.search(extracted_text)
+        if match is not None:
+            return match.group(1).strip()
+    return None
 
 
 def _default_analyst_confidence(source_type: GeomSourceType) -> GeomConfidence:

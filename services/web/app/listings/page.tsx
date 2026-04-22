@@ -172,7 +172,11 @@ export default async function ListingsPage({ searchParams }: { searchParams?: Se
                       <div className="table-primary">
                         <Link href={`/listings/${item.id}`}>{getListingLabel(item)}</Link>
                       </div>
-                      <div className="table-secondary">{item.canonical_url}</div>
+                      <div className="table-secondary">
+                        <a className="inline-link" href={item.canonical_url} rel="noreferrer" target="_blank">
+                          Open live source
+                        </a>
+                      </div>
                     </td>
                     <td data-label="Source">
                       <div className="table-primary">{getSourceLabel(item.source_name, item.source_key)}</div>

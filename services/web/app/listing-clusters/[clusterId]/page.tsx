@@ -136,7 +136,11 @@ export default async function ListingClusterDetailPage({ params }: ClusterPagePr
                         })}
                       </Link>
                     </div>
-                    <div className="table-secondary">{member.canonical_url}</div>
+                    <div className="table-secondary">
+                      <a className="inline-link" href={member.canonical_url} rel="noreferrer" target="_blank">
+                        Open live source
+                      </a>
+                    </div>
                   </td>
                   <td data-label="Source">{getSourceLabel(member.source_name, null)}</td>
                   <td data-label="Confidence">
